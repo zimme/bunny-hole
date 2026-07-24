@@ -1,0 +1,11 @@
+.git
+.github
+.agents
+.devcontainer
+.vscode
+coverage
+dist
+docs
+tests
+*.md
+!README.md

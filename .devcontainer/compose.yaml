@@ -1,0 +1,25 @@
+name: bunny-hole-devcontainer
+
+services:
+  workspace:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      cache_from:
+        - ${DEVCONTAINER_CACHE_FROM:-ghcr.io/zimme/bunny-hole-devcontainer:cache}
+      args:
+        DENO_VERSION: "2.9.3"
+    command: sleep infinity
+    init: true
+    environment:
+      DENO_DIR: /deno-dir
+      DENO_NO_PROMPT: "1"
+      DENO_NO_UPDATE_CHECK: "1"
+      BUNNY_HOLE_BIND_ADDRESS: "0.0.0.0"
+      BUNNY_HOLE_TEST_HOST: host.docker.internal
+    volumes:
+      - ..:/workspaces/bunny-hole:cached
+      - deno-cache:/deno-dir
+
+volumes:
+  deno-cache:

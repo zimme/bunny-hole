@@ -1,0 +1,435 @@
+import {
+  createCorrelationId,
+  decodeControl,
+  decodeFrame,
+  encodeControl,
+  encodeFrame,
+  FrameType,
+  LIMITS,
+  pairsToHeaders,
+  parseResponseStart,
+  PROTOCOL_VERSION,
+  ProtocolError,
+  sendFrame,
+  SUBPROTOCOL,
+  toWebSocketCloseCode,
+} from "../../packages/protocol/mod.ts";
+import { createNonce, verifyProof } from "../../packages/protocol/auth.ts";
+import {
+  filterPublicRequestHeaders,
+  normalizeHostname,
+} from "../../packages/protocol/security.ts";
+import { Logger } from "./logger.ts";
+import { RelayConfig } from "./config.ts";
+
+interface ConnectorSession {
+  tunnelId: string;
+  socket: WebSocket;
+  authenticated: boolean;
+  nonce: string;
+  lastSeen: number;
+  requests: Set<string>;
+  authTimer?: ReturnType<typeof setTimeout>;
+  heartbeatTimer?: ReturnType<typeof setInterval>;
+}
+
+interface PendingRequest {
+  id: string;
+  tunnelId: string;
+  response: PromiseWithResolvers<Response>;
+  controller?: ReadableStreamDefaultController<Uint8Array>;
+  responseStarted: boolean;
+  bodyBytes: number;
+  timer: ReturnType<typeof setTimeout>;
+  abort: () => void;
+}
+
+export class Relay {
+  readonly sessions = new Map<string, ConnectorSession>();
+  readonly pending = new Map<string, PendingRequest>();
+  private accepting = true;
+
+  constructor(
+    readonly config: RelayConfig,
+    readonly logger: Logger,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  async handle(request: Request, info?: Deno.ServeHandlerInfo): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === "/healthz") {
+      return json({ status: this.accepting ? "ok" : "shutting_down" }, 200);
+    }
+    if (url.pathname === "/readyz") {
+      return json(
+        { status: this.accepting ? "ready" : "not_ready" },
+        this.accepting ? 200 : 503,
+      );
+    }
+    if (url.pathname === "/_bunny/connect") {
+      return this.handleConnector(request, url);
+    }
+    if (!this.accepting) return publicError(503);
+    return await this.handlePublic(request, info);
+  }
+
+  shutdown(): void {
+    if (!this.accepting) return;
+    this.accepting = false;
+    for (const session of this.sessions.values()) {
+      session.socket.close(toWebSocketCloseCode(1001), "relay shutting down");
+      this.cleanupSession(session, 503);
+    }
+    for (const pending of this.pending.values()) this.failPending(pending, 503);
+    this.logger.info("relay_shutdown");
+  }
+
+  private handleConnector(request: Request, url: URL): Response {
+    if (!this.accepting) return publicError(503);
+    if (request.method !== "GET") return publicError(405);
+    if (
+      request.headers.get("upgrade")?.toLowerCase() !== "websocket" ||
+      !request.headers.get("sec-websocket-protocol")?.split(",").map((x) => x.trim())
+        .includes(SUBPROTOCOL)
+    ) return publicError(400);
+    if (
+      !this.config.localDevelopment &&
+      request.headers.get("x-forwarded-proto") !== "https" &&
+      new URL(request.url).protocol !== "https:"
+    ) return publicError(400);
+    const tunnelId = url.searchParams.get("id") ?? "";
+    const tunnel = this.config.tunnels.get(tunnelId);
+    if (!tunnel || url.searchParams.size !== 1) return publicError(404);
+
+    let upgraded: { socket: WebSocket; response: Response };
+    try {
+      upgraded = Deno.upgradeWebSocket(request, { protocol: SUBPROTOCOL });
+    } catch {
+      return publicError(400);
+    }
+    const { socket } = upgraded;
+    socket.binaryType = "arraybuffer";
+    const session: ConnectorSession = {
+      tunnelId,
+      socket,
+      authenticated: false,
+      nonce: createNonce(),
+      lastSeen: this.now(),
+      requests: new Set(),
+    };
+    session.authTimer = setTimeout(
+      () => socket.close(toWebSocketCloseCode(1008), "authentication timeout"),
+      LIMITS.authenticationTimeoutMs,
+    );
+    socket.onopen = () => {
+      socket.send(encodeFrame(
+        FrameType.challenge,
+        "",
+        encodeControl({ nonce: session.nonce, version: PROTOCOL_VERSION }),
+      ));
+    };
+    socket.onmessage = (event) =>
+      void this.onConnectorMessage(session, tunnel.secret, event);
+    socket.onerror = () => this.logger.warn("connector_socket_error", { tunnelId });
+    socket.onclose = () => this.cleanupSession(session, 502);
+    return upgraded.response;
+  }
+
+  private async onConnectorMessage(
+    session: ConnectorSession,
+    secret: string,
+    event: MessageEvent,
+  ): Promise<void> {
+    try {
+      if (!(event.data instanceof ArrayBuffer)) {
+        throw new ProtocolError("text frames are not supported", 1003);
+      }
+      const frame = decodeFrame(event.data);
+      session.lastSeen = this.now();
+      if (!session.authenticated) {
+        if (frame.type !== FrameType.authenticate || frame.id !== "") {
+          throw new ProtocolError("authentication required", 1008);
+        }
+        const control = decodeControl(frame.payload);
+        if (
+          !isRecord(control) || control.version !== PROTOCOL_VERSION ||
+          typeof control.proof !== "string" ||
+          !(await verifyProof(
+            secret,
+            session.tunnelId,
+            session.nonce,
+            PROTOCOL_VERSION,
+            control.proof,
+          ))
+        ) throw new ProtocolError("authentication failed", 1008);
+        clearTimeout(session.authTimer);
+        session.authenticated = true;
+        const replaced = this.sessions.get(session.tunnelId);
+        if (replaced && replaced !== session) {
+          replaced.socket.close(4101, "connector replaced");
+          this.cleanupSession(replaced, 503);
+        }
+        this.sessions.set(session.tunnelId, session);
+        await sendFrame(
+          session.socket,
+          encodeFrame(
+            FrameType.authenticated,
+            "",
+            encodeControl({ version: PROTOCOL_VERSION }),
+          ),
+        );
+        session.heartbeatTimer = setInterval(
+          () => this.heartbeat(session),
+          LIMITS.heartbeatIntervalMs,
+        );
+        this.logger.info("connector_authenticated", { tunnelId: session.tunnelId });
+        return;
+      }
+      await this.handleAuthenticatedFrame(session, frame);
+    } catch (error) {
+      const protocolError = error instanceof ProtocolError
+        ? error
+        : new ProtocolError("internal protocol error", 1011);
+      this.logger.warn("protocol_error", {
+        tunnelId: session.tunnelId,
+        message: protocolError.message,
+      });
+      session.socket.close(
+        toWebSocketCloseCode(protocolError.closeCode),
+        "protocol error",
+      );
+      this.cleanupSession(session, 502);
+    }
+  }
+
+  private async handleAuthenticatedFrame(
+    session: ConnectorSession,
+    frame: ReturnType<typeof decodeFrame>,
+  ): Promise<void> {
+    if (frame.type === FrameType.ping) {
+      await sendFrame(session.socket, encodeFrame(FrameType.pong, "", frame.payload));
+      return;
+    }
+    if (frame.type === FrameType.pong) return;
+    const pending = this.pending.get(frame.id);
+    if (!pending || pending.tunnelId !== session.tunnelId) {
+      this.logger.warn("unknown_connector_request", {
+        tunnelId: session.tunnelId,
+        requestId: frame.id,
+        frameType: frame.type,
+      });
+      throw new ProtocolError("unknown request");
+    }
+    if (frame.type === FrameType.responseStart) {
+      if (pending.responseStarted) throw new ProtocolError("duplicate response start");
+      const start = parseResponseStart(decodeControl(frame.payload));
+      pending.responseStarted = true;
+      const stream = new ReadableStream<Uint8Array>({
+        start: (controller) => pending.controller = controller,
+        cancel: () => {
+          void this.sendCancel(session, frame.id);
+          this.finishPending(pending);
+        },
+      });
+      pending.response.resolve(
+        new Response(requestMayHaveNoBody(start.status) ? null : stream, {
+          status: start.status,
+          headers: pairsToHeaders(start.headers),
+        }),
+      );
+      return;
+    }
+    if (frame.type === FrameType.responseBody) {
+      if (!pending.responseStarted || !pending.controller) {
+        throw new ProtocolError("response body before response start");
+      }
+      pending.bodyBytes += frame.payload.length;
+      if (pending.bodyBytes > LIMITS.maxBodyBytes) {
+        throw new ProtocolError("response body exceeds limit", 1009);
+      }
+      pending.controller.enqueue(frame.payload.slice());
+      return;
+    }
+    if (frame.type === FrameType.responseEnd) {
+      if (!pending.responseStarted || !pending.controller) {
+        throw new ProtocolError("response end before response start");
+      }
+      pending.controller.close();
+      this.finishPending(pending);
+      return;
+    }
+    if (frame.type === FrameType.cancel) {
+      this.failPending(pending, 502);
+      return;
+    }
+    throw new ProtocolError("unexpected connector frame");
+  }
+
+  private async handlePublic(
+    request: Request,
+    info?: Deno.ServeHandlerInfo,
+  ): Promise<Response> {
+    let hostname: string;
+    try {
+      hostname = normalizeHostname(request.headers.get("host") ?? "");
+    } catch {
+      return publicError(400);
+    }
+    const tunnelId = this.config.hostnameToTunnel.get(hostname);
+    if (!tunnelId) return publicError(404);
+    const session = this.sessions.get(tunnelId);
+    if (!session?.authenticated || session.socket.readyState !== WebSocket.OPEN) {
+      return publicError(503);
+    }
+    if (session.requests.size >= LIMITS.maxConcurrentRequests) {
+      return publicError(429);
+    }
+    const contentLength = request.headers.get("content-length");
+    if (
+      contentLength &&
+      (!/^\d+$/.test(contentLength) || Number(contentLength) > LIMITS.maxBodyBytes)
+    ) return publicError(413);
+
+    const id = createCorrelationId();
+    const response = Promise.withResolvers<Response>();
+    const abort = () => void this.sendCancel(session, id);
+    const pending: PendingRequest = {
+      id,
+      tunnelId,
+      response,
+      responseStarted: false,
+      bodyBytes: 0,
+      abort,
+      timer: setTimeout(() => this.failPendingById(id, 504), LIMITS.requestTimeoutMs),
+    };
+    this.pending.set(id, pending);
+    session.requests.add(id);
+    void info?.completed.catch(abort);
+    try {
+      const remoteAddress = getRemoteAddress(info);
+      const start = {
+        method: request.method,
+        path: new URL(request.url).pathname + new URL(request.url).search,
+        headers: filterPublicRequestHeaders(request.headers, hostname, remoteAddress),
+        remoteAddress,
+      };
+      await sendFrame(
+        session.socket,
+        encodeFrame(FrameType.requestStart, id, encodeControl(start)),
+      );
+      let bodyBytes = 0;
+      if (request.body) {
+        for await (const chunk of request.body) {
+          bodyBytes += chunk.length;
+          if (bodyBytes > LIMITS.maxBodyBytes) {
+            this.failPending(pending, 413);
+            return publicError(413);
+          }
+          await sendFrame(
+            session.socket,
+            encodeFrame(FrameType.requestBody, id, chunk),
+          );
+        }
+      }
+      await sendFrame(session.socket, encodeFrame(FrameType.requestEnd, id));
+      return await response.promise;
+    } catch (error) {
+      this.logger.warn("public_request_failed", {
+        tunnelId,
+        requestId: id,
+        message: error instanceof Error ? error.message : "unknown",
+      });
+      this.failPending(pending, 502);
+      return publicError(502);
+    }
+  }
+
+  private heartbeat(session: ConnectorSession): void {
+    if (this.now() - session.lastSeen > LIMITS.heartbeatTimeoutMs) {
+      session.socket.close(toWebSocketCloseCode(1001), "heartbeat timeout");
+      this.cleanupSession(session, 502);
+      return;
+    }
+    if (session.socket.readyState === WebSocket.OPEN) {
+      session.socket.send(
+        encodeFrame(
+          FrameType.ping,
+          "",
+          encodeControl({ time: this.now() }),
+        ),
+      );
+    }
+  }
+
+  private async sendCancel(session: ConnectorSession, id: string): Promise<void> {
+    if (session.socket.readyState === WebSocket.OPEN) {
+      await sendFrame(session.socket, encodeFrame(FrameType.cancel, id));
+    }
+  }
+
+  private cleanupSession(session: ConnectorSession, status: number): void {
+    if (session.authTimer) clearTimeout(session.authTimer);
+    if (session.heartbeatTimer) clearInterval(session.heartbeatTimer);
+    if (this.sessions.get(session.tunnelId) === session) {
+      this.sessions.delete(session.tunnelId);
+    }
+    for (const id of [...session.requests]) {
+      const pending = this.pending.get(id);
+      if (pending) this.failPending(pending, status);
+    }
+  }
+
+  private failPendingById(id: string, status: number): void {
+    const pending = this.pending.get(id);
+    if (pending) this.failPending(pending, status);
+  }
+
+  private failPending(pending: PendingRequest, status: number): void {
+    if (pending.responseStarted) {
+      try {
+        pending.controller?.error(new Error("tunnel request failed"));
+      } catch {
+        // Stream may already be closed.
+      }
+    } else {
+      pending.response.resolve(publicError(status));
+    }
+    this.finishPending(pending);
+  }
+
+  private finishPending(pending: PendingRequest): void {
+    clearTimeout(pending.timer);
+    this.pending.delete(pending.id);
+    this.sessions.get(pending.tunnelId)?.requests.delete(pending.id);
+  }
+}
+
+function getRemoteAddress(info?: Deno.ServeHandlerInfo): string {
+  const address = info?.remoteAddr as Deno.NetAddr | undefined;
+  return address?.hostname ?? "";
+}
+
+function requestMayHaveNoBody(status: number): boolean {
+  return status === 101 || status === 204 || status === 205 || status === 304;
+}
+
+function publicError(status: number): Response {
+  return json({ error: "tunnel request failed" }, status, {
+    "cache-control": "no-store",
+  });
+}
+
+function json(
+  value: unknown,
+  status: number,
+  headers: HeadersInit = {},
+): Response {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", ...headers },
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
