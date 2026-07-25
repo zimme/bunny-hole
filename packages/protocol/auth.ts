@@ -2,6 +2,23 @@ import { decodeBase64Url, encodeBase64Url, ProtocolError } from "./mod.ts";
 
 const encoder = new TextEncoder();
 
+export async function timingSafeEqualText(
+  expected: string,
+  supplied: string,
+): Promise<boolean> {
+  const [expectedDigest, suppliedDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+    crypto.subtle.digest("SHA-256", encoder.encode(supplied)),
+  ]);
+  const left = new Uint8Array(expectedDigest);
+  const right = new Uint8Array(suppliedDigest);
+  let difference = expected.length ^ supplied.length;
+  for (let index = 0; index < left.length; index++) {
+    difference |= left[index] ^ right[index];
+  }
+  return difference === 0;
+}
+
 export function createSecret(): string {
   return encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 }

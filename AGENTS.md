@@ -33,7 +33,9 @@ Container and agent tooling; never add npm task wrappers.
 - Strip internal, hop-by-hop, and spoofable forwarding headers. Never log secrets.
 - Never request credentials in an agent-controlled conversation or command. Pause while
   a human uses the dashboard or a private interactive terminal.
-- Do not use Bunny Edge Scripting, Bunny Database, or mutable action references.
+- Keep Edge Scripting explicitly experimental until the affinity experiment proves that
+  public requests consistently reach the isolate holding the connector. Do not use Bunny
+  Database or mutable action references.
 - Do not create releases, tags, Bunny resources, or deployments without explicit
   authorization.
 - Add behavior tests for protocol/security changes and run the production-image Compose

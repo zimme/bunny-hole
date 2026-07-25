@@ -15,6 +15,22 @@ Relay configuration is environment-only and validated before listening.
 A record has `id`, a 32-byte-or-longer base64url `secret`, and one or more exact
 `hostnames`. IDs and hostnames must be unique. Startup diagnostics redact secrets.
 
+## Experimental Edge Script relay
+
+The Edge Script uses the same `BUNNY_HOLE_TUNNELS` schema and protocol limits. `HOST`
+and `PORT` do not apply because Bunny owns the listener.
+
+| Variable                           | Required  | Meaning                                    |
+| ---------------------------------- | --------- | ------------------------------------------ |
+| `BUNNY_HOLE_TUNNELS`               | yes       | Same secret tunnel records as the relay    |
+| `BUNNY_HOLE_EDGE_DIAGNOSTIC_TOKEN` | test only | Enables authenticated affinity diagnostics |
+
+The diagnostic token must contain 32-512 characters. Configure it as a Bunny secret, not
+a visible environment variable. When present, ordinary non-control responses receive an
+ephemeral `X-Bunny-Hole-Edge-Instance` header and the authenticated
+`/_bunny/edge/diagnostics` endpoint reports only instance-local counts. It never returns
+tunnel IDs, hostnames, records, or secrets. Remove the token after testing.
+
 ## Connector
 
 Flags override environment, which overrides a JSON `--config` file except the secret: it

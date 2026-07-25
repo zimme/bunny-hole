@@ -14,6 +14,13 @@ application embedding the connector library shares the connector trust boundary:
 process can read the tunnel secret and all tunneled origin traffic. The library does not
 provide process isolation or secret storage.
 
+The experimental Edge Script relay additionally trusts Bunny to keep a WebSocket and the
+invocation state owning it alive. Correctness also requires public HTTP requests to
+reach that exact state. Bunny does not currently document this affinity. A routing miss
+fails closed with 503; it must never fall back to a viewer-selected origin. The optional
+diagnostic token is a separate test secret, is timing-safely compared, and exposes only
+ephemeral instance IDs and aggregate counts.
+
 ## Principal threats and controls
 
 - **Connector impersonation/replay:** 256-bit secrets, fresh nonce HMAC
@@ -46,3 +53,6 @@ Environment approval. A relay compromise exposes live application traffic and ca
 requests to connected origins. Bunny Hole supplies transport, not viewer authentication;
 protect sensitive origins with their own authorization. One instance is an availability
 and state-loss boundary.
+
+The Edge Script experiment is not a supported deployment until multi-location and load
+testing plus a Bunny platform guarantee establish its state-routing semantics.

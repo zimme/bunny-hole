@@ -4,13 +4,15 @@ Bunny Hole is a self-hosted, Bunny-native reverse HTTP tunnel. It exposes an HTT
 service behind NAT or a firewall without opening an inbound port:
 
 ```text
-public client → Bunny CDN → Magic Container relay
+public client → Bunny CDN → stateful relay
               → outbound WSS connector → loopback HTTP origin
 ```
 
 The relay authenticates connectors, maps configured public hostnames to named tunnels,
 and multiplexes bounded HTTP streams over one persistent WebSocket. Bunny CDN supplies
-public TLS, custom hostnames, and WebSocket delivery. Bunny Edge Scripting, Bunny
+public TLS, custom hostnames, and WebSocket delivery. The supported relay deployment is
+a single Magic Container instance. An experimental Edge Script build exists to test
+whether Bunny provides the undocumented isolate affinity it would require. Bunny
 Database, inbound firewall changes, and public IP discovery are not used.
 
 > [!IMPORTANT]
@@ -59,7 +61,7 @@ Each ComVer release publishes the same connector implementation in four forms:
   or server.
 - Native connector executables for Linux, macOS, and Windows in the GitHub release.
 - `@zimme/bunny-hole` on JSR and npm for embedding the connector lifecycle in a Deno or
-  Node.js application.
+  Node.js application, and for importing the experimental Edge Script handler.
 
 The npm artifact is a library, not a CLI wrapper. Use the native executable or connector
 OCI image for daemon operation. An embedded connector still connects only to its fixed
@@ -81,6 +83,14 @@ await connector.run();
 Node.js 22.14 or newer consumers can install `@zimme/bunny-hole` from npm and import the
 same API. Applications are responsible for loading the secret from protected input and
 shutting down with an `AbortSignal` or `connector.stop()`.
+
+The package also exports `@zimme/bunny-hole/edge-relay`. That handler is for the
+documented [Edge Script affinity experiment](docs/edge-script-experiment.md), not a
+production availability claim. The repository builds a single deployable script with:
+
+```sh
+deno task edge:build
+```
 
 ## Security model
 
@@ -106,6 +116,7 @@ before exposing a sensitive service.
 ## Repository map
 
 - `apps/relay`: in-memory Magic Container relay
+- `apps/edge-relay`: portable experimental Edge Script adapter and diagnostics
 - `apps/connector`: local daemon, CLI, and public library entry point
 - `packages/protocol`: versioned framing, authentication, limits, and filtering
 - `fixtures/origin`: deterministic integration origin
@@ -120,7 +131,9 @@ Runtime settings are in the
 Design and official research are in the
 [architecture](https://github.com/zimme/bunny-hole/blob/main/docs/architecture.md) and
 [protocol](https://github.com/zimme/bunny-hole/blob/main/docs/protocol.md)
-documentation. Releases follow
+documentation. The
+[Edge Script experiment](https://github.com/zimme/bunny-hole/blob/main/docs/edge-script-experiment.md)
+tests direct and Origin Shield routing without assuming either works. Releases follow
 [Compatibility Versioning](https://github.com/zimme/bunny-hole/blob/main/docs/versioning.md).
 
 ## License

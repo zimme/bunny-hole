@@ -1,7 +1,10 @@
 {
   "name": "@zimme/bunny-hole",
   "version": "0.1.0",
-  "exports": "./apps/connector/mod.ts",
+  "exports": {
+    ".": "./apps/connector/mod.ts",
+    "./edge-relay": "./apps/edge-relay/mod.ts"
+  },
   "license": "MIT",
   "publish": {
     "include": [
@@ -10,10 +13,16 @@
       "apps/connector/connector.ts",
       "apps/connector/library.ts",
       "apps/connector/mod.ts",
+      "apps/edge-relay/mod.ts",
+      "apps/edge-relay/relay.ts",
+      "apps/relay/config.ts",
+      "apps/relay/logger.ts",
+      "apps/relay/relay.ts",
       "packages/protocol"
     ]
   },
   "workspace": [
+    "apps/edge-relay",
     "apps/relay",
     "fixtures/origin"
   ],
@@ -37,12 +46,14 @@
     "fmt:check": "deno fmt --check",
     "spellcheck": "deno run --allow-env --allow-sys=homedir --allow-read cspell lint --config cspell.json --gitignore --dot --no-progress .",
     "lint": "deno lint",
-    "check": "deno check apps/relay/main.ts apps/connector/main.ts apps/connector/mod.ts fixtures/origin/main.ts scripts/*.ts tests/*.ts",
+    "check": "deno check apps/edge-relay/main.ts apps/edge-relay/mod.ts apps/relay/main.ts apps/connector/main.ts apps/connector/mod.ts fixtures/origin/main.ts scripts/*.ts tests/*.ts",
     "docs:check": "deno run --allow-read=. --allow-run=deno scripts/docs_check.ts",
     "test": "deno cache --reload apps/relay/relay.ts apps/connector/connector.ts packages/protocol/mod.ts && deno test --allow-env --allow-net --allow-read --coverage=coverage --clean --coverage-raw-data-only tests",
     "coverage": "deno coverage coverage --threshold=70",
     "integration": "deno run --allow-env --allow-net --allow-read=. --allow-run=docker --allow-write=/tmp scripts/integration.ts",
     "build": "deno run --allow-read=. --allow-write=dist --allow-run=deno scripts/build.ts",
+    "edge:build": "deno bundle --frozen --external @bunny.net/edgescript-sdk apps/edge-relay/main.ts -o dist/bunny-hole-edge-relay.js",
+    "edge:probe": "deno run --allow-env=BUNNY_HOLE_EDGE_DIAGNOSTIC_TOKEN --allow-net scripts/edge_affinity_probe.ts",
     "container:build": "docker build --target relay-runtime -t bunny-hole-relay:local . && docker build --target connector-runtime -t bunny-hole-connector:local .",
     "container:smoke": "deno run --allow-env --allow-net --allow-run=docker scripts/container_smoke.ts",
     "audit": "deno audit",

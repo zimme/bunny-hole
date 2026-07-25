@@ -34,7 +34,7 @@ export async function buildNpmPackage(
     const manifest = JSON.parse(await Deno.readTextFile(manifestPath));
     Object.assign(manifest, {
       description:
-        "Embed the secure Bunny Hole reverse HTTP tunnel connector in Deno or Node.js.",
+        "Embed the Bunny Hole connector or test its Bunny Edge Script relay.",
       author: "zimme",
       homepage: "https://github.com/zimme/bunny-hole#readme",
       repository: {
@@ -47,6 +47,7 @@ export async function buildNpmPackage(
         "reverse-tunnel",
         "http-tunnel",
         "connector",
+        "edge-script",
         "deno",
       ],
       engines: { node: ">=22.14.0" },

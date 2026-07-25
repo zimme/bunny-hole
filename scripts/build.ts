@@ -20,3 +20,12 @@ await run("deno", [
   "dist/bunny-hole-relay",
   "apps/relay/main.ts",
 ]);
+await run("deno", [
+  "bundle",
+  "--frozen",
+  "--external",
+  "@bunny.net/edgescript-sdk",
+  "apps/edge-relay/main.ts",
+  "-o",
+  "dist/bunny-hole-edge-relay.js",
+]);

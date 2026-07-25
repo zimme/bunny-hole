@@ -2,13 +2,13 @@
 
 Research was refreshed on 2026-07-24 against primary documentation.
 
-## Decision
+## Supported decision
 
 Bunny Hole uses a Bunny Magic Container CDN endpoint as the relay origin. The CDN
 terminates public TLS and forwards HTTP and WebSocket upgrades to port 8080 in the
 container. The local connector opens an outbound WSS connection to the same endpoint. No
-Edge Script is required: Deno's server in the container performs authentication,
-hostname routing, framing, proxying, health checks, and limits.
+Edge Script is required for this supported path: Deno's server in the container performs
+authentication, hostname routing, framing, proxying, health checks, and limits.
 
 ```mermaid
 flowchart LR
@@ -18,6 +18,27 @@ flowchart LR
   WS <--> K["Local connector"]
   K --> O["Configured HTTP origin<br/>loopback by default"]
 ```
+
+## Edge Script experiment
+
+Bunny documents both standalone Edge Scripts as Pull Zone origins and incoming WebSocket
+upgrades. That is sufficient to run the same relay code, but not sufficient to prove
+that a later public request reaches the isolate holding a connector's live WebSocket.
+The `apps/edge-relay` adapter injects Bunny's `request.upgradeWebSocket()` operation
+into the production relay state machine; authentication, framing, limits, header
+filtering, cancellation, replacement, and timeouts are therefore not forked.
+
+The generated script includes an opt-in, separately authenticated diagnostic. Each
+isolate receives a random boot identifier. Live probes record which identifiers handle
+requests and whether those isolates can see an authenticated connector. This tests:
+
+1. a standalone Edge Script as the Pull Zone origin with Origin Shield disabled; and
+2. the same deployment with one Origin Shield location enabled.
+
+Origin Shield is documented as a centralized caching layer, not a WebSocket broker or
+singleton compute placement feature. Neither result is assumed in advance. A successful
+single-location probe is evidence, not a platform guarantee; see
+[the experiment procedure](edge-script-experiment.md).
 
 ## Bunny findings
 
@@ -51,6 +72,16 @@ flowchart LR
   limit. Bunny Hole therefore sends application heartbeats every 20 seconds and treats
   45 seconds without traffic as dead. Confirm any CDN-specific hard duration with Bunny
   support for critical deployments.
+- [Edge Scripting WebSockets](https://docs.bunny.net/scripting/websockets) expose
+  incoming upgrades and close a connection if the client sends no data for two minutes.
+  Protocol pong frames sent by the connector satisfy that activity requirement.
+- A Pull Zone can select an Edge Script as its origin, but the current
+  [Pull Zone API](https://docs.bunny.net/api-reference/core/pull-zone/add-pull-zone)
+  documents no isolate affinity or globally addressable live-socket primitive.
+- [Origin Shield](https://docs.bunny.net/cdn/performance/origin-shield) consolidates
+  origin-bound cache misses through one location. Its documentation does not promise
+  that WebSockets traverse the shield, that Edge Scripts execute there, or that one
+  isolate handles all traffic.
 - The official
   [GitHub Actions deployment guide](https://docs.bunny.net/docs/magic-containers-github-action)
   currently shows `BunnyWay/actions/container-update-image@main`. A mutable action
@@ -111,6 +142,12 @@ flowchart LR
   receive GitHub artifact provenance; see
   [Deno compile](https://docs.deno.com/runtime/reference/cli/compile/) and
   [GitHub artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
+- The Edge Script entry point targets the documented `@bunny.net/edgescript-sdk@0.12.1`
+  interface. The runtime-provided import is externalized from the generated bundle and
+  represented locally by a narrow declaration file, so the SDK's Node emulator and
+  dependencies do not enter production or the repository lockfile. The reusable handler
+  has no SDK import, allowing it to be transferred to the Bunny Edge Scripts repository
+  without duplicating protocol logic.
 
 ## State and scaling
 

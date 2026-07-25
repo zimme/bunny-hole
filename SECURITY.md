@@ -23,8 +23,9 @@ authentication; origin applications remain responsible for authorization.
 ## Release trust
 
 Official releases use one matching ComVer for relay and connector OCI images, native
-connector binaries, and the JSR/npm connector library. Prefer immutable OCI digests,
-verify binary checksums and GitHub attestations, and pin library versions. Registry
-publishing uses GitHub OIDC; the project does not require long-lived npm or JSR publish
-tokens. Treat a compromised connector host, embedding process, Docker daemon, or package
-consumer as able to read that connector's in-memory tunnel secret.
+connector binaries, and the JSR/npm library. The Edge Script export remains experimental
+until documented affinity is available. Prefer immutable OCI digests, verify binary
+checksums and GitHub attestations, and pin library versions. Registry publishing uses
+GitHub OIDC; the project does not require long-lived npm or JSR publish tokens. Treat a
+compromised connector host, embedding process, Docker daemon, or package consumer as
+able to read that connector's in-memory tunnel secret.

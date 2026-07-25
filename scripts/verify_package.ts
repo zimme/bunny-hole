@@ -13,6 +13,16 @@ const EXPECTED_FILES = [
   "package/apps/connector/library.js",
   "package/apps/connector/mod.d.ts",
   "package/apps/connector/mod.js",
+  "package/apps/edge-relay/mod.d.ts",
+  "package/apps/edge-relay/mod.js",
+  "package/apps/edge-relay/relay.d.ts",
+  "package/apps/edge-relay/relay.js",
+  "package/apps/relay/config.d.ts",
+  "package/apps/relay/config.js",
+  "package/apps/relay/logger.d.ts",
+  "package/apps/relay/logger.js",
+  "package/apps/relay/relay.d.ts",
+  "package/apps/relay/relay.js",
   "package/package.json",
   "package/packages/protocol/auth.js",
   "package/packages/protocol/mod.js",
@@ -70,7 +80,11 @@ try {
   await Deno.writeTextFile(
     smoke,
     `import { createConnector, VERSION } from "@zimme/bunny-hole";
+import { createEdgeRelayHandler } from "@zimme/bunny-hole/edge-relay";
 if (VERSION !== "0.1.0") throw new Error("unexpected package version");
+if (typeof createEdgeRelayHandler !== "function") {
+  throw new Error("edge relay export is unavailable");
+}
 const options = {
   relayUrl: "wss://relay.example",
   tunnelId: "example-tunnel",

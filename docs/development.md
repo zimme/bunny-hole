@@ -41,7 +41,10 @@ deno task integration
 ```
 
 Focused tasks include `fmt`, `lint`, `check`, `test`, `coverage`, `integration`,
-`build`, `package:check`, `audit`, and `container:smoke`. `package:check` performs a JSR
+`build`, `edge:build`, `edge:probe`, `package:check`, `audit`, and `container:smoke`.
+`edge:build` emits the portable Bunny Edge Script bundle; `edge:probe` performs the
+credential-safe live affinity experiment described in
+[Edge Script experiment](edge-script-experiment.md). `package:check` performs a JSR
 publish dry run, creates the npm tarball with `deno pack`, installs it into an isolated
 Node consumer with lifecycle scripts disabled, opens a real authenticated tunnel from
 Node, and proxies a request through its public API. `deno task validate` is
@@ -74,4 +77,6 @@ x86-64/ARM64, and Windows x86-64 and writes SHA-256 checksums. It is intentional
 release task rather than part of every validation because Deno must download a separate
 runtime for each target. `deno task package:build` creates the npm tarball. The tag-only
 release workflow publishes both OCI images, native binaries, JSR source, and the npm
-library at one matching ComVer version.
+library at one matching ComVer version. The library contains the connector and the
+experimental `./edge-relay` export; the generated Edge Script bundle is a validation
+artifact rather than a separately versioned package.

@@ -44,6 +44,17 @@ interface PendingRequest {
   abort: () => void;
 }
 
+export interface RelayRequestInfo {
+  completed?: Promise<unknown>;
+  remoteAddress?: string;
+  remoteAddr?: { hostname?: string };
+}
+
+export type WebSocketUpgrader = (
+  request: Request,
+  protocol: string,
+) => { socket: WebSocket; response: Response };
+
 export class Relay {
   readonly sessions = new Map<string, ConnectorSession>();
   readonly pending = new Map<string, PendingRequest>();
@@ -53,9 +64,10 @@ export class Relay {
     readonly config: RelayConfig,
     readonly logger: Logger,
     private readonly now: () => number = Date.now,
+    private readonly upgradeWebSocket: WebSocketUpgrader = defaultWebSocketUpgrader,
   ) {}
 
-  async handle(request: Request, info?: Deno.ServeHandlerInfo): Promise<Response> {
+  async handle(request: Request, info?: RelayRequestInfo): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/healthz") {
       return json({ status: this.accepting ? "ok" : "shutting_down" }, 200);
@@ -103,7 +115,7 @@ export class Relay {
 
     let upgraded: { socket: WebSocket; response: Response };
     try {
-      upgraded = Deno.upgradeWebSocket(request, { protocol: SUBPROTOCOL });
+      upgraded = this.upgradeWebSocket(request, SUBPROTOCOL);
     } catch {
       return publicError(400);
     }
@@ -267,7 +279,7 @@ export class Relay {
 
   private async handlePublic(
     request: Request,
-    info?: Deno.ServeHandlerInfo,
+    info?: RelayRequestInfo,
   ): Promise<Response> {
     let hostname: string;
     try {
@@ -304,7 +316,7 @@ export class Relay {
     };
     this.pending.set(id, pending);
     session.requests.add(id);
-    void info?.completed.catch(abort);
+    void info?.completed?.catch(abort);
     try {
       const remoteAddress = getRemoteAddress(info);
       const start = {
@@ -404,9 +416,15 @@ export class Relay {
   }
 }
 
-function getRemoteAddress(info?: Deno.ServeHandlerInfo): string {
-  const address = info?.remoteAddr as Deno.NetAddr | undefined;
-  return address?.hostname ?? "";
+function getRemoteAddress(info?: RelayRequestInfo): string {
+  return info?.remoteAddress ?? info?.remoteAddr?.hostname ?? "";
+}
+
+function defaultWebSocketUpgrader(
+  request: Request,
+  protocol: string,
+): { socket: WebSocket; response: Response } {
+  return Deno.upgradeWebSocket(request, { protocol });
 }
 
 function requestMayHaveNoBody(status: number): boolean {
