@@ -1,8 +1,9 @@
 # Development
 
 Deno 2.9.3 is the only task runner. Node 24.13.1 and npm 11.8.0 are present inside the
-development container solely for GitHub Copilot CLI and agent tooling. There is no
-`package.json` and no npm wrapper script.
+development container for GitHub Copilot CLI, Dev Container tooling, and isolated
+verification/publishing of the real npm connector artifact. There is no repository
+`package.json` and no npm task wrapper.
 
 The development environment is Docker Compose-native. Docker Compose builds the complete
 toolchain without the Dev Container CLI:
@@ -40,8 +41,11 @@ deno task integration
 ```
 
 Focused tasks include `fmt`, `lint`, `check`, `test`, `coverage`, `integration`,
-`build`, `audit`, and `container:smoke`. `deno task validate` is authoritative and is
-the exact command CI invokes with `CI=true`.
+`build`, `package:check`, `audit`, and `container:smoke`. `package:check` performs a JSR
+publish dry run, creates the npm tarball with `deno pack`, installs it into an isolated
+Node consumer with lifecycle scripts disabled, opens a real authenticated tunnel from
+Node, and proxies a request through its public API. `deno task validate` is
+authoritative and is the exact command CI invokes with `CI=true`.
 
 ## Cache design
 
@@ -60,4 +64,14 @@ compiler and source-independent layers.
 
 There is no GitHub Actions dependency cache: local Docker volumes cannot be shared with
 hosted runners, and an additional cache would duplicate image layers. npm caching is
-absent because npm is not the project dependency manager.
+absent because npm is used only to validate and publish a dependency-free generated
+artifact, not to manage repository dependencies.
+
+## Release artifacts
+
+`deno task release:artifacts` cross-compiles the connector for Linux x86-64/ARM64, macOS
+x86-64/ARM64, and Windows x86-64 and writes SHA-256 checksums. It is intentionally a
+release task rather than part of every validation because Deno must download a separate
+runtime for each target. `deno task package:build` creates the npm tarball. The tag-only
+release workflow publishes both OCI images, native binaries, JSR source, and the npm
+library at one matching ComVer version.

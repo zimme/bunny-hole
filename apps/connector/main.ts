@@ -1,7 +1,7 @@
 import { createSecret } from "../../packages/protocol/auth.ts";
 import { normalizeHostname } from "../../packages/protocol/security.ts";
 import { loadConnectorConfig, redactedConnectorConfig } from "./config.ts";
-import { Connector } from "./connector.ts";
+import { createConnector } from "./library.ts";
 import { createLogger } from "../relay/logger.ts";
 
 export const VERSION = "0.1.0";
@@ -83,7 +83,7 @@ if (import.meta.main) {
       version: VERSION,
       config: redactedConnectorConfig(config),
     });
-    const connector = new Connector(config, logger);
+    const connector = createConnector({ ...config, logger });
     const abort = new AbortController();
     const stop = () => {
       abort.abort();

@@ -20,7 +20,8 @@ ENTRYPOINT ["/usr/local/bin/relay"]
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS connector-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/connector /usr/local/bin/bunny-hole
 USER nonroot
-ENTRYPOINT ["/usr/local/bin/bunny-hole", "connect"]
+ENTRYPOINT ["/usr/local/bin/bunny-hole"]
+CMD ["connect"]
 
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS fixture-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/origin /usr/local/bin/origin

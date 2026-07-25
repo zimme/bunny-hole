@@ -11,7 +11,8 @@ jobs:
   release:
     if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    environment: release
     permissions:
       contents: write
       packages: write
@@ -42,14 +43,17 @@ jobs:
           push: never
           runCmd: >-
             CI=true deno task validate &&
-            deno task release:check ${{ github.ref_name }}
+            deno task release:check ${{ github.ref_name }} &&
+            deno task release:artifacts
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Build and publish relay
-        id: build
+        id: relay
         uses: docker/build-push-action@v6
         with:
           context: .
           target: relay-runtime
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ghcr.io/${{ github.repository }}-relay:${{ github.ref_name }}
@@ -58,35 +62,85 @@ jobs:
           cache-to: type=registry,ref=ghcr.io/${{ github.repository }}-relay:buildcache,mode=max
           sbom: true
           provenance: mode=max
-      - name: Smoke exact published digest
+      - name: Build and publish connector
+        id: connector
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: connector-runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-connector:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}-connector:sha-${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}-connector:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}-connector:buildcache,mode=max
+          sbom: true
+          provenance: mode=max
+      - name: Smoke exact published digests
         env:
-          IMAGE: ghcr.io/${{ github.repository }}-relay@${{ steps.build.outputs.digest }}
+          RELAY_IMAGE: ghcr.io/${{ github.repository }}-relay@${{ steps.relay.outputs.digest }}
+          CONNECTOR_IMAGE: ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
         run: |
-          docker pull "$IMAGE"
-          test "$(docker inspect --format '{{.Config.User}}' "$IMAGE")" != "0"
-          test "$(docker inspect --format '{{.Config.User}}' "$IMAGE")" != "root"
-      - name: Generate SPDX SBOM
+          for image in "$RELAY_IMAGE" "$CONNECTOR_IMAGE"; do
+            docker pull "$image"
+            test "$(docker inspect --format '{{.Config.User}}' "$image")" != "0"
+            test "$(docker inspect --format '{{.Config.User}}' "$image")" != "root"
+          done
+          docker run --rm "$CONNECTOR_IMAGE" --version
+      - name: Generate relay SPDX SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ghcr.io/${{ github.repository }}-relay@${{ steps.build.outputs.digest }}
+          image: ghcr.io/${{ github.repository }}-relay@${{ steps.relay.outputs.digest }}
           format: spdx-json
           output-file: bunny-hole-relay-${{ github.ref_name }}.spdx.json
-      - name: Attest image provenance
+      - name: Generate connector SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
+          format: spdx-json
+          output-file: bunny-hole-connector-${{ github.ref_name }}.spdx.json
+      - name: Attest relay image provenance
         uses: actions/attest@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}-relay
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.relay.outputs.digest }}
           push-to-registry: true
-      - name: Attest SBOM
+      - name: Attest connector image provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}-connector
+          subject-digest: ${{ steps.connector.outputs.digest }}
+          push-to-registry: true
+      - name: Attest relay SBOM
         uses: actions/attest-sbom@v3
         with:
           subject-name: ghcr.io/${{ github.repository }}-relay
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.relay.outputs.digest }}
           sbom-path: bunny-hole-relay-${{ github.ref_name }}.spdx.json
           push-to-registry: true
+      - name: Attest connector SBOM
+        uses: actions/attest-sbom@v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}-connector
+          subject-digest: ${{ steps.connector.outputs.digest }}
+          sbom-path: bunny-hole-connector-${{ github.ref_name }}.spdx.json
+          push-to-registry: true
+      - name: Attest native connector binaries
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/release/*
+      - name: Publish the connector library to JSR and npm
+        uses: devcontainers/ci@v0.3
+        with:
+          configFile: .devcontainer/devcontainer.json
+          cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
+          push: never
+          runCmd: RELEASE_TAG=${{ github.ref_name }} deno task release:publish-package
       - name: Generate Conventional Commit release notes
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          RELAY_DIGEST: ${{ steps.relay.outputs.digest }}
+          CONNECTOR_DIGEST: ${{ steps.connector.outputs.digest }}
         run: |
           previous="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
           range="${previous:+${previous}..}HEAD"
@@ -94,10 +148,13 @@ jobs:
             echo "## Changes"
             git log "$range" --format='- %s (%h)' --grep='^\(feat\|fix\|docs\|perf\|refactor\)(\|^\(feat\|fix\|docs\|perf\|refactor\):'
             echo
-            echo "## Relay image"
+            echo "## OCI images"
             echo '```text'
-            echo "ghcr.io/${GITHUB_REPOSITORY}-relay@${DIGEST}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-relay@${RELAY_DIGEST}"
+            echo "ghcr.io/${GITHUB_REPOSITORY}-connector@${CONNECTOR_DIGEST}"
             echo '```'
+            echo
+            echo "The same connector library version is published as @zimme/bunny-hole on JSR and npm."
           } > release-notes.md
       - name: Create GitHub release
         env:
@@ -105,5 +162,7 @@ jobs:
         run: >-
           gh release create "${{ github.ref_name }}"
           bunny-hole-relay-${{ github.ref_name }}.spdx.json
+          bunny-hole-connector-${{ github.ref_name }}.spdx.json
+          dist/release/*
           --verify-tag --title "Bunny Hole ${{ github.ref_name }}"
           --notes-file release-notes.md

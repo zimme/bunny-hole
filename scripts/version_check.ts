@@ -1,7 +1,11 @@
 import { parseComVer } from "./comver.ts";
 
 export async function readProductVersion(): Promise<string> {
-  const paths = ["apps/connector/main.ts", "apps/relay/main.ts"];
+  const paths = [
+    "apps/connector/main.ts",
+    "apps/connector/mod.ts",
+    "apps/relay/main.ts",
+  ];
   const versions = new Map<string, string>();
 
   for (const path of paths) {
@@ -12,6 +16,9 @@ export async function readProductVersion(): Promise<string> {
   }
 
   const unique = new Set(versions.values());
+  const manifest = JSON.parse(await Deno.readTextFile("deno.json"));
+  versions.set("deno.json", manifest.version);
+  unique.add(manifest.version);
   if (unique.size !== 1) {
     throw new Error(
       `product versions differ: ${

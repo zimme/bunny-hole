@@ -16,7 +16,12 @@ import {
 } from "../../packages/protocol/mod.ts";
 import { createProof } from "../../packages/protocol/auth.ts";
 import { filterOriginResponseHeaders } from "../../packages/protocol/security.ts";
-import { ConnectorConfig } from "./config.ts";
+export interface ConnectorRuntimeConfig {
+  relayUrl: URL;
+  tunnelId: string;
+  secret: string;
+  origin: URL;
+}
 
 export interface ConnectorLogger {
   info(event: string, fields?: Record<string, unknown>): void;
@@ -45,7 +50,7 @@ export class Connector {
   private heartbeatTimer?: ReturnType<typeof setInterval>;
 
   constructor(
-    readonly config: ConnectorConfig,
+    readonly config: ConnectorRuntimeConfig,
     readonly logger: ConnectorLogger,
   ) {}
 
@@ -273,13 +278,15 @@ export class Connector {
     try {
       const headers = pairsToHeaders(headerPairs);
       headers.delete("host");
-      const response = await fetch(target, {
+      const init: RequestInit & { duplex?: "half" } = {
         method,
         headers,
         body,
         redirect: "manual",
         signal: context.abort.signal,
-      });
+      };
+      if (body) init.duplex = "half";
+      const response = await fetch(target, init);
       await this.send(encodeFrame(
         FrameType.responseStart,
         context.id,

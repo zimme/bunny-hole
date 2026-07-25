@@ -9,6 +9,7 @@ const steps: [string, string[]][] = [
   ["deno", ["task", "lint"]],
   ["deno", ["task", "check"]],
   ["deno", ["task", "docs:check"]],
+  ["deno", ["task", "package:check"]],
   ["deno", ["task", "commits:check"]],
   ["deno", ["task", "test"]],
   ["deno", ["task", "coverage"]],

@@ -33,8 +33,8 @@ version on the current major line is accepted. Tags with a nonzero patch compone
 prerelease suffix, build metadata, leading zero, downgrade, or repeated version are
 rejected.
 
-Before creating a tag, update the connector and relay `VERSION` constants together and
-check the intended tag locally:
+Before creating a tag, update the connector CLI, connector library, relay, and root
+`deno.json` versions together and check the intended tag locally:
 
 ```sh
 deno task version:check

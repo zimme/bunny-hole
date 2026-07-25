@@ -93,6 +93,24 @@ flowchart LR
 - Release images use GitHub
   [artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
   and an SPDX SBOM. Attestations establish provenance, not code safety.
+- The connector is Web-platform TypeScript with no `Deno.*` use in its public module
+  graph. The CLI/config adapter remains Deno-specific. Current
+  [Deno pack](https://docs.deno.com/runtime/reference/cli/pack/) transpiles that source
+  graph and emits npm JavaScript and declarations, while
+  [JSR publishing](https://jsr.io/docs/publishing-packages) retains the TypeScript
+  source. The root package owns the connector and shared protocol graph; relay and
+  fixture workspace members remain explicitly non-publishable.
+- JSR and npm both support GitHub OIDC publishing. JSR links the package to the
+  repository and creates package provenance; npm trusted publishing requires npm
+  11.5.1+, Node 22.14+, an exact repository/workflow match, and `id-token: write`.
+  Release publishing therefore uses the pinned development image and no registry write
+  token. See [JSR provenance](https://jsr.io/docs/trust) and
+  [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/).
+- Deno's supported cross-compile targets cover Linux x86-64/ARM64, macOS x86-64/ARM64,
+  and Windows x86-64. Those connector binaries and both multi-platform OCI images
+  receive GitHub artifact provenance; see
+  [Deno compile](https://docs.deno.com/runtime/reference/cli/compile/) and
+  [GitHub artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
 
 ## State and scaling
 

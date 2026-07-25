@@ -37,7 +37,8 @@ deno run --allow-env --allow-read apps/connector/main.ts generate \
 
 The command prints a new secret once. Redirect it to a protected file and set mode
 `0600`; do not paste it into an AI chat, shell argument, issue, or commit. See
-[deployment instructions](docs/deployment.md) for Bunny setup.
+[deployment instructions](https://github.com/zimme/bunny-hole/blob/main/docs/deployment.md)
+for Bunny setup.
 
 Run the connector after configuring the relay:
 
@@ -48,6 +49,38 @@ deno run --allow-env --allow-net --allow-read apps/connector/main.ts connect \
   --tunnel home \
   --origin http://127.0.0.1:3000
 ```
+
+## Distribution
+
+Each ComVer release publishes the same connector implementation in four forms:
+
+- `ghcr.io/zimme/bunny-hole-relay` — the self-hosted Magic Container relay image.
+- `ghcr.io/zimme/bunny-hole-connector` — a non-root connector image for a local machine
+  or server.
+- Native connector executables for Linux, macOS, and Windows in the GitHub release.
+- `@zimme/bunny-hole` on JSR and npm for embedding the connector lifecycle in a Deno or
+  Node.js application.
+
+The npm artifact is a library, not a CLI wrapper. Use the native executable or connector
+OCI image for daemon operation. An embedded connector still connects only to its fixed
+configured origin and gets the same validation, framing, authentication, timeouts, and
+reconnect behavior:
+
+```ts
+import { createConnector } from "jsr:@zimme/bunny-hole@0.1.0";
+
+const connector = createConnector({
+  relayUrl: "wss://home.example.com",
+  tunnelId: "home",
+  secret: Deno.env.get("BUNNY_HOLE_TUNNEL_SECRET")!,
+  origin: "http://127.0.0.1:3000",
+});
+await connector.run();
+```
+
+Node.js 22.14 or newer consumers can install `@zimme/bunny-hole` from npm and import the
+same API. Applications are responsible for loading the secret from protected input and
+shutting down with an `AbortSignal` or `connector.stop()`.
 
 ## Security model
 
@@ -66,25 +99,30 @@ deno run --allow-env --allow-net --allow-read apps/connector/main.ts connect \
 - Production images run non-root and support a read-only filesystem with all Linux
   capabilities dropped.
 
-Read [SECURITY.md](SECURITY.md) and the [threat model](docs/threat-model.md) before
-exposing a sensitive service.
+Read the [security policy](https://github.com/zimme/bunny-hole/blob/main/SECURITY.md)
+and [threat model](https://github.com/zimme/bunny-hole/blob/main/docs/threat-model.md)
+before exposing a sensitive service.
 
 ## Repository map
 
 - `apps/relay`: in-memory Magic Container relay
-- `apps/connector`: local daemon and CLI
+- `apps/connector`: local daemon, CLI, and public library entry point
 - `packages/protocol`: versioned framing, authentication, limits, and filtering
 - `fixtures/origin`: deterministic integration origin
 - `tests`: unit, state, malformed-input, and security behavior tests
 - `compose.yaml`: production-image end-to-end topology
 - `.devcontainer`: common local, CI, and coding-agent toolchain
 
-Developer commands and cache design are in [docs/development.md](docs/development.md).
-Runtime settings are in [docs/configuration.md](docs/configuration.md). Design and
-official research are in [docs/architecture.md](docs/architecture.md) and
-[docs/protocol.md](docs/protocol.md). Releases follow
-[Compatibility Versioning](docs/versioning.md).
+Developer commands and cache design are in the
+[development guide](https://github.com/zimme/bunny-hole/blob/main/docs/development.md).
+Runtime settings are in the
+[configuration reference](https://github.com/zimme/bunny-hole/blob/main/docs/configuration.md).
+Design and official research are in the
+[architecture](https://github.com/zimme/bunny-hole/blob/main/docs/architecture.md) and
+[protocol](https://github.com/zimme/bunny-hole/blob/main/docs/protocol.md)
+documentation. Releases follow
+[Compatibility Versioning](https://github.com/zimme/bunny-hole/blob/main/docs/versioning.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/zimme/bunny-hole/blob/main/LICENSE)

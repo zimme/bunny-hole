@@ -75,9 +75,7 @@ RUN chmod 0755 /usr/local/bin/bunny-hole-development-entrypoint
 
 WORKDIR /tmp/bunny-hole
 COPY deno.json deno.lock ./
-COPY packages/protocol/deno.json packages/protocol/
 COPY apps/relay/deno.json apps/relay/
-COPY apps/connector/deno.json apps/connector/
 COPY fixtures/origin/deno.json fixtures/origin/
 RUN deno ci && chown -R vscode:vscode /deno-dir && rm -rf /tmp/bunny-hole
 

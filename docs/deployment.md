@@ -66,6 +66,28 @@ chmod 600 connector.json
 ./bunny-hole connect --config connector.json
 ```
 
+The executable is available from the GitHub release for Linux, macOS, and Windows.
+Verify it against the release `SHA256SUMS` before running it.
+
+For a containerized connector, pin the connector image by digest and retain the same
+hardening used by the project topology:
+
+```sh
+docker run --rm --read-only --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$PWD/connector.json",dst=/run/secrets/connector.json,readonly \
+  ghcr.io/zimme/bunny-hole-connector@sha256:REPLACE_ME \
+  connect --config /run/secrets/connector.json
+```
+
+Run that example as a non-root host user; matching the container process UID/GID to the
+owner allows it to read a mode-`0600` config without broadening file permissions. The
+connector's loopback is the container itself. Run the origin in the same Compose network
+and explicitly opt into its private address, or use host networking where supported if
+the intended origin is on the host. Never relax private-network access to turn the
+connector into a destination selector.
+
 Test `https://home.example.com/health` from another network. Inspect CDN logs, Magic
 Container structured logs, and connector logs. A 404 indicates an unassigned hostname,
 503 an offline/replaced connector, 502 a disconnect/origin failure, and 504 a timeout.
@@ -106,3 +128,18 @@ on the command line. Add non-secret `BUNNY_APP_ID` and `BUNNY_CONTAINER_NAME`
 environment variables. Current Bunny documentation exposes an account AccessKey and no
 OIDC/scoped temporary deployment credential. Prefer dashboard updates if that long-lived
 credential is unacceptable.
+
+## Registry setup before the first release
+
+The repository owner must create `@zimme/bunny-hole` on JSR and link it to
+`zimme/bunny-hole`. An npm trusted publisher can only be configured from an existing
+package's settings. For the first release only, the owner must therefore run
+`deno task package:check` and `deno task package:build`, publish that exact tarball
+interactively with npm 2FA in a private terminal, and then configure its trusted
+publisher for `.github/workflows/release.yml` with GitHub Environment `release`.
+Subsequent tag workflows use GitHub OIDC; the first tag workflow detects the already
+published npm version and does not republish it.
+
+Configure tag protection and required reviewers on the `release` Environment. After OIDC
+works, disallow token publishing in the npm package settings. No `NPM_TOKEN` or
+`JSR_TOKEN` belongs in repository secrets.

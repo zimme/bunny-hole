@@ -1,5 +1,5 @@
-import { decodeBase64Url, ProtocolError } from "../../packages/protocol/mod.ts";
-import { validateOrigin } from "../../packages/protocol/security.ts";
+import { ProtocolError } from "../../packages/protocol/mod.ts";
+import { validateConnectorOptions } from "./library.ts";
 
 export interface ConnectorConfig {
   relayUrl: URL;
@@ -50,46 +50,31 @@ export async function loadConnectorConfig(
     flags.relay ?? env.BUNNY_HOLE_RELAY_URL ?? file.relayUrl,
     "relay URL",
   );
-  let relayUrl: URL;
-  try {
-    relayUrl = new URL(relayRaw);
-  } catch {
-    throw new ProtocolError("invalid relay URL");
-  }
-  if (
-    !["wss:", ...(localDevelopment ? ["ws:"] : [])].includes(relayUrl.protocol) ||
-    relayUrl.username || relayUrl.password || relayUrl.search || relayUrl.hash
-  ) throw new ProtocolError("relay URL must be a clean WSS URL");
   const tunnelId = stringValue(
     flags.tunnel ?? env.BUNNY_HOLE_TUNNEL_ID ?? file.tunnelId,
     "tunnel ID",
   );
-  if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(tunnelId)) {
-    throw new ProtocolError("invalid tunnel ID");
-  }
   const secret = stringValue(
     env.BUNNY_HOLE_TUNNEL_SECRET ?? file.secret,
     "tunnel secret",
   );
-  if (decodeBase64Url(secret).length < 32) {
-    throw new ProtocolError("tunnel secret is too short");
-  }
-  const origin = validateOrigin(
-    stringValue(
+  const validated = validateConnectorOptions({
+    relayUrl: relayRaw,
+    tunnelId,
+    secret,
+    origin: stringValue(
       flags.origin ?? env.BUNNY_HOLE_ORIGIN ?? file.origin ?? "http://127.0.0.1:3000",
       "origin",
     ),
     allowPrivateNetwork,
-  );
+    localDevelopment,
+  });
   const logFormat =
     (flags["log-format"] ?? env.BUNNY_HOLE_LOG_FORMAT ?? file.logFormat) === "pretty"
       ? "pretty"
       : "json";
   return {
-    relayUrl,
-    tunnelId,
-    secret,
-    origin,
+    ...validated,
     allowPrivateNetwork,
     localDevelopment,
     logFormat,
