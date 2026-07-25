@@ -14,3 +14,15 @@ Pull requests must explain security impact, tests, documentation changes, and an
 compatibility effect. Never include real tunnel records, credentials, customer
 hostnames, or logs containing viewer data. By contributing, you agree to the
 [Code of Conduct](CODE_OF_CONDUCT.md) and license your contribution under MIT.
+
+## Compatibility Versioning
+
+Bunny Hole uses [ComVer](docs/versioning.md), always in `MAJOR.MINOR.0` form:
+
+- mark every breaking change with `!` in its Conventional Commit subject or a
+  `BREAKING CHANGE:` footer;
+- use a major version bump for any breaking change, including a bug fix whose remedy
+  breaks compatibility; and
+- use a minor version bump for every non-breaking release, including ordinary fixes.
+
+Patch versions other than zero are invalid.

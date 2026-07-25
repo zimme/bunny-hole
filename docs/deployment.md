@@ -4,7 +4,7 @@ These steps deliberately keep all secret-bearing actions human-controlled.
 
 ## 1. Select an immutable image
 
-Use a SemVer release image and record its digest:
+Use a ComVer release image and record its digest:
 
 ```sh
 docker pull ghcr.io/zimme/bunny-hole-relay:1.0.0
@@ -75,7 +75,7 @@ Container structured logs, and connector logs. A 404 indicates an unassigned hos
 - **Rotate/revoke:** generate a fresh secret, update the relay record, wait for the
   rolling update, then update/restart the intended connector. Removing the record
   revokes the tunnel.
-- **Update:** select a newer immutable SemVer/digest and confirm the rolling update.
+- **Update:** select a newer immutable ComVer/digest and confirm the rolling update.
   Existing WebSockets disconnect and connectors reconnect.
 - **Rollback:** reselect the recorded prior digest. Configuration remains independent of
   the image.

@@ -2,6 +2,7 @@ import { run } from "./process.ts";
 
 const steps: [string, string[]][] = [
   ["deno", ["task", "agents:check"]],
+  ["deno", ["task", "version:check"]],
   ["deno", ["ci"]],
   ["deno", ["task", "fmt:check"]],
   ["deno", ["task", "spellcheck"]],

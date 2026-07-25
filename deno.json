@@ -15,6 +15,8 @@
   "tasks": {
     "setup": "deno ci && deno task hooks:install",
     "agents:check": "deno run --allow-read=. scripts/verify_agents.ts",
+    "version:check": "deno run --allow-read=. scripts/version_check.ts",
+    "release:check": "deno run --allow-read=. --allow-run=git scripts/release_check.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "spellcheck": "deno run --allow-env --allow-sys=homedir --allow-read cspell lint --config cspell.json --gitignore --dot --no-progress .",

@@ -82,7 +82,8 @@ exposing a sensitive service.
 Developer commands and cache design are in [docs/development.md](docs/development.md).
 Runtime settings are in [docs/configuration.md](docs/configuration.md). Design and
 official research are in [docs/architecture.md](docs/architecture.md) and
-[docs/protocol.md](docs/protocol.md).
+[docs/protocol.md](docs/protocol.md). Releases follow
+[Compatibility Versioning](docs/versioning.md).
 
 ## License
 

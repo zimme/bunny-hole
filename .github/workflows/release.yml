@@ -21,15 +21,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Validate SemVer tag
+      - name: Validate ComVer tag shape
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          previous="$(git tag --list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | sort -V | tail -1)"
-          if [[ -n "$previous" ]]; then
-            [[ "$(printf '%s\n' "$previous" "$TAG" | sort -V | tail -1)" == "$TAG" ]]
-          fi
+          [[ "$TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.0$ ]] || {
+            echo "ComVer tags must use MAJOR.MINOR.0" >&2
+            exit 1
+          }
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -41,7 +40,9 @@ jobs:
           configFile: .devcontainer/devcontainer.json
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
           push: never
-          runCmd: CI=true deno task validate
+          runCmd: >-
+            CI=true deno task validate &&
+            deno task release:check ${{ github.ref_name }}
       - uses: docker/setup-buildx-action@v3
       - name: Build and publish relay
         id: build

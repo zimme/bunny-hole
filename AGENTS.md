@@ -37,6 +37,9 @@ add npm task wrappers.
 - Add behavior tests for protocol/security changes and run the production-image Compose
   integration path.
 - Use Conventional Commits. Never add a hand-written `CHANGELOG.md`.
+- Use Compatibility Versioning (ComVer) in `MAJOR.MINOR.0` form. Breaking changes,
+  including breaking bug fixes, require a major bump; every non-breaking release
+  requires a minor bump. The patch component is always zero.
 
 Read the relevant skill in `.agents/skills/` before protocol/security or
 deployment/release work. Review `docs/architecture.md`, `docs/protocol.md`, and
