@@ -1,0 +1,102 @@
+name: bunny-hole
+
+networks:
+  tunnel:
+    ipam:
+      config:
+        - subnet: 10.253.240.0/24
+
+services:
+  development:
+    profiles: [development]
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        DENO_VERSION: "2.9.3"
+        NODE_VERSION: "24.13.1"
+        NPM_VERSION: "11.8.0"
+        GH_VERSION: "2.96.0"
+        COPILOT_VERSION: "1.0.72"
+        DOCKER_CLI_VERSION: "5:29.6.2-1~debian.13~trixie"
+        DOCKER_BUILDX_VERSION: "0.35.0-1~debian.13~trixie"
+        DOCKER_COMPOSE_VERSION: "5.3.1-1~debian.13~trixie"
+    init: true
+    environment:
+      BUNNY_HOLE_BIND_ADDRESS: "0.0.0.0"
+      BUNNY_HOLE_TEST_HOST: host.docker.internal
+      DENO_DIR: /deno-dir
+      DENO_NO_PROMPT: "1"
+      DENO_NO_UPDATE_CHECK: "1"
+    volumes:
+      - .:/workspaces/bunny-hole:cached
+      - development-deno-cache:/deno-dir
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /workspaces/bunny-hole
+
+  relay:
+    build:
+      context: .
+      target: relay-runtime
+    environment:
+      BUNNY_HOLE_LOCAL_DEVELOPMENT: "true"
+      BUNNY_HOLE_TUNNELS: >-
+        [{"id":"integration","secret":"${BUNNY_HOLE_TEST_SECRET:-}","hostnames":["tunnel.test","127.0.0.1","host.docker.internal"]}]
+    networks:
+      - tunnel
+    ports:
+      - "${BUNNY_HOLE_BIND_ADDRESS:-127.0.0.1}:18080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/relay", "--healthcheck"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  origin:
+    build:
+      context: .
+      target: fixture-runtime
+    networks:
+      - tunnel
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  connector:
+    build:
+      context: .
+      target: connector-runtime
+    depends_on:
+      relay:
+        condition: service_started
+      origin:
+        condition: service_started
+    environment:
+      BUNNY_HOLE_ALLOW_PRIVATE_NETWORK: "true"
+      BUNNY_HOLE_LOCAL_DEVELOPMENT: "true"
+      BUNNY_HOLE_LOG_FORMAT: pretty
+      BUNNY_HOLE_ORIGIN: http://origin:3000
+      BUNNY_HOLE_RELAY_URL: ws://relay:8080
+      BUNNY_HOLE_TUNNEL_ID: integration
+      BUNNY_HOLE_TUNNEL_SECRET: ${BUNNY_HOLE_TEST_SECRET:-}
+    networks:
+      - tunnel
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  development-deno-cache:

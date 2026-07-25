@@ -1,0 +1,29 @@
+{
+  "name": "bunny-hole",
+  "dockerComposeFile": "../compose.yaml",
+  "service": "development",
+  "workspaceFolder": "/workspaces/bunny-hole",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "vscode",
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb",
+    "storage": "16gb"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "denoland.vscode-deno",
+        "github.copilot",
+        "github.copilot-chat",
+        "github.vscode-github-actions",
+        "streetsidesoftware.code-spell-checker"
+      ],
+      "settings": {
+        "deno.enable": true,
+        "editor.defaultFormatter": "denoland.vscode-deno",
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}

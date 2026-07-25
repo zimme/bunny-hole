@@ -1,0 +1,45 @@
+name: Dev Container prebuild
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".devcontainer/**"
+      - ".dockerignore"
+      - "compose.yaml"
+      - ".tool-versions"
+      - "deno.json"
+      - "deno.lock"
+      - "apps/**/deno.json"
+      - "packages/**/deno.json"
+      - "fixtures/**/deno.json"
+      - ".github/workflows/devcontainer.yml"
+
+concurrency:
+  group: devcontainer-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  prebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish immutable and cache tags
+        uses: devcontainers/ci@v0.3
+        with:
+          configFile: .devcontainer/devcontainer.json
+          imageName: ghcr.io/${{ github.repository }}-devcontainer
+          imageTag: ${{ github.sha }},cache
+          cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
+          push: always

@@ -1,0 +1,62 @@
+name: Deploy released image to Bunny
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing increasing ComVer release tag (MAJOR.MINOR.0)
+        required: true
+        type: string
+      digest:
+        description: Published sha256 image digest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Validate immutable release input
+        env:
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ inputs.digest }}
+        run: |
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.0$ ]] || exit 1
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+      - name: Update the configured Magic Container
+        env:
+          BUNNYNET_API_KEY: ${{ secrets.BUNNYNET_API_KEY }}
+          BUNNY_APP_ID: ${{ vars.BUNNY_APP_ID }}
+          BUNNY_CONTAINER_NAME: ${{ vars.BUNNY_CONTAINER_NAME }}
+          IMAGE_NAME: ghcr.io/${{ github.repository }}-relay
+          IMAGE_TAG: ${{ inputs.version }}
+          IMAGE_DIGEST: ${{ inputs.digest }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const headers = { Accept: "application/json", AccessKey: process.env.BUNNYNET_API_KEY };
+          const base = `https://api.bunny.net/mc/apps/${encodeURIComponent(process.env.BUNNY_APP_ID)}`;
+          const app = await fetch(base, { headers });
+          if (!app.ok) throw new Error(`Bunny app lookup failed: HTTP ${app.status}`);
+          const config = await app.json();
+          const matches = config.containerTemplates.filter((item) => item.name === process.env.BUNNY_CONTAINER_NAME);
+          if (matches.length !== 1) throw new Error("Configured container name was not unique");
+          const body = {
+            id: matches[0].id,
+            imageName: process.env.IMAGE_NAME,
+            imageTag: process.env.IMAGE_TAG,
+            imageDigest: process.env.IMAGE_DIGEST,
+          };
+          const response = await fetch(`${base}/containers/${encodeURIComponent(matches[0].id)}`, {
+            method: "PATCH",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!response.ok) throw new Error(`Bunny update failed: HTTP ${response.status}`);
+          console.log(`Requested immutable image ${process.env.IMAGE_TAG}@${process.env.IMAGE_DIGEST}`);
+          NODE
