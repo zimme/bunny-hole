@@ -1,7 +1,9 @@
 .git
 .github
 .agents
-.devcontainer
+.devcontainer/*
+!.devcontainer/Dockerfile
+!.devcontainer/entrypoint.sh
 .vscode
 coverage
 dist

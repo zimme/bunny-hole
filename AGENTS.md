@@ -5,17 +5,19 @@ canonical instruction source for all coding agents.
 
 ## Commands
 
-Use Deno 2.9.3 and the Compose-backed Dev Container. From the host:
+Use Deno 2.9.3 and the Compose-native development service. From the host:
 
 ```sh
-deno task devcontainer:up
-deno task devcontainer:exec -- deno task validate
-deno task devcontainer:down
+docker compose up --build --detach development
+docker compose exec --user vscode development deno task validate
+docker compose down
 ```
 
-Inside it, use `deno task setup`, focused Deno tasks, and finally `deno task validate`.
-CI runs the same command. Node/npm exist only for Dev Container and agent tooling; never
-add npm task wrappers.
+The `devcontainer:*` Deno tasks are shorthand for those same Compose commands. A Dev
+Container-aware editor is an optional adapter and must not install Features or mutate
+the toolchain. Inside the service, use `deno task setup`, focused Deno tasks, and
+finally `deno task validate`. CI runs the same command. Node/npm exist only for Dev
+Container and agent tooling; never add npm task wrappers.
 
 ## Invariants
 

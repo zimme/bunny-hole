@@ -80,10 +80,11 @@ flowchart LR
   are no third-party runtime packages.
 - Docker Compose models relay, connector, and origin on an isolated network. The relay
   and connector use the same production Dockerfile targets used for deployment.
-- The [Dev Container CLI](https://github.com/devcontainers/cli) is invoked at a pinned
-  version through Deno's npm compatibility only for host bootstrap.
-  [devcontainers/ci](https://github.com/devcontainers/ci) builds the same config in
-  GitHub Actions.
+- The `development` Compose service builds the entire pinned development toolchain,
+  mounts the repository and Docker socket, and runs as a non-root user. Dev Container
+  metadata adds editor settings only—there are no Features or lifecycle mutations—so
+  plain Docker Compose, compatible editors, and
+  [devcontainers/ci](https://github.com/devcontainers/ci) all use the same image.
 - GitHub's special
   [Copilot setup workflow](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/customize-the-agent-environment)
   requires one `copilot-setup-steps` job and runs before the agent. It builds the Dev

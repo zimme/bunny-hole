@@ -36,9 +36,9 @@
     "commits:check": "deno run --allow-run=git scripts/commit_check.ts",
     "hooks:install": "deno run --allow-run=git scripts/install_hooks.ts",
     "validate": "deno run --allow-env --allow-net --allow-read=. --allow-run=deno,docker,git --allow-write=coverage,dist,/tmp scripts/validate.ts",
-    "devcontainer:up": "deno run -A --no-config --no-lock npm:@devcontainers/cli@0.87.0 up --workspace-folder . --frozen-lockfile",
-    "devcontainer:exec": "deno run -A --no-config --no-lock npm:@devcontainers/cli@0.87.0 exec --workspace-folder .",
-    "devcontainer:down": "docker compose -f .devcontainer/compose.yaml down"
+    "devcontainer:up": "docker compose up --build --detach development",
+    "devcontainer:exec": "deno run --allow-run=docker scripts/development_exec.ts",
+    "devcontainer:down": "docker compose down"
   },
   "fmt": {
     "lineWidth": 88,

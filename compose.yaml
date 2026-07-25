@@ -7,6 +7,33 @@ networks:
         - subnet: 10.253.240.0/24
 
 services:
+  development:
+    profiles: [development]
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        DENO_VERSION: "2.9.3"
+        NODE_VERSION: "24.13.1"
+        NPM_VERSION: "11.8.0"
+        GH_VERSION: "2.96.0"
+        COPILOT_VERSION: "1.0.72"
+        DOCKER_CLI_VERSION: "5:29.6.2-1~debian.13~trixie"
+        DOCKER_BUILDX_VERSION: "0.35.0-1~debian.13~trixie"
+        DOCKER_COMPOSE_VERSION: "5.3.1-1~debian.13~trixie"
+    init: true
+    environment:
+      BUNNY_HOLE_BIND_ADDRESS: "0.0.0.0"
+      BUNNY_HOLE_TEST_HOST: host.docker.internal
+      DENO_DIR: /deno-dir
+      DENO_NO_PROMPT: "1"
+      DENO_NO_UPDATE_CHECK: "1"
+    volumes:
+      - .:/workspaces/bunny-hole:cached
+      - development-deno-cache:/deno-dir
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /workspaces/bunny-hole
+
   relay:
     build:
       context: .
@@ -14,7 +41,7 @@ services:
     environment:
       BUNNY_HOLE_LOCAL_DEVELOPMENT: "true"
       BUNNY_HOLE_TUNNELS: >-
-        [{"id":"integration","secret":"${BUNNY_HOLE_TEST_SECRET:?set by integration runner}","hostnames":["tunnel.test","127.0.0.1","host.docker.internal"]}]
+        [{"id":"integration","secret":"${BUNNY_HOLE_TEST_SECRET:-}","hostnames":["tunnel.test","127.0.0.1","host.docker.internal"]}]
     networks:
       - tunnel
     ports:
@@ -60,7 +87,7 @@ services:
       BUNNY_HOLE_ORIGIN: http://origin:3000
       BUNNY_HOLE_RELAY_URL: ws://relay:8080
       BUNNY_HOLE_TUNNEL_ID: integration
-      BUNNY_HOLE_TUNNEL_SECRET: ${BUNNY_HOLE_TEST_SECRET:?set by integration runner}
+      BUNNY_HOLE_TUNNEL_SECRET: ${BUNNY_HOLE_TEST_SECRET:-}
     networks:
       - tunnel
     read_only: true
@@ -70,3 +97,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+volumes:
+  development-deno-cache:

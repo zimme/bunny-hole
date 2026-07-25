@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - ".devcontainer/**"
+      - ".dockerignore"
+      - "compose.yaml"
       - ".tool-versions"
       - "deno.json"
       - "deno.lock"
