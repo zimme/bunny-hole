@@ -1,0 +1,19 @@
+name: Bug report
+description: Report a reproducible Bunny Hole defect without sensitive data.
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: Do not include credentials, secrets, viewer headers, or private logs.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Version or commit
+    validations:
+      required: true

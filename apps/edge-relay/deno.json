@@ -1,0 +1,6 @@
+{
+  "name": "@bunny-hole/edge-relay",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "publish": false
+}

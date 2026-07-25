@@ -1,0 +1,85 @@
+{
+  "name": "@zimme/bunny-hole",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./apps/connector/mod.ts",
+    "./edge-relay": "./apps/edge-relay/mod.ts"
+  },
+  "license": "MIT",
+  "publish": {
+    "include": [
+      "LICENSE",
+      "README.md",
+      "apps/connector/connector.ts",
+      "apps/connector/library.ts",
+      "apps/connector/mod.ts",
+      "apps/edge-relay/mod.ts",
+      "apps/edge-relay/relay.ts",
+      "apps/relay/config.ts",
+      "apps/relay/logger.ts",
+      "apps/relay/relay.ts",
+      "packages/protocol"
+    ]
+  },
+  "workspace": [
+    "apps/edge-relay",
+    "apps/relay",
+    "fixtures/origin"
+  ],
+  "lock": {
+    "path": "./deno.lock",
+    "frozen": true
+  },
+  "imports": {
+    "cspell": "npm:cspell@9.2.1"
+  },
+  "tasks": {
+    "setup": "deno ci && deno task hooks:install",
+    "agents:check": "deno run --allow-read=. scripts/verify_agents.ts",
+    "version:check": "deno run --allow-read=. scripts/version_check.ts",
+    "package:check": "deno run --allow-env --allow-net=127.0.0.1 --allow-read=.,/tmp --allow-run=deno,npm,node,tar --allow-write=/tmp scripts/verify_package.ts",
+    "package:build": "deno run --allow-read=.,/tmp --allow-run=deno,npm,tar --allow-write=dist,/tmp scripts/build_npm_package.ts",
+    "release:check": "deno run --allow-read=. --allow-run=git scripts/release_check.ts",
+    "release:artifacts": "deno run --allow-read=. --allow-write=dist --allow-run=deno scripts/build_release_artifacts.ts",
+    "release:publish-package": "deno run --allow-env=RELEASE_TAG --allow-net=jsr.io,registry.npmjs.org --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=deno,npm,tar scripts/publish_package.ts",
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "spellcheck": "deno run --allow-env --allow-sys=homedir --allow-read cspell lint --config cspell.json --gitignore --dot --no-progress .",
+    "lint": "deno lint",
+    "check": "deno check apps/edge-relay/main.ts apps/edge-relay/mod.ts apps/relay/main.ts apps/connector/main.ts apps/connector/mod.ts fixtures/origin/main.ts scripts/*.ts tests/*.ts",
+    "docs:check": "deno run --allow-read=. --allow-run=deno scripts/docs_check.ts",
+    "test": "deno cache --reload apps/relay/relay.ts apps/connector/connector.ts packages/protocol/mod.ts && deno test --allow-env --allow-net --allow-read --coverage=coverage --clean --coverage-raw-data-only tests",
+    "coverage": "deno coverage coverage --threshold=70",
+    "integration": "deno run --allow-env --allow-net --allow-read=. --allow-run=docker --allow-write=/tmp scripts/integration.ts",
+    "build": "deno run --allow-read=. --allow-write=dist --allow-run=deno scripts/build.ts",
+    "edge:build": "deno bundle --frozen --external @bunny.net/edgescript-sdk apps/edge-relay/main.ts -o dist/bunny-hole-edge-relay.js",
+    "edge:probe": "deno run --allow-env=BUNNY_HOLE_EDGE_DIAGNOSTIC_TOKEN --allow-net scripts/edge_affinity_probe.ts",
+    "container:build": "docker build --target relay-runtime -t bunny-hole-relay:local . && docker build --target connector-runtime -t bunny-hole-connector:local .",
+    "container:smoke": "deno run --allow-env --allow-net --allow-run=docker scripts/container_smoke.ts",
+    "audit": "deno audit",
+    "secrets:check": "deno run --allow-read=. --allow-run=git scripts/secret_scan.ts",
+    "licenses:check": "deno run --allow-read=. scripts/license_check.ts",
+    "generated:check": "deno run --allow-read=. --allow-run=git scripts/generated_check.ts",
+    "commits:check": "deno run --allow-run=git scripts/commit_check.ts",
+    "hooks:install": "deno run --allow-run=git scripts/install_hooks.ts",
+    "validate": "deno run --allow-env --allow-net --allow-read=. --allow-run=deno,docker,git --allow-write=coverage,dist,/tmp scripts/validate.ts",
+    "devcontainer:up": "docker compose up --build --detach development",
+    "devcontainer:exec": "deno run --allow-run=docker scripts/development_exec.ts",
+    "devcontainer:down": "docker compose down"
+  },
+  "fmt": {
+    "lineWidth": 88,
+    "proseWrap": "always",
+    "exclude": ["coverage", "dist"]
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"],
+      "include": ["ban-untagged-todo"]
+    },
+    "exclude": ["coverage", "dist"]
+  },
+  "test": {
+    "include": ["tests"]
+  }
+}

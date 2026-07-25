@@ -1,0 +1,65 @@
+import {
+  filterOriginResponseHeaders,
+  filterPublicRequestHeaders,
+  normalizeHostname,
+  validateOrigin,
+} from "../packages/protocol/security.ts";
+import { assert, assertEquals, assertThrows } from "./assert.ts";
+
+Deno.test("public header filter strips control, hop-by-hop, and spoofed forwarding data", () => {
+  const headers = new Headers({
+    authorization: "Bearer viewer-value",
+    connection: "x-remove",
+    cookie: "viewer=allowed",
+    forwarded: "for=attacker",
+    "x-bunny-hole-secret": "never",
+    "x-forwarded-for": "attacker",
+    "x-remove": "bad",
+    "x-safe": "yes",
+  });
+  const pairs = filterPublicRequestHeaders(headers, "app.example.com", "192.0.2.1");
+  const output = new Headers(pairs.map(({ name, value }) => [name, value]));
+  assertEquals(output.get("x-safe"), "yes");
+  assertEquals(output.get("authorization"), "Bearer viewer-value");
+  assertEquals(output.get("cookie"), "viewer=allowed");
+  assertEquals(output.get("x-bunny-hole-secret"), null);
+  assertEquals(output.get("x-remove"), null);
+  assertEquals(output.get("x-forwarded-for"), "192.0.2.1");
+  assertEquals(output.get("x-forwarded-proto"), "https");
+});
+
+Deno.test("origin response filter strips internal and hop-by-hop headers", () => {
+  const pairs = filterOriginResponseHeaders(
+    new Headers({
+      connection: "x-private",
+      "content-length": "2",
+      server: "fixture",
+      "x-bunny-hole-id": "secret-control",
+      "x-private": "bad",
+      "x-safe": "ok",
+    }),
+  );
+  const output = new Headers(pairs.map(({ name, value }) => [name, value]));
+  assertEquals(output.get("x-safe"), "ok");
+  assertEquals(output.get("server"), null);
+  assertEquals(output.get("content-length"), null);
+  assertEquals(output.get("x-private"), null);
+  assertEquals(output.get("x-bunny-hole-id"), null);
+});
+
+Deno.test("hostname normalization prevents confusion", () => {
+  assertEquals(normalizeHostname("App.Example.COM:443"), "app.example.com");
+  assertEquals(normalizeHostname("app.example.com."), "app.example.com");
+  for (const bad of ["", "evil..example", "-bad.example", "good.example\r\nx"]) {
+    assertThrows(() => normalizeHostname(bad));
+  }
+});
+
+Deno.test("connector origin defaults to loopback-only policy", () => {
+  assertEquals(validateOrigin("http://127.0.0.1:3000", false).port, "3000");
+  assertThrows(() => validateOrigin("http://192.168.1.3", false), /opt-in/);
+  assert(validateOrigin("http://192.168.1.3", true) instanceof URL);
+  assertThrows(() => validateOrigin("file:///etc/passwd", true));
+  assertThrows(() => validateOrigin("http://user:pass@localhost", true));
+  assertThrows(() => validateOrigin("http://localhost/base", true));
+});

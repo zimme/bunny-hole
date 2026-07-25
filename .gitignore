@@ -1,0 +1,9 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.cspellcache
+coverage/
+dist/
+node_modules/
+*.log

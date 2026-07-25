@@ -1,0 +1,38 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/copilot-setup-steps.yml"
+      - ".devcontainer/**"
+      - ".dockerignore"
+      - "compose.yaml"
+      - "deno.json"
+      - "deno.lock"
+  pull_request:
+    paths:
+      - ".github/workflows/copilot-setup-steps.yml"
+      - ".devcontainer/**"
+      - ".dockerignore"
+      - "compose.yaml"
+      - "deno.json"
+      - "deno.lock"
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare the shared Dev Container
+        uses: devcontainers/ci@v0.3
+        with:
+          configFile: .devcontainer/devcontainer.json
+          cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
+          push: never
+          runCmd: deno ci
