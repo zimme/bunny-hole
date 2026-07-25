@@ -19,7 +19,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Validate ComVer tag shape
@@ -30,7 +30,7 @@ jobs:
             echo "ComVer tags must use MAJOR.MINOR.0" >&2
             exit 1
           }
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -45,11 +45,11 @@ jobs:
             CI=true deno task validate &&
             deno task release:check ${{ github.ref_name }} &&
             deno task release:artifacts
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
       - name: Build and publish relay
         id: relay
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: relay-runtime
@@ -64,7 +64,7 @@ jobs:
           provenance: mode=max
       - name: Build and publish connector
         id: connector
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: connector-runtime
@@ -113,14 +113,14 @@ jobs:
           subject-digest: ${{ steps.connector.outputs.digest }}
           push-to-registry: true
       - name: Attest relay SBOM
-        uses: actions/attest-sbom@v3
+        uses: actions/attest-sbom@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}-relay
           subject-digest: ${{ steps.relay.outputs.digest }}
           sbom-path: bunny-hole-relay-${{ github.ref_name }}.spdx.json
           push-to-registry: true
       - name: Attest connector SBOM
-        uses: actions/attest-sbom@v3
+        uses: actions/attest-sbom@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}-connector
           subject-digest: ${{ steps.connector.outputs.digest }}
