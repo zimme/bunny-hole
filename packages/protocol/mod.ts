@@ -71,7 +71,11 @@ export class ProtocolError extends Error {
 }
 
 export function toWebSocketCloseCode(code: number): number {
-  return code === 1000 ? 1000 : code >= 3000 && code <= 4999 ? code : 3000 + code;
+  if (code === 1000 || code >= 3000 && code <= 4999) return code;
+  // WebSocket.close() only accepts 1000 or application codes 3000-4999.
+  // Preserve the standard code's suffix in Bunny Hole's private 4000 range.
+  if (code >= 1001 && code <= 1999) return 3000 + code;
+  return 4002;
 }
 
 export function createCorrelationId(): string {
@@ -233,7 +237,12 @@ export async function sendFrame(
   signal?: AbortSignal,
 ): Promise<void> {
   while (socket.bufferedAmount > LIMITS.maxBufferedAmount) {
-    if (signal?.aborted) throw signal.reason;
+    if (signal?.aborted) {
+      throw signal.reason ?? new DOMException("send aborted", "AbortError");
+    }
+    if (socket.readyState !== WebSocket.OPEN) {
+      throw new ProtocolError("connection closed", 1001);
+    }
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   if (socket.readyState !== WebSocket.OPEN) {

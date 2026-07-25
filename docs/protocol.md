@@ -25,7 +25,9 @@ unconstrained object graph. Body chunks are raw binary, never base64 JSON.
 
 The nonce prevents reuse of an observed proof on a new connection. Authentication must
 finish within 5 seconds. Errors are generic and never include the ID, secret, proof, or
-configured hostnames.
+configured hostnames. A syntactically valid but unknown tunnel ID receives the same
+upgrade and challenge flow using an ephemeral decoy key, then fails authentication
+generically; the initial HTTP status therefore does not enumerate configured IDs.
 
 ## Request state machine
 
@@ -42,7 +44,11 @@ disconnect completes pending public requests with a generic 502; replacement com
 them with 503.
 
 One newly authenticated connector deterministically replaces the previous connector for
-its tunnel (close code 4101). The replacement never inherits in-flight requests.
+its tunnel (close code 4101). The replacement never inherits in-flight requests. The
+WebSocket API only permits callers to send close code 1000 or codes in the 3000–4999
+application range. Bunny Hole therefore translates standard error intent 1001–1999 into
+the corresponding private code 4001–4999; for example, policy violation 1008 is sent
+as 4008.
 
 ## Limits and flow control
 

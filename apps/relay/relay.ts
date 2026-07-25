@@ -14,7 +14,11 @@ import {
   SUBPROTOCOL,
   toWebSocketCloseCode,
 } from "../../packages/protocol/mod.ts";
-import { createNonce, verifyProof } from "../../packages/protocol/auth.ts";
+import {
+  createNonce,
+  createSecret,
+  verifyProof,
+} from "../../packages/protocol/auth.ts";
 import {
   filterPublicRequestHeaders,
   normalizeHostname,
@@ -31,6 +35,7 @@ interface ConnectorSession {
   requests: Set<string>;
   authTimer?: ReturnType<typeof setTimeout>;
   heartbeatTimer?: ReturnType<typeof setInterval>;
+  heartbeatSending: boolean;
 }
 
 interface PendingRequest {
@@ -41,7 +46,7 @@ interface PendingRequest {
   responseStarted: boolean;
   bodyBytes: number;
   timer: ReturnType<typeof setTimeout>;
-  abort: () => void;
+  sendAbort: AbortController;
 }
 
 export interface RelayRequestInfo {
@@ -59,6 +64,7 @@ export class Relay {
   readonly sessions = new Map<string, ConnectorSession>();
   readonly pending = new Map<string, PendingRequest>();
   private accepting = true;
+  private readonly unknownTunnelSecret = createSecret();
 
   constructor(
     readonly config: RelayConfig,
@@ -110,8 +116,11 @@ export class Relay {
       new URL(request.url).protocol !== "https:"
     ) return publicError(400);
     const tunnelId = url.searchParams.get("id") ?? "";
+    if (
+      url.searchParams.size !== 1 ||
+      !/^[a-z0-9][a-z0-9-]{2,62}$/.test(tunnelId)
+    ) return publicError(400);
     const tunnel = this.config.tunnels.get(tunnelId);
-    if (!tunnel || url.searchParams.size !== 1) return publicError(404);
 
     let upgraded: { socket: WebSocket; response: Response };
     try {
@@ -128,6 +137,7 @@ export class Relay {
       nonce: createNonce(),
       lastSeen: this.now(),
       requests: new Set(),
+      heartbeatSending: false,
     };
     session.authTimer = setTimeout(
       () => socket.close(toWebSocketCloseCode(1008), "authentication timeout"),
@@ -141,7 +151,11 @@ export class Relay {
       ));
     };
     socket.onmessage = (event) =>
-      void this.onConnectorMessage(session, tunnel.secret, event);
+      void this.onConnectorMessage(
+        session,
+        tunnel?.secret ?? this.unknownTunnelSecret,
+        event,
+      );
     socket.onerror = () => this.logger.warn("connector_socket_error", { tunnelId });
     socket.onclose = () => this.cleanupSession(session, 502);
     return upgraded.response;
@@ -271,7 +285,7 @@ export class Relay {
       return;
     }
     if (frame.type === FrameType.cancel) {
-      this.failPending(pending, 502);
+      this.failPending(pending, 502, false);
       return;
     }
     throw new ProtocolError("unexpected connector frame");
@@ -304,19 +318,18 @@ export class Relay {
 
     const id = createCorrelationId();
     const response = Promise.withResolvers<Response>();
-    const abort = () => void this.sendCancel(session, id);
     const pending: PendingRequest = {
       id,
       tunnelId,
       response,
       responseStarted: false,
       bodyBytes: 0,
-      abort,
+      sendAbort: new AbortController(),
       timer: setTimeout(() => this.failPendingById(id, 504), LIMITS.requestTimeoutMs),
     };
     this.pending.set(id, pending);
     session.requests.add(id);
-    void info?.completed?.catch(abort);
+    void info?.completed?.catch(() => this.cancelPending(pending));
     try {
       const remoteAddress = getRemoteAddress(info);
       const start = {
@@ -328,6 +341,7 @@ export class Relay {
       await sendFrame(
         session.socket,
         encodeFrame(FrameType.requestStart, id, encodeControl(start)),
+        pending.sendAbort.signal,
       );
       let bodyBytes = 0;
       if (request.body) {
@@ -340,10 +354,15 @@ export class Relay {
           await sendFrame(
             session.socket,
             encodeFrame(FrameType.requestBody, id, chunk),
+            pending.sendAbort.signal,
           );
         }
       }
-      await sendFrame(session.socket, encodeFrame(FrameType.requestEnd, id));
+      await sendFrame(
+        session.socket,
+        encodeFrame(FrameType.requestEnd, id),
+        pending.sendAbort.signal,
+      );
       return await response.promise;
     } catch (error) {
       this.logger.warn("public_request_failed", {
@@ -362,15 +381,21 @@ export class Relay {
       this.cleanupSession(session, 502);
       return;
     }
-    if (session.socket.readyState === WebSocket.OPEN) {
-      session.socket.send(
-        encodeFrame(
-          FrameType.ping,
-          "",
-          encodeControl({ time: this.now() }),
-        ),
-      );
+    if (session.heartbeatSending || session.socket.readyState !== WebSocket.OPEN) {
+      return;
     }
+    session.heartbeatSending = true;
+    void sendFrame(
+      session.socket,
+      encodeFrame(
+        FrameType.ping,
+        "",
+        encodeControl({ time: this.now() }),
+      ),
+    ).catch(() => {
+      session.socket.close(toWebSocketCloseCode(1011), "heartbeat failed");
+      this.cleanupSession(session, 502);
+    }).finally(() => session.heartbeatSending = false);
   }
 
   private async sendCancel(session: ConnectorSession, id: string): Promise<void> {
@@ -387,7 +412,7 @@ export class Relay {
     }
     for (const id of [...session.requests]) {
       const pending = this.pending.get(id);
-      if (pending) this.failPending(pending, status);
+      if (pending) this.failPending(pending, status, false);
     }
   }
 
@@ -396,7 +421,13 @@ export class Relay {
     if (pending) this.failPending(pending, status);
   }
 
-  private failPending(pending: PendingRequest, status: number): void {
+  private failPending(
+    pending: PendingRequest,
+    status: number,
+    notifyConnector = true,
+  ): void {
+    if (this.pending.get(pending.id) !== pending) return;
+    pending.sendAbort.abort(new Error("tunnel request failed"));
     if (pending.responseStarted) {
       try {
         pending.controller?.error(new Error("tunnel request failed"));
@@ -406,7 +437,20 @@ export class Relay {
     } else {
       pending.response.resolve(publicError(status));
     }
+    if (notifyConnector) this.notifyConnectorOfCancellation(pending);
     this.finishPending(pending);
+  }
+
+  private cancelPending(pending: PendingRequest): void {
+    if (this.pending.get(pending.id) !== pending) return;
+    pending.sendAbort.abort(new Error("tunnel request cancelled"));
+    this.notifyConnectorOfCancellation(pending);
+    this.finishPending(pending);
+  }
+
+  private notifyConnectorOfCancellation(pending: PendingRequest): void {
+    const session = this.sessions.get(pending.tunnelId);
+    if (session) void this.sendCancel(session, pending.id).catch(() => {});
   }
 
   private finishPending(pending: PendingRequest): void {

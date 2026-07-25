@@ -10,9 +10,11 @@ import {
   parseRequestStart,
   parseResponseStart,
   ProtocolError,
+  sendFrame,
+  toWebSocketCloseCode,
   validateCorrelationId,
 } from "../packages/protocol/mod.ts";
-import { assert, assertEquals, assertThrows } from "./assert.ts";
+import { assert, assertEquals, assertRejects, assertThrows } from "./assert.ts";
 
 Deno.test("binary frame round trips without base64 body encoding", () => {
   const id = createCorrelationId();
@@ -89,4 +91,46 @@ Deno.test("ProtocolError carries a safe WebSocket close code", () => {
   const error = new ProtocolError("bad", 1009);
   assert(error instanceof Error);
   assertEquals(error.closeCode, 1009);
+  assertEquals(toWebSocketCloseCode(1000), 1000);
+  assertEquals(toWebSocketCloseCode(1001), 4001);
+  assertEquals(toWebSocketCloseCode(1008), 4008);
+  assertEquals(toWebSocketCloseCode(1011), 4011);
+  assertEquals(toWebSocketCloseCode(4101), 4101);
+  assertEquals(toWebSocketCloseCode(99), 4002);
+});
+
+Deno.test("frame sending honors the buffered amount high-water mark", async () => {
+  let bufferedAmount = LIMITS.maxBufferedAmount + 1;
+  const sent: Uint8Array[] = [];
+  const socket = {
+    get bufferedAmount() {
+      return bufferedAmount;
+    },
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+  } as unknown as WebSocket;
+  const sending = sendFrame(socket, encodeFrame(FrameType.ping, ""));
+  await Promise.resolve();
+  assertEquals(sent.length, 0);
+  bufferedAmount = 0;
+  await sending;
+  assertEquals(sent.length, 1);
+});
+
+Deno.test("frame sending stops waiting when its request is cancelled", async () => {
+  const socket = {
+    bufferedAmount: LIMITS.maxBufferedAmount + 1,
+    readyState: WebSocket.OPEN,
+    send() {},
+  } as unknown as WebSocket;
+  const abort = new AbortController();
+  const sending = sendFrame(
+    socket,
+    encodeFrame(FrameType.cancel, createCorrelationId()),
+    abort.signal,
+  );
+  abort.abort(new Error("cancelled"));
+  await assertRejects(() => sending, /cancelled/);
 });

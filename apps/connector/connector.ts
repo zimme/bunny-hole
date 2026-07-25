@@ -48,6 +48,7 @@ export class Connector {
   private stopping = false;
   private lastSeen = Date.now();
   private heartbeatTimer?: ReturnType<typeof setInterval>;
+  private heartbeatSending = false;
 
   constructor(
     readonly config: ConnectorRuntimeConfig,
@@ -70,8 +71,7 @@ export class Connector {
       }
       if (this.stopping || signal?.aborted) break;
       const base = Math.min(30_000, 500 * 2 ** Math.min(attempt++, 6));
-      const jitter = crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
-      const delay = Math.floor(base * (0.8 + 0.4 * jitter));
+      const delay = calculateBackoffDelay(base);
       await abortableDelay(delay, signal);
     }
   }
@@ -215,7 +215,7 @@ export class Connector {
         responseDone: false,
         requestBytes: 0,
         timeout: setTimeout(
-          () => this.timeoutRequest(frame.id),
+          () => void this.timeoutRequest(frame.id),
           LIMITS.originTimeoutMs,
         ),
       };
@@ -329,13 +329,17 @@ export class Connector {
     await sendFrame(this.socket, frame);
   }
 
-  private timeoutRequest(id: string): void {
+  private async timeoutRequest(id: string): Promise<void> {
     const request = this.requests.get(id);
     if (!request) return;
     this.cancelRequest(request);
     this.requests.delete(id);
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(encodeFrame(FrameType.cancel, id));
+      try {
+        await sendFrame(this.socket, encodeFrame(FrameType.cancel, id));
+      } catch {
+        // Connection close handles peer cleanup.
+      }
     }
   }
 
@@ -359,12 +363,29 @@ export class Connector {
       socket.close(toWebSocketCloseCode(1001), "heartbeat timeout");
       return;
     }
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(
-        encodeFrame(FrameType.ping, "", encodeControl({ time: Date.now() })),
-      );
-    }
+    if (this.heartbeatSending || socket.readyState !== WebSocket.OPEN) return;
+    this.heartbeatSending = true;
+    void sendFrame(
+      socket,
+      encodeFrame(FrameType.ping, "", encodeControl({ time: Date.now() })),
+    ).catch(() => socket.close(toWebSocketCloseCode(1011), "heartbeat failed"))
+      .finally(() => this.heartbeatSending = false);
   }
+}
+
+export function calculateBackoffDelay(
+  baseMilliseconds: number,
+  random: () => number = Math.random,
+): number {
+  const minimum = Math.floor(baseMilliseconds * 4 / 5);
+  const maximum = Math.floor(baseMilliseconds * 6 / 5);
+  const sample = random();
+  if (!Number.isFinite(sample) || sample < 0 || sample >= 1) {
+    throw new RangeError("random sample must be in the range [0, 1)");
+  }
+  // Reconnection jitter is not a security decision. An injectable ordinary
+  // PRNG avoids misusing cryptographic random bytes and keeps tests deterministic.
+  return minimum + Math.floor(sample * (maximum - minimum + 1));
 }
 
 export function markAuthenticatedForTest(connector: Connector): void {
