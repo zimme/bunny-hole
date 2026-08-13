@@ -8,3 +8,17 @@ for (const shim of ["CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"]
 }
 const skills = await Deno.readTextFile("SKILLS.md");
 if (!skills.includes(".agents/skills/")) throw new Error("SKILLS.md is incomplete");
+
+const devcontainer = JSON.parse(
+  await Deno.readTextFile(".devcontainer/devcontainer.json"),
+) as { service?: unknown; runServices?: unknown };
+if (
+  devcontainer.service !== "development" ||
+  !Array.isArray(devcontainer.runServices) ||
+  devcontainer.runServices.length !== 1 ||
+  devcontainer.runServices[0] !== "development"
+) {
+  throw new Error(
+    "Dev Container tools must start only the Compose development service",
+  );
+}

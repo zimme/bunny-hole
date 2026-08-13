@@ -5,6 +5,7 @@ const hopByHop = new Set([
   "keep-alive",
   "proxy-authenticate",
   "proxy-authorization",
+  "proxy-connection",
   "te",
   "trailer",
   "transfer-encoding",

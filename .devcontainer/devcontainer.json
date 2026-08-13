@@ -2,6 +2,7 @@
   "name": "bunny-hole",
   "dockerComposeFile": "../compose.yaml",
   "service": "development",
+  "runServices": ["development"],
   "workspaceFolder": "/workspaces/bunny-hole",
   "shutdownAction": "stopCompose",
   "remoteUser": "vscode",

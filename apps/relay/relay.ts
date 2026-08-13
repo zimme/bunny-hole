@@ -425,12 +425,14 @@ export class Relay {
     pending: PendingRequest,
     status: number,
     notifyConnector = true,
+    reason = "failed",
   ): void {
     if (this.pending.get(pending.id) !== pending) return;
-    pending.sendAbort.abort(new Error("tunnel request failed"));
+    const error = new Error(`tunnel request ${reason}`);
+    pending.sendAbort.abort(error);
     if (pending.responseStarted) {
       try {
-        pending.controller?.error(new Error("tunnel request failed"));
+        pending.controller?.error(error);
       } catch {
         // Stream may already be closed.
       }
@@ -442,10 +444,7 @@ export class Relay {
   }
 
   private cancelPending(pending: PendingRequest): void {
-    if (this.pending.get(pending.id) !== pending) return;
-    pending.sendAbort.abort(new Error("tunnel request cancelled"));
-    this.notifyConnectorOfCancellation(pending);
-    this.finishPending(pending);
+    this.failPending(pending, 502, true, "cancelled");
   }
 
   private notifyConnectorOfCancellation(pending: PendingRequest): void {

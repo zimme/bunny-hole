@@ -135,6 +135,38 @@ Deno.test("relay failure cancels connector work and clears request state", async
   );
 });
 
+Deno.test("viewer disconnect settles the handler and clears request state", async () => {
+  const sent: Uint8Array[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+    close() {},
+  } as unknown as WebSocket;
+  const relay = relayWithSessionForTest(config, socket);
+  const completed = Promise.withResolvers<void>();
+
+  const handled = relay.handle(
+    new Request("http://relay/disconnected", {
+      headers: { host: "alpha.example" },
+    }),
+    { completed: completed.promise },
+  );
+  assertEquals(relay.pending.size, 1);
+
+  completed.reject(new Error("viewer disconnected"));
+  const response = await handled;
+
+  assertEquals(response.status, 502);
+  assertEquals(relay.pending.size, 0);
+  assert(
+    sent.some((frame) => decodeFrame(frame).type === FrameType.cancel),
+    "relay did not cancel connector work after the viewer disconnected",
+  );
+});
+
 function relayWithSessionForTest(
   relayConfig: typeof config,
   socket: WebSocket,

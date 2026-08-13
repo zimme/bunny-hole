@@ -12,6 +12,7 @@ Deno.test("public header filter strips control, hop-by-hop, and spoofed forwardi
     connection: "x-remove",
     cookie: "viewer=allowed",
     forwarded: "for=attacker",
+    "proxy-connection": "keep-alive",
     "x-bunny-hole-secret": "never",
     "x-forwarded-for": "attacker",
     "x-remove": "bad",
@@ -22,6 +23,7 @@ Deno.test("public header filter strips control, hop-by-hop, and spoofed forwardi
   assertEquals(output.get("x-safe"), "yes");
   assertEquals(output.get("authorization"), "Bearer viewer-value");
   assertEquals(output.get("cookie"), "viewer=allowed");
+  assertEquals(output.get("proxy-connection"), null);
   assertEquals(output.get("x-bunny-hole-secret"), null);
   assertEquals(output.get("x-remove"), null);
   assertEquals(output.get("x-forwarded-for"), "192.0.2.1");
@@ -33,6 +35,7 @@ Deno.test("origin response filter strips internal and hop-by-hop headers", () =>
     new Headers({
       connection: "x-private",
       "content-length": "2",
+      "proxy-connection": "close",
       server: "fixture",
       "x-bunny-hole-id": "secret-control",
       "x-private": "bad",
@@ -43,6 +46,7 @@ Deno.test("origin response filter strips internal and hop-by-hop headers", () =>
   assertEquals(output.get("x-safe"), "ok");
   assertEquals(output.get("server"), null);
   assertEquals(output.get("content-length"), null);
+  assertEquals(output.get("proxy-connection"), null);
   assertEquals(output.get("x-private"), null);
   assertEquals(output.get("x-bunny-hole-id"), null);
 });

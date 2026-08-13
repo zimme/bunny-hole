@@ -61,9 +61,11 @@ engines.
 
 `.devcontainer/devcontainer.json` only supplies editor metadata and points at the same
 Compose service. It has no Features or lifecycle command, so opening the repository in a
-Dev Container cannot produce a different toolchain. CI pulls the GHCR development image
-prebuild as its primary toolchain/dependency cache. Production BuildKit caching reuses
-compiler and source-independent layers.
+Dev Container cannot produce a different toolchain. Its `runServices` list starts only
+the long-running development service; integration topology services remain controlled by
+the authoritative Deno tasks. CI pulls the GHCR development image prebuild as its
+primary toolchain/dependency cache. Production BuildKit caching reuses compiler and
+source-independent layers.
 
 There is no GitHub Actions dependency cache: local Docker volumes cannot be shared with
 hosted runners, and an additional cache would duplicate image layers. npm caching is

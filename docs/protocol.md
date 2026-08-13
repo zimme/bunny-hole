@@ -77,8 +77,9 @@ not advisory configuration.
 - Header names and values use platform parsing plus explicit token/injection validation.
   Deno combines duplicate request headers according to Fetch semantics; no trailers are
   forwarded.
-- Hop-by-hop headers and headers named by `Connection` are removed both ways. Internal
-  `x-bunny-hole-*` fields and spoofed forwarding fields are removed.
+- Hop-by-hop headers (including the non-standard `Proxy-Connection`) and headers named
+  by `Connection` are removed both ways. Internal `x-bunny-hole-*` fields and spoofed
+  forwarding fields are removed.
 - `X-Forwarded-Host`, `X-Forwarded-Proto`, and the relay socket peer address are set by
   the relay. Normal viewer `Authorization` and `Cookie` headers are application data and
   reach only the selected origin; they never reach control handlers.
