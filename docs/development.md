@@ -59,7 +59,9 @@ The repository and host Docker socket are mounted by Compose; the entrypoint map
 socket group before dropping privileges. This works with macOS Docker Desktop and Linux
 engines. Compose explicitly maps `host.docker.internal` to Docker's host gateway so
 tests inside the development service can reach sibling services through their published
-ports on both platforms.
+ports on both platforms. CI also passes the host socket's numeric group to Compose's
+`group_add`, because Dev Container remote-user execution cannot reliably inherit a group
+created by the running entrypoint.
 
 `.devcontainer/devcontainer.json` only supplies editor metadata and points at the same
 Compose service. It has no Features or lifecycle command, so opening the repository in a

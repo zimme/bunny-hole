@@ -29,6 +29,8 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
+      - name: Configure Docker socket access
+        run: echo "BUNNY_HOLE_DOCKER_GID=$(stat --format=%g /var/run/docker.sock)" >> "$GITHUB_ENV"
       - name: Prepare the shared Dev Container
         uses: devcontainers/ci@v0.3
         with:
