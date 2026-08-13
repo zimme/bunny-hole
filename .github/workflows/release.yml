@@ -22,6 +22,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Configure Docker socket access
+        run: echo "BUNNY_HOLE_DOCKER_GID=$(stat --format=%g /var/run/docker.sock)" >> "$GITHUB_ENV"
       - name: Validate ComVer tag shape
         env:
           TAG: ${{ github.ref_name }}
@@ -47,6 +49,26 @@ jobs:
             deno task release:artifacts
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      - name: Refuse to overwrite released OCI versions
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          for image in \
+            "ghcr.io/${GITHUB_REPOSITORY}-relay:${VERSION}" \
+            "ghcr.io/${GITHUB_REPOSITORY}-connector:${VERSION}"; do
+            if output="$(docker buildx imagetools inspect "$image" 2>&1)"; then
+              echo "Refusing to overwrite released image $image" >&2
+              exit 1
+            fi
+            case "$output" in
+              *"manifest unknown"*|*"not found"*) ;;
+              *)
+                echo "Unable to prove that $image is unpublished" >&2
+                echo "$output" >&2
+                exit 1
+                ;;
+            esac
+          done
       - name: Build and publish relay
         id: relay
         uses: docker/build-push-action@v6

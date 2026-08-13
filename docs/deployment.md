@@ -131,6 +131,12 @@ credential is unacceptable.
 
 ## Registry setup before the first release
 
+In GitHub repository **Settings → Releases**, enable
+[release immutability](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes)
+before the first release. GitHub applies the protection only to releases created after
+it is enabled. This locks each release's tag and assets; the workflow separately refuses
+to overwrite existing versioned GHCR tags.
+
 The repository owner must create `@zimme/bunny-hole` on JSR and link it to
 `zimme/bunny-hole`. An npm trusted publisher can only be configured from an existing
 package's settings. For the first release only, the owner must therefore run

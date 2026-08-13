@@ -1,6 +1,6 @@
 export interface ComVer {
-  major: number;
-  minor: number;
+  major: bigint;
+  minor: bigint;
   patch: 0;
   value: string;
 }
@@ -11,15 +11,17 @@ export function parseComVer(value: string): ComVer {
     throw new Error(`invalid ComVer ${value}; expected MAJOR.MINOR.0`);
   }
   return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
+    major: BigInt(match[1]),
+    minor: BigInt(match[2]),
     patch: 0,
     value,
   };
 }
 
 export function compareComVer(left: ComVer, right: ComVer): number {
-  return left.major - right.major || left.minor - right.minor;
+  if (left.major !== right.major) return left.major < right.major ? -1 : 1;
+  if (left.minor !== right.minor) return left.minor < right.minor ? -1 : 1;
+  return 0;
 }
 
 export function assertComVerBump(
@@ -31,14 +33,14 @@ export function assertComVerBump(
     throw new Error("release version must increase");
   }
   if (breaking) {
-    if (current.major !== previous.major + 1 || current.minor !== 0) {
+    if (current.major !== previous.major + 1n || current.minor !== 0n) {
       throw new Error("breaking changes require the next major ComVer line");
     }
     return;
   }
   if (
     current.major !== previous.major ||
-    current.minor !== previous.minor + 1
+    current.minor !== previous.minor + 1n
   ) {
     throw new Error("non-breaking changes require a minor ComVer bump");
   }

@@ -15,9 +15,11 @@ compatibility effect. Never include real tunnel records, credentials, customer
 hostnames, or logs containing viewer data. By contributing, you agree to the
 [Code of Conduct](CODE_OF_CONDUCT.md) and license your contribution under MIT.
 
-## Compatibility Versioning
+## Compatible Versioning
 
-Bunny Hole uses [ComVer](docs/versioning.md), always in `MAJOR.MINOR.0` form:
+Bunny Hole follows the canonical
+[ComVer specification](https://gitlab.com/staltz/comver) as detailed in
+[the project policy](docs/versioning.md), always in `MAJOR.MINOR.0` form:
 
 - mark every breaking change with `!` in its Conventional Commit subject or a
   `BREAKING CHANGE:` footer;
@@ -25,4 +27,6 @@ Bunny Hole uses [ComVer](docs/versioning.md), always in `MAJOR.MINOR.0` form:
   breaks compatibility; and
 - use a minor version bump for every non-breaking release, including ordinary fixes.
 
-Patch versions other than zero are invalid.
+Patch versions other than zero are invalid. Classify changes against the declared public
+API; whether a change is called a feature, fix, refactor, or security hardening does not
+alter its compatibility level.

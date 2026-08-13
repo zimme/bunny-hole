@@ -1,5 +1,7 @@
 # Bunny Hole
 
+[![ComVer compliant](https://img.shields.io/badge/ComVer-compliant-brightgreen.svg)](https://gitlab.com/staltz/comver)
+
 Bunny Hole is a self-hosted, Bunny-native reverse HTTP tunnel. It exposes an HTTP
 service behind NAT or a firewall without opening an inbound port:
 
@@ -134,7 +136,7 @@ Design and official research are in the
 documentation. The
 [Edge Script experiment](https://github.com/zimme/bunny-hole/blob/main/docs/edge-script-experiment.md)
 tests direct and Origin Shield routing without assuming either works. Releases follow
-[Compatibility Versioning](https://github.com/zimme/bunny-hole/blob/main/docs/versioning.md).
+[Compatible Versioning](https://github.com/zimme/bunny-hole/blob/main/docs/versioning.md).
 
 ## License
 

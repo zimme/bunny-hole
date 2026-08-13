@@ -6,8 +6,13 @@ export function assert(
 }
 
 export function assertEquals(actual: unknown, expected: unknown): void {
-  const left = JSON.stringify(actual);
-  const right = JSON.stringify(expected);
+  const stringify = (value: unknown) =>
+    JSON.stringify(
+      value,
+      (_key, item) => typeof item === "bigint" ? `${item}n` : item,
+    );
+  const left = stringify(actual);
+  const right = stringify(expected);
   if (left !== right) throw new Error(`expected ${right}, received ${left}`);
 }
 
