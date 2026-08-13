@@ -1,5 +1,7 @@
 const result = await new Deno.Command("git", {
-  args: ["log", "--format=%s"],
+  // GitHub validates pull requests from a synthetic merge commit whose generated
+  // subject is outside contributor control. Validate the constituent commits.
+  args: ["log", "--no-merges", "--format=%s"],
   stdout: "piped",
   stderr: "piped",
 }).output();
@@ -18,4 +20,6 @@ const invalid = subjects.filter((subject) => !conventional.test(subject));
 if (invalid.length) {
   throw new Error(`non-Conventional Commit subjects: ${invalid.join(", ")}`);
 }
-console.log(`commit check: ${subjects.length} Conventional Commit subject(s)`);
+console.log(
+  `commit check: ${subjects.length} non-merge Conventional Commit subject(s)`,
+);
