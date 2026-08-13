@@ -28,6 +28,8 @@ services:
       DENO_DIR: /deno-dir
       DENO_NO_PROMPT: "1"
       DENO_NO_UPDATE_CHECK: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/workspaces/bunny-hole:cached
       - development-deno-cache:/deno-dir

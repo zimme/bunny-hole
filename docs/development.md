@@ -57,7 +57,9 @@ The development image copies `deno.json` and `deno.lock` before source and runs
 `/deno-dir` is a named volume made writable for the non-root `vscode` user on startup.
 The repository and host Docker socket are mounted by Compose; the entrypoint maps the
 socket group before dropping privileges. This works with macOS Docker Desktop and Linux
-engines.
+engines. Compose explicitly maps `host.docker.internal` to Docker's host gateway so
+tests inside the development service can reach sibling services through their published
+ports on both platforms.
 
 `.devcontainer/devcontainer.json` only supplies editor metadata and points at the same
 Compose service. It has no Features or lifecycle command, so opening the repository in a
