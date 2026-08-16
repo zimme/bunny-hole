@@ -94,6 +94,44 @@ Deno.test("shutdown closes connectors that are still authenticating", async () =
   assertEquals(closeCodes, [4001]);
 });
 
+Deno.test("authentication challenge honors connection backpressure", async () => {
+  const sent: Uint8Array[] = [];
+  let bufferedAmount = LIMITS.maxBufferedAmount + 1;
+  const socket = {
+    binaryType: "",
+    get bufferedAmount() {
+      return bufferedAmount;
+    },
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+    close() {},
+  } as unknown as WebSocket;
+  const relay = new Relay(config, logger, Date.now, () => ({
+    socket,
+    response: new Response(null, { status: 200 }),
+  }));
+  const response = await relay.handle(
+    new Request("http://relay/_bunny/connect?id=alpha", {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": SUBPROTOCOL,
+      },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  socket.onopen?.(new Event("open"));
+  await Promise.resolve();
+  assertEquals(sent.length, 0);
+
+  bufferedAmount = 0;
+  await waitUntil(() => sent.length === 1);
+  assertEquals(decodeFrame(sent[0]).type, FrameType.challenge);
+  relay.shutdown();
+});
+
 Deno.test("connector upgrade does not disclose configured tunnel IDs", async () => {
   const upgraded: string[] = [];
   const sockets: WebSocket[] = [];

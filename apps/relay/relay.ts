@@ -178,11 +178,18 @@ export class Relay {
     );
     socket.onopen = () => {
       if (session.closed) return;
-      socket.send(encodeFrame(
-        FrameType.challenge,
-        "",
-        encodeControl({ nonce: session.nonce, version: PROTOCOL_VERSION }),
-      ));
+      void sendFrame(
+        socket,
+        encodeFrame(
+          FrameType.challenge,
+          "",
+          encodeControl({ nonce: session.nonce, version: PROTOCOL_VERSION }),
+        ),
+      ).catch(() => {
+        if (session.closed) return;
+        socket.close(toWebSocketCloseCode(1011), "challenge failed");
+        this.cleanupSession(session, 502);
+      });
     };
     socket.onmessage = (event) => {
       session.messageQueue = session.messageQueue.then(async () => {

@@ -60,8 +60,8 @@ single-location probe is evidence, not a platform guarantee; see
   Bunny Hole needs no persistent volume.
 - [Autoscaling](https://docs.bunny.net/magic-containers/autoscaling) is CPU-driven. It
   must remain disabled (one minimum and maximum instance) for this release.
-- [Rolling updates](https://docs.bunny.net/docs/magic-containters-rolling-update-process)
-  can temporarily overlap old and new pods. Bunny Hole cannot preserve in-memory socket
+- [Rolling updates](https://docs.bunny.net/magic-containers/rolling-updates) can
+  temporarily overlap old and new pods. Bunny Hole cannot preserve in-memory socket
   routing across that overlap, so updates require a maintenance window and are not
   zero-downtime until the dashboard again shows exactly one instance. Magic Container's
   separate
