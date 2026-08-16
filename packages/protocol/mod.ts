@@ -17,6 +17,7 @@ export const LIMITS = Object.freeze({
   heartbeatIntervalMs: 20_000,
   heartbeatTimeoutMs: 45_000,
   maxBufferedAmount: 1_048_576,
+  backpressureTimeoutMs: 5_000,
 });
 
 export const FrameType = Object.freeze({
@@ -134,7 +135,12 @@ export function decodeFrame(input: ArrayBuffer | Uint8Array): Frame {
   if (idLength > LIMITS.maxCorrelationIdLength || bytes.length < 3 + idLength) {
     throw new ProtocolError("invalid frame identifier");
   }
-  const id = decoder.decode(bytes.subarray(3, 3 + idLength));
+  let id: string;
+  try {
+    id = decoder.decode(bytes.subarray(3, 3 + idLength));
+  } catch {
+    throw new ProtocolError("invalid frame identifier");
+  }
   validateFrameIdentifier(type, id);
   const payload = bytes.subarray(3 + idLength);
   validateFramePayload(type, payload);
@@ -242,7 +248,9 @@ export async function sendFrame(
   socket: WebSocket,
   frame: Uint8Array,
   signal?: AbortSignal,
+  backpressureTimeoutMs: number = LIMITS.backpressureTimeoutMs,
 ): Promise<void> {
+  const deadline = Date.now() + backpressureTimeoutMs;
   if (signal?.aborted) {
     throw signal.reason ?? new DOMException("send aborted", "AbortError");
   }
@@ -253,7 +261,11 @@ export async function sendFrame(
     if (socket.readyState !== WebSocket.OPEN) {
       throw new ProtocolError("connection closed", 1001);
     }
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new ProtocolError("connection backpressure timeout", 1011);
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.min(5, remaining)));
   }
   if (signal?.aborted) {
     throw signal.reason ?? new DOMException("send aborted", "AbortError");

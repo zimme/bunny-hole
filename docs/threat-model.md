@@ -34,8 +34,8 @@ ephemeral instance IDs and aggregate counts.
 - **Cross-request data:** random correlation IDs, tunnel ownership checks, strict state
   transitions, per-request stream/controller maps, concurrency tests.
 - **Memory/slow-peer exhaustion:** header/body/frame/request and pending-authentication
-  limits, high-water-mark backpressure, request/origin/authentication/heartbeat
-  timeouts, cancellation and disconnect cleanup.
+  limits, bounded high-water-mark backpressure waits, request/origin/authentication/
+  heartbeat timeouts, cancellation and disconnect cleanup.
 - **Connector takeover:** documented newest-authenticated-wins policy closes the old
   socket and fails its pending requests. Secret rotation revokes old clients.
 - **Container escape/persistence:** non-root distroless runtime, read-only filesystem,

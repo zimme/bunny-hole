@@ -77,11 +77,14 @@ as 4008.
 | Origin request                            |                                     25 s |
 | Heartbeat send/dead                       |                              20 s / 45 s |
 | WebSocket buffered amount high-water mark |                                    1 MiB |
+| Backpressure wait                         |                                      5 s |
 
-Senders pause while `bufferedAmount` exceeds the high-water mark. Deno request and
-response streams propagate backpressure around bounded frames. A stream chunk larger
-than the frame-payload limit is split into consecutive body frames without changing its
-bytes. Limits are hard failures, not advisory configuration.
+Senders pause while `bufferedAmount` exceeds the high-water mark, but fail the send if
+pressure does not fall within five seconds. This bound also applies to authentication
+and heartbeat control frames. Deno request and response streams propagate backpressure
+around bounded frames. A stream chunk larger than the frame-payload limit is split into
+consecutive body frames without changing its bytes. Limits are hard failures, not
+advisory configuration.
 
 ## HTTP behavior
 

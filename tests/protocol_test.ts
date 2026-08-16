@@ -10,6 +10,7 @@ import {
   pairsToHeaders,
   parseRequestStart,
   parseResponseStart,
+  PROTOCOL_VERSION,
   ProtocolError,
   sendFrame,
   toWebSocketCloseCode,
@@ -90,6 +91,20 @@ Deno.test("decoder rejects truncated, unknown, oversized, and wrong-version fram
     ), /control message exceeds/);
 });
 
+Deno.test("decoder reports malformed identifier UTF-8 as a protocol error", () => {
+  const malformed = new Uint8Array(3 + 16);
+  malformed.set([PROTOCOL_VERSION, FrameType.requestBody, 16]);
+  malformed.fill(0xff, 3);
+  let error: unknown;
+  try {
+    decodeFrame(malformed);
+  } catch (caught) {
+    error = caught;
+  }
+  assert(error instanceof ProtocolError);
+  assertEquals(error.message, "invalid frame identifier");
+});
+
 Deno.test("control parser rejects malformed and unconstrained data", () => {
   assertThrows(() => decodeControl(new TextEncoder().encode("{")));
   assertThrows(() => encodeControl({ data: "x".repeat(LIMITS.maxControlBytes) }));
@@ -166,6 +181,22 @@ Deno.test("frame sending honors the buffered amount high-water mark", async () =
   bufferedAmount = 0;
   await sending;
   assertEquals(sent.length, 1);
+});
+
+Deno.test("frame sending bounds a permanently pressured connection", async () => {
+  let sent = false;
+  const socket = {
+    bufferedAmount: LIMITS.maxBufferedAmount + 1,
+    readyState: WebSocket.OPEN,
+    send() {
+      sent = true;
+    },
+  } as unknown as WebSocket;
+  await assertRejects(
+    () => sendFrame(socket, encodeFrame(FrameType.ping, ""), undefined, 10),
+    /backpressure timeout/,
+  );
+  assertEquals(sent, false);
 });
 
 Deno.test("frame sending stops waiting when its request is cancelled", async () => {
