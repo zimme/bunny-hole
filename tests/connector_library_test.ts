@@ -1,7 +1,7 @@
 import { createConnector, VERSION } from "../apps/connector/mod.ts";
 import { validateConnectorOptions } from "../apps/connector/library.ts";
 import { createSecret } from "../packages/protocol/auth.ts";
-import { assertEquals, assertThrows } from "./assert.ts";
+import { assertEquals, assertRejects, assertThrows } from "./assert.ts";
 
 const base = {
   relayUrl: "wss://relay.example",
@@ -9,7 +9,7 @@ const base = {
   secret: createSecret(),
 };
 
-Deno.test("connector library validates without connecting or side effects", () => {
+Deno.test("connector library validates without connecting or side effects", async () => {
   assertEquals(VERSION, "0.1.0");
   const validated = validateConnectorOptions(base);
   assertEquals(validated.relayUrl.href, "wss://relay.example/");
@@ -19,6 +19,7 @@ Deno.test("connector library validates without connecting or side effects", () =
   assertEquals(typeof connector.run, "function");
   assertEquals(typeof connector.stop, "function");
   connector.stop();
+  await assertRejects(() => connector.run(), /stopped/);
 });
 
 Deno.test("connector library preserves secure network defaults", () => {

@@ -13,7 +13,9 @@ Relay configuration is environment-only and validated before listening.
 | `BUNNY_HOLE_LOCAL_DEVELOPMENT` | no       | `false`   | permits direct non-TLS upgrades |
 
 A record has `id`, a 32-byte-or-longer base64url `secret`, and one or more exact
-`hostnames`. IDs and hostnames must be unique. Startup diagnostics redact secrets.
+`hostnames`. IDs and hostnames must be unique, unknown record fields are rejected, and
+the complete JSON value is limited to 8 MiB. Boolean and log-format values are parsed
+strictly. Startup diagnostics redact secrets.
 
 ## Experimental Edge Script relay
 
@@ -49,7 +51,8 @@ stricter.
 
 Production relay URLs must use WSS. Non-loopback origins require the explicit
 private-network opt-in. Origin URLs cannot contain credentials, paths, query strings, or
-fragments.
+fragments. Unknown or duplicate flags, unknown config-file fields, and invalid log
+formats fail closed.
 
 Exit code `64` means CLI usage error; `78` means invalid configuration/startup.
 Transient connection errors reconnect indefinitely with exponential backoff, bounded

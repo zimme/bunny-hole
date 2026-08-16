@@ -1,7 +1,20 @@
 import { createSecret } from "../packages/protocol/auth.ts";
 import { loadConnectorConfig } from "../apps/connector/config.ts";
+import { parseFlags } from "../apps/connector/main.ts";
 import { loadRelayConfig, redactedConfig } from "../apps/relay/config.ts";
 import { assertEquals, assertRejects, assertThrows } from "./assert.ts";
+
+Deno.test("connector CLI flags reject ambiguity and secret arguments", () => {
+  assertEquals(parseFlags(["--relay", "wss://relay.example"], ["relay"]), {
+    relay: "wss://relay.example",
+  });
+  assertThrows(() => parseFlags(["--unknown", "value"], ["relay"]), /unknown/);
+  assertThrows(
+    () => parseFlags(["--relay", "one", "--relay", "two"], ["relay"]),
+    /duplicate/,
+  );
+  assertThrows(() => parseFlags(["--secret", "value"], ["secret"]), /forbidden/);
+});
 
 Deno.test("relay config is fail-closed and maps only explicit hostnames", () => {
   const secret = createSecret();
@@ -17,6 +30,24 @@ Deno.test("relay config is fail-closed and maps only explicit hostnames", () => 
     "[REDACTED]",
   );
   assertThrows(() => loadRelayConfig({}), /required/);
+  assertThrows(() =>
+    loadRelayConfig({
+      BUNNY_HOLE_LOCAL_DEVELOPMENT: "yes",
+      BUNNY_HOLE_TUNNELS: "[]",
+    }), /true or false/);
+  assertThrows(() =>
+    loadRelayConfig({
+      BUNNY_HOLE_LOG_FORMAT: "verbose",
+      BUNNY_HOLE_TUNNELS: JSON.stringify([
+        { id: "alpha", secret, hostnames: ["alpha.example"] },
+      ]),
+    }), /json or pretty/);
+  assertThrows(() =>
+    loadRelayConfig({
+      BUNNY_HOLE_TUNNELS: JSON.stringify([
+        { id: "alpha", secret, hostnames: ["alpha.example"], typo: true },
+      ]),
+    }), /unknown fields/);
   assertThrows(() =>
     loadRelayConfig({
       BUNNY_HOLE_TUNNELS: JSON.stringify([
@@ -57,4 +88,7 @@ Deno.test("connector config requires WSS and explicit private-network opt-in", a
     },
   );
   assertEquals(local.localDevelopment, true);
+  await assertRejects(() =>
+    loadConnectorConfig({}, { ...base, BUNNY_HOLE_LOG_FORMAT: "verbose" })
+  );
 });

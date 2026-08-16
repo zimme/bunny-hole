@@ -13,6 +13,7 @@ Deno.test("public header filter strips control, hop-by-hop, and spoofed forwardi
     cookie: "viewer=allowed",
     forwarded: "for=attacker",
     "proxy-connection": "keep-alive",
+    "x-bunny-hole-future-control": "never",
     "x-bunny-hole-secret": "never",
     "x-forwarded-for": "attacker",
     "x-remove": "bad",
@@ -25,6 +26,7 @@ Deno.test("public header filter strips control, hop-by-hop, and spoofed forwardi
   assertEquals(output.get("cookie"), "viewer=allowed");
   assertEquals(output.get("proxy-connection"), null);
   assertEquals(output.get("x-bunny-hole-secret"), null);
+  assertEquals(output.get("x-bunny-hole-future-control"), null);
   assertEquals(output.get("x-remove"), null);
   assertEquals(output.get("x-forwarded-for"), "192.0.2.1");
   assertEquals(output.get("x-forwarded-proto"), "https");
@@ -38,6 +40,7 @@ Deno.test("origin response filter strips internal and hop-by-hop headers", () =>
       "proxy-connection": "close",
       server: "fixture",
       "x-bunny-hole-id": "secret-control",
+      "x-bunny-hole-unknown": "secret-control",
       "x-private": "bad",
       "x-safe": "ok",
     }),
@@ -49,12 +52,25 @@ Deno.test("origin response filter strips internal and hop-by-hop headers", () =>
   assertEquals(output.get("proxy-connection"), null);
   assertEquals(output.get("x-private"), null);
   assertEquals(output.get("x-bunny-hole-id"), null);
+  assertEquals(output.get("x-bunny-hole-unknown"), null);
 });
 
 Deno.test("hostname normalization prevents confusion", () => {
   assertEquals(normalizeHostname("App.Example.COM:443"), "app.example.com");
   assertEquals(normalizeHostname("app.example.com."), "app.example.com");
-  for (const bad of ["", "evil..example", "-bad.example", "good.example\r\nx"]) {
+  assertEquals(normalizeHostname("[::1]:8080"), "[::1]");
+  assertEquals(normalizeHostname("127.0.0.1:8080"), "127.0.0.1");
+  for (
+    const bad of [
+      "",
+      "evil..example",
+      "-bad.example",
+      "good.example\r\nx",
+      "good.example:99999",
+      "user@good.example",
+      "good.example/path",
+    ]
+  ) {
     assertThrows(() => normalizeHostname(bad));
   }
 });

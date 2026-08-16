@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
-ARG DENO_VERSION=2.9.3
-FROM denoland/deno:${DENO_VERSION}@sha256:6288db6be1c26473bb9d1843f906d9a219c0dda57fd85de4aac90296951cf6ef AS builder
+ARG DENO_VERSION=2.9.5
+FROM denoland/deno:${DENO_VERSION}@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463 AS builder
 WORKDIR /src
 COPY deno.json deno.lock ./
 COPY packages ./packages

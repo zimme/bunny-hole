@@ -1,10 +1,14 @@
-import { createSecret } from "../packages/protocol/auth.ts";
+import { createProof, createSecret } from "../packages/protocol/auth.ts";
 import { loadRelayConfig } from "../apps/relay/config.ts";
 import { Relay } from "../apps/relay/relay.ts";
 import {
+  decodeControl,
   decodeFrame,
+  encodeControl,
+  encodeFrame,
   FrameType,
   LIMITS,
+  PROTOCOL_VERSION,
   SUBPROTOCOL,
 } from "../packages/protocol/mod.ts";
 import { assert, assertEquals } from "./assert.ts";
@@ -22,7 +26,9 @@ const config = loadRelayConfig({
 Deno.test("health and readiness transition during graceful shutdown", async () => {
   const relay = new Relay(config, logger);
   assertEquals((await relay.handle(new Request("http://relay/healthz"))).status, 200);
-  assertEquals((await relay.handle(new Request("http://relay/readyz"))).status, 200);
+  const ready = await relay.handle(new Request("http://relay/readyz"));
+  assertEquals(ready.status, 200);
+  assertEquals(ready.headers.get("cache-control"), "no-store");
   relay.shutdown();
   assertEquals((await relay.handle(new Request("http://relay/healthz"))).status, 200);
   assertEquals((await relay.handle(new Request("http://relay/readyz"))).status, 503);
@@ -58,6 +64,34 @@ Deno.test("connector control endpoint requires a WebSocket GET", async () => {
     )).status,
     405,
   );
+});
+
+Deno.test("shutdown closes connectors that are still authenticating", async () => {
+  const closeCodes: number[] = [];
+  const socket = {
+    binaryType: "",
+    bufferedAmount: 0,
+    readyState: WebSocket.CONNECTING,
+    send() {},
+    close(code: number) {
+      closeCodes.push(code);
+    },
+  } as unknown as WebSocket;
+  const relay = new Relay(config, logger, Date.now, () => ({
+    socket,
+    response: new Response(null, { status: 200 }),
+  }));
+  const response = await relay.handle(
+    new Request("http://relay/_bunny/connect?id=alpha", {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": SUBPROTOCOL,
+      },
+    }),
+  );
+  assertEquals(response.status, 200);
+  relay.shutdown();
+  assertEquals(closeCodes, [4001]);
 });
 
 Deno.test("connector upgrade does not disclose configured tunnel IDs", async () => {
@@ -100,6 +134,56 @@ Deno.test("connector upgrade does not disclose configured tunnel IDs", async () 
   for (const socket of sockets) socket.onclose?.(new CloseEvent("close"));
 });
 
+Deno.test("connector messages are serialized across authentication", async () => {
+  const sent: Uint8Array[] = [];
+  const closeCodes: number[] = [];
+  const socket = {
+    binaryType: "",
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+    close(code: number) {
+      closeCodes.push(code);
+      queueMicrotask(() => socket.onclose?.(new CloseEvent("close", { code })));
+    },
+  } as unknown as WebSocket;
+  const relay = new Relay(config, logger, Date.now, () => ({
+    socket,
+    response: new Response(null, { status: 200 }),
+  }));
+  const request = new Request("http://relay/_bunny/connect?id=alpha", {
+    headers: {
+      upgrade: "websocket",
+      "sec-websocket-protocol": SUBPROTOCOL,
+    },
+  });
+  assertEquals((await relay.handle(request)).status, 200);
+  socket.onopen?.(new Event("open"));
+  const challenge = decodeControl(decodeFrame(sent[0]).payload) as {
+    nonce: string;
+  };
+  const proof = await createProof(
+    config.tunnels.get("alpha")!.secret,
+    "alpha",
+    challenge.nonce,
+    PROTOCOL_VERSION,
+  );
+  const authenticate = encodeFrame(
+    FrameType.authenticate,
+    "",
+    encodeControl({ version: PROTOCOL_VERSION, proof }),
+  );
+  const event = new MessageEvent("message", {
+    data: authenticate.buffer as ArrayBuffer,
+  });
+  socket.onmessage?.(event);
+  socket.onmessage?.(event);
+  await waitUntil(() => closeCodes.length > 0);
+  assertEquals(relay.sessions.has("alpha"), false);
+});
+
 Deno.test("relay failure cancels connector work and clears request state", async () => {
   const sent: Uint8Array[] = [];
   const socket = {
@@ -133,6 +217,59 @@ Deno.test("relay failure cancels connector work and clears request state", async
     sent.some((frame) => decodeFrame(frame).type === FrameType.cancel),
     "relay did not send a cancel frame",
   );
+});
+
+Deno.test("GET and HEAD bodies cannot disconnect a tunnel", async () => {
+  const sent: Uint8Array[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+    close() {},
+  } as unknown as WebSocket;
+  const relay = relayWithSessionForTest(config, socket);
+  for (const method of ["GET", "HEAD"]) {
+    const request = {
+      url: "http://relay/body",
+      method,
+      headers: new Headers({ host: "alpha.example" }),
+      body: new ReadableStream<Uint8Array>(),
+    } as Request;
+    assertEquals((await relay.handle(request)).status, 400);
+  }
+  assertEquals(sent.length, 0);
+  assertEquals(relay.sessions.has("alpha"), true);
+});
+
+Deno.test("shutdown cancels a slow public request body", async () => {
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send() {},
+    close() {},
+  } as unknown as WebSocket;
+  const relay = relayWithSessionForTest(config, socket);
+  let bodyCancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      bodyCancelled = true;
+    },
+  });
+  const handled = relay.handle(
+    new Request("http://relay/slow-upload", {
+      method: "POST",
+      headers: { host: "alpha.example" },
+      body,
+    }),
+  );
+  await waitUntil(() => relay.pending.size === 1);
+  relay.shutdown();
+  const response = await handled;
+  assertEquals(response.status, 503);
+  assertEquals(bodyCancelled, true);
+  assertEquals(relay.pending.size, 0);
 });
 
 Deno.test("viewer disconnect settles the handler and clears request state", async () => {
@@ -180,6 +317,18 @@ function relayWithSessionForTest(
     lastSeen: Date.now(),
     requests: new Set(),
     heartbeatSending: false,
+    messageQueue: Promise.resolve(),
+    closed: false,
+    cancelled: new Map(),
   });
   return relay;
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("condition timed out");
 }

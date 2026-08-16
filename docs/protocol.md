@@ -15,6 +15,9 @@ Text messages, unknown types, wrong versions, malformed UTF-8/JSON, invalid IDs,
 frames over 65,536 payload bytes close the connection. Control JSON is limited to 16,384
 bytes and parsed into explicitly validated fields; it is not accepted as an
 unconstrained object graph. Body chunks are raw binary, never base64 JSON.
+Connection-level frames use an empty correlation ID; request-level frames require one.
+Request/response end and cancellation frames have no payload. These shape rules are
+enforced by both encoders and decoders.
 
 ## Authentication
 
@@ -43,6 +46,13 @@ directions are protocol errors. `cancel` aborts the peer's fetch or stream. A co
 disconnect completes pending public requests with a generic 502; replacement completes
 them with 503.
 
+Cancellation races are explicitly bounded. Each peer retains up to 128 short-lived
+correlation-ID tombstones so request or response frames already in flight and a late
+cancellation of a just-completed origin request cannot be mistaken for traffic belonging
+to an unknown request. Tombstones validate the expected tail of the original stream;
+other frame types, duplicate ends, oversized bodies, and unknown IDs remain protocol
+errors.
+
 One newly authenticated connector deterministically replaces the previous connector for
 its tunnel (close code 4101). The replacement never inherits in-flight requests. The
 WebSocket API only permits callers to send close code 1000 or codes in the 3000–4999
@@ -55,6 +65,8 @@ as 4008.
 | Limit                                     |                                    Value |
 | ----------------------------------------- | ---------------------------------------: |
 | Concurrent requests per tunnel            |                                       64 |
+| Simultaneous authentication handshakes    |                                      128 |
+| Recent cancellation tombstones            |                                      128 |
 | Request or response body                  |                                   10 MiB |
 | Frame payload                             |                                   64 KiB |
 | Control payload                           |                                   16 KiB |
@@ -74,6 +86,9 @@ not advisory configuration.
 
 - Methods must be uppercase tokens. Paths must begin with one `/`; scheme-relative
   targets, control characters, and targets over 8 KiB are rejected.
+- GET and HEAD requests with bodies are rejected at the relay instead of risking an
+  out-of-order stream at the connector. Origin response statuses must be final HTTP
+  statuses from 200 through 599.
 - Header names and values use platform parsing plus explicit token/injection validation.
   Deno combines duplicate request headers according to Fetch semantics; no trailers are
   forwarded.
@@ -85,5 +100,7 @@ not advisory configuration.
   reach only the selected origin; they never reach control handlers.
 - Redirects are returned to the public client (`redirect: manual`); the connector does
   not follow them.
+- Every public relay response overrides `Cache-Control` with `no-store`; the Pull Zone
+  must also have caching disabled for all tunnel paths.
 - WebSocket upgrades, arbitrary TCP/UDP, HTTP trailers, and end-to-end HTTP/2 are
   unsupported.

@@ -5,7 +5,7 @@ canonical instruction source for all coding agents.
 
 ## Commands
 
-Use Deno 2.9.3 and the Compose-native development service. From the host:
+Use Deno 2.9.5 and the Compose-native development service. From the host:
 
 ```sh
 docker compose up --build --detach development

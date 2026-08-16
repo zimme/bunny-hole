@@ -41,7 +41,7 @@
     "package:build": "deno run --allow-read=.,/tmp --allow-run=deno,npm,tar --allow-write=dist,/tmp scripts/build_npm_package.ts",
     "release:check": "deno run --allow-read=. --allow-run=git scripts/release_check.ts",
     "release:artifacts": "deno run --allow-read=. --allow-write=dist --allow-run=deno scripts/build_release_artifacts.ts",
-    "release:publish-package": "deno run --allow-env=RELEASE_TAG --allow-net=jsr.io,registry.npmjs.org --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=deno,npm,tar scripts/publish_package.ts",
+    "release:publish-package": "deno run --allow-env=RELEASE_TAG --allow-net=jsr.io,registry.npmjs.org --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=deno,git,npm,tar scripts/publish_package.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "spellcheck": "deno run --allow-env --allow-sys=homedir --allow-read cspell lint --config cspell.json --gitignore --dot --no-progress .",

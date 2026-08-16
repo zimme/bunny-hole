@@ -35,7 +35,27 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Preserve the immutable commit image
+        id: image
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}-devcontainer:${{ github.sha }}
+        run: |
+          if output="$(docker manifest inspect "$IMAGE" 2>&1)"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$output" in
+            *"manifest unknown"*|*"no such manifest"*|*"not found"*)
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unable to determine whether $IMAGE already exists" >&2
+              echo "$output" >&2
+              exit 1
+              ;;
+          esac
       - name: Publish immutable and cache tags
+        if: steps.image.outputs.exists != 'true'
         uses: devcontainers/ci@v0.3
         with:
           configFile: .devcontainer/devcontainer.json

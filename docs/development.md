@@ -1,6 +1,6 @@
 # Development
 
-Deno 2.9.3 is the only task runner. Node 24.13.1 and npm 11.8.0 are present inside the
+Deno 2.9.5 is the only task runner. Node 24.13.1 and npm 11.8.0 are present inside the
 development container for GitHub Copilot CLI, Dev Container tooling, and isolated
 verification/publishing of the real npm connector artifact. There is no repository
 `package.json` and no npm task wrapper.
@@ -68,8 +68,9 @@ Compose service. It has no Features or lifecycle command, so opening the reposit
 Dev Container cannot produce a different toolchain. Its `runServices` list starts only
 the long-running development service; integration topology services remain controlled by
 the authoritative Deno tasks. CI pulls the GHCR development image prebuild as its
-primary toolchain/dependency cache. Production BuildKit caching reuses compiler and
-source-independent layers.
+primary toolchain/dependency cache. The prebuild workflow never overwrites an existing
+commit-SHA image; its moving `cache` tag changes only when a new immutable commit image
+is published. Production BuildKit caching reuses compiler and source-independent layers.
 
 There is no GitHub Actions dependency cache: local Docker volumes cannot be shared with
 hosted runners, and an additional cache would duplicate image layers. npm caching is

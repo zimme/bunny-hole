@@ -6,6 +6,8 @@ import { createLogger } from "../relay/logger.ts";
 
 export const VERSION = "0.1.0";
 
+class UsageError extends Error {}
+
 const HELP = `Bunny Hole connector ${VERSION}
 
 Usage:
@@ -39,7 +41,21 @@ if (import.meta.main) {
     Deno.exit(0);
   }
   try {
-    const flags = parseFlags(rawArgs);
+    if (!["connect", "check", "generate"].includes(command)) {
+      throw new UsageError("unknown command; use --help");
+    }
+    const flags = parseFlags(
+      rawArgs,
+      command === "generate" ? ["tunnel", "hostname"] : [
+        "config",
+        "relay",
+        "tunnel",
+        "origin",
+        "allow-private-network",
+        "local-development",
+        "log-format",
+      ],
+    );
     if (command === "generate") {
       const tunnelId = typeof flags.tunnel === "string" ? flags.tunnel : "my-tunnel";
       if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(tunnelId)) {
@@ -61,10 +77,6 @@ if (import.meta.main) {
         "Store this output in a mode-0600 file or secret manager. It will not be shown again.",
       );
       Deno.exit(0);
-    }
-    if (command !== "connect" && command !== "check") {
-      console.error("unknown command; use --help");
-      Deno.exit(64);
     }
     const config = await loadConnectorConfig(flags);
     if (command === "check") {
@@ -96,27 +108,33 @@ if (import.meta.main) {
     console.error(
       error instanceof Error ? error.message : "connector configuration failed",
     );
-    Deno.exit(78);
+    Deno.exit(error instanceof UsageError ? 64 : 78);
   }
 }
 
-export function parseFlags(args: string[]): Record<string, string | boolean> {
+export function parseFlags(
+  args: string[],
+  allowed: string[],
+): Record<string, string | boolean> {
   const output: Record<string, string | boolean> = {};
+  const allowedNames = new Set(allowed);
   const booleanFlags = new Set(["allow-private-network", "local-development"]);
   for (let index = 0; index < args.length; index++) {
     const item = args[index];
-    if (!item.startsWith("--")) throw new Error(`unexpected argument: ${item}`);
+    if (!item.startsWith("--")) throw new UsageError(`unexpected argument: ${item}`);
     const name = item.slice(2);
     if (name === "secret") {
-      throw new Error("--secret is forbidden; use protected input");
+      throw new UsageError("--secret is forbidden; use protected input");
     }
+    if (!allowedNames.has(name)) throw new UsageError(`unknown flag: --${name}`);
+    if (name in output) throw new UsageError(`duplicate flag: --${name}`);
     if (booleanFlags.has(name)) {
       output[name] = true;
       continue;
     }
     const value = args[++index];
     if (!value || value.startsWith("--")) {
-      throw new Error(`missing value for --${name}`);
+      throw new UsageError(`missing value for --${name}`);
     }
     output[name] = value;
   }

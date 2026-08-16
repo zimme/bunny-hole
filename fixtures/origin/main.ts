@@ -7,6 +7,31 @@ if (import.meta.main) {
     if (url.pathname === "/slow") {
       await new Promise((resolve) => setTimeout(resolve, 60_000));
     }
+    if (url.pathname === "/response-headers") {
+      return new Response("filtered", {
+        headers: {
+          "x-bunny-hole-future-control": "must-not-cross",
+          "x-safe-response": "allowed",
+        },
+      });
+    }
+    if (url.pathname === "/disconnect-stream") {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("first"));
+            setTimeout(() => {
+              try {
+                controller.enqueue(new TextEncoder().encode("last"));
+                controller.close();
+              } catch {
+                // The public client cancelled the response stream.
+              }
+            }, 100);
+          },
+        }),
+      );
+    }
     const body = new Uint8Array(await request.arrayBuffer());
     if (url.pathname === "/binary") {
       return new Response(body, {

@@ -13,7 +13,7 @@ services:
       context: .
       dockerfile: .devcontainer/Dockerfile
       args:
-        DENO_VERSION: "2.9.3"
+        DENO_VERSION: "2.9.5"
         NODE_VERSION: "24.13.1"
         NPM_VERSION: "11.8.0"
         GH_VERSION: "2.96.0"

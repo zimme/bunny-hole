@@ -21,10 +21,16 @@ export function loadRelayConfig(
 ): RelayConfig {
   const port = parseInteger(env.PORT ?? "8080", "PORT", 1, 65_535);
   const hostname = env.HOST ?? "0.0.0.0";
-  const localDevelopment = env.BUNNY_HOLE_LOCAL_DEVELOPMENT === "true";
-  const logFormat = env.BUNNY_HOLE_LOG_FORMAT === "pretty" ? "pretty" : "json";
+  const localDevelopment = parseBoolean(
+    env.BUNNY_HOLE_LOCAL_DEVELOPMENT ?? "false",
+    "BUNNY_HOLE_LOCAL_DEVELOPMENT",
+  );
+  const logFormat = parseLogFormat(env.BUNNY_HOLE_LOG_FORMAT ?? "json");
   const rawTunnels = env.BUNNY_HOLE_TUNNELS;
   if (!rawTunnels) throw new ProtocolError("BUNNY_HOLE_TUNNELS is required");
+  if (rawTunnels.length > 8 * 1024 * 1024) {
+    throw new ProtocolError("BUNNY_HOLE_TUNNELS exceeds the 8 MiB limit");
+  }
 
   let parsed: unknown;
   try {
@@ -40,6 +46,9 @@ export function loadRelayConfig(
   const hostnameToTunnel = new Map<string, string>();
   for (const candidate of parsed) {
     if (!isRecord(candidate)) throw new ProtocolError("invalid tunnel configuration");
+    if (!hasOnlyKeys(candidate, ["id", "secret", "hostnames"])) {
+      throw new ProtocolError("tunnel configuration contains unknown fields");
+    }
     const id = candidate.id;
     const secret = candidate.secret;
     const hostnames = candidate.hostnames;
@@ -72,6 +81,22 @@ export function loadRelayConfig(
     tunnels,
     hostnameToTunnel,
   };
+}
+
+function parseBoolean(raw: string, name: string): boolean {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new ProtocolError(`${name} must be true or false`);
+}
+
+function parseLogFormat(raw: string): "json" | "pretty" {
+  if (raw === "json" || raw === "pretty") return raw;
+  throw new ProtocolError("BUNNY_HOLE_LOG_FORMAT must be json or pretty");
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: string[]): boolean {
+  const keys = new Set(allowed);
+  return Object.keys(value).every((key) => keys.has(key));
 }
 
 function readRelayEnv(): Record<string, string | undefined> {

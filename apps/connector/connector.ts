@@ -1,4 +1,5 @@
 import {
+  decodeBase64Url,
   decodeControl,
   decodeFrame,
   encodeControl,
@@ -40,6 +41,13 @@ interface OriginRequest {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface RecentRequest {
+  kind: "cancelled" | "completed";
+  requestBytes: number;
+  ended: boolean;
+  expiresAt: number;
+}
+
 export class Connector {
   private socket?: WebSocket;
   private requests = new Map<string, OriginRequest>();
@@ -49,6 +57,8 @@ export class Connector {
   private lastSeen = Date.now();
   private heartbeatTimer?: ReturnType<typeof setInterval>;
   private heartbeatSending = false;
+  private running = false;
+  private recent = new Map<string, RecentRequest>();
 
   constructor(
     readonly config: ConnectorRuntimeConfig,
@@ -56,23 +66,30 @@ export class Connector {
   ) {}
 
   async run(signal?: AbortSignal): Promise<void> {
+    if (this.running) throw new ProtocolError("connector is already running");
+    if (this.stopping) throw new ProtocolError("connector has been stopped");
+    this.running = true;
     let attempt = 0;
     signal?.addEventListener("abort", () => this.stop(), { once: true });
-    while (!this.stopping && !signal?.aborted) {
-      try {
-        await this.connectOnce();
-        attempt = 0;
-      } catch (error) {
+    try {
+      while (!this.stopping && !signal?.aborted) {
+        try {
+          await this.connectOnce();
+          attempt = 0;
+        } catch (error) {
+          if (this.stopping || signal?.aborted) break;
+          this.logger.warn("connector_disconnected", {
+            message: error instanceof Error ? error.message : "connection failed",
+            attempt,
+          });
+        }
         if (this.stopping || signal?.aborted) break;
-        this.logger.warn("connector_disconnected", {
-          message: error instanceof Error ? error.message : "connection failed",
-          attempt,
-        });
+        const base = Math.min(30_000, 500 * 2 ** Math.min(attempt++, 6));
+        const delay = calculateBackoffDelay(base);
+        await abortableDelay(delay, signal);
       }
-      if (this.stopping || signal?.aborted) break;
-      const base = Math.min(30_000, 500 * 2 ** Math.min(attempt++, 6));
-      const delay = calculateBackoffDelay(base);
-      await abortableDelay(delay, signal);
+    } finally {
+      this.running = false;
     }
   }
 
@@ -80,6 +97,7 @@ export class Connector {
     this.stopping = true;
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     for (const request of this.requests.values()) this.cancelRequest(request);
+    this.recent.clear();
     this.socket?.close(1000, "connector stopping");
   }
 
@@ -94,42 +112,58 @@ export class Connector {
     this.proofSent = false;
     this.lastSeen = Date.now();
     const completion = Promise.withResolvers<void>();
+    let messageQueue = Promise.resolve();
+    let closed = false;
+    let protocolFailed = false;
     const authTimer = setTimeout(() => {
       socket.close(toWebSocketCloseCode(1008), "authentication timeout");
       completion.reject(new Error("relay authentication timed out"));
     }, LIMITS.authenticationTimeoutMs * 2);
     socket.onopen = () =>
       this.logger.info("connector_connected", { tunnelId: this.config.tunnelId });
-    socket.onmessage = (event) =>
-      void this.onMessage(event).catch((error) => {
-        this.logger.warn("protocol_error", {
-          message: error instanceof Error ? error.message : "protocol error",
-        });
-        socket.close(
-          toWebSocketCloseCode(
-            error instanceof ProtocolError ? error.closeCode : 1011,
-          ),
-          "protocol error",
-        );
+    socket.onmessage = (event) => {
+      messageQueue = messageQueue.then(async () => {
+        if (closed || protocolFailed) return;
+        try {
+          await this.onMessage(event);
+        } catch (error) {
+          protocolFailed = true;
+          this.logger.warn("protocol_error", {
+            message: error instanceof Error ? error.message : "protocol error",
+          });
+          socket.close(
+            toWebSocketCloseCode(
+              error instanceof ProtocolError ? error.closeCode : 1011,
+            ),
+            "protocol error",
+          );
+        }
       });
+    };
     socket.onerror = () => {
       // The close event provides the stable reconnect path.
     };
     socket.onclose = (event) => {
+      closed = true;
       clearTimeout(authTimer);
       if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
-      for (const request of this.requests.values()) this.cancelRequest(request);
-      this.requests.clear();
-      this.authenticated = false;
-      if (this.stopping) completion.resolve();
-      else {
-        completion.reject(
-          new Error(
-            event.code === 4101 ? "connector was replaced" : "relay connection closed",
-          ),
-        );
-      }
+      void messageQueue.finally(() => {
+        for (const request of this.requests.values()) this.cancelRequest(request);
+        this.requests.clear();
+        this.recent.clear();
+        this.authenticated = false;
+        if (this.stopping) completion.resolve();
+        else {
+          completion.reject(
+            new Error(
+              event.code === 4101
+                ? "connector was replaced"
+                : "relay connection closed",
+            ),
+          );
+        }
+      });
     };
     const waitForAuth = setInterval(() => {
       if (!this.authenticated) return;
@@ -171,7 +205,7 @@ export class Connector {
       const challenge = decodeControl(frame.payload);
       if (
         !isRecord(challenge) || challenge.version !== PROTOCOL_VERSION ||
-        typeof challenge.nonce !== "string"
+        !isNonce(challenge.nonce)
       ) throw new ProtocolError("invalid authentication challenge", 1008);
       const proof = await createProof(
         this.config.secret,
@@ -200,8 +234,12 @@ export class Connector {
     }
     if (frame.type === FrameType.pong) return;
     if (frame.type === FrameType.requestStart) {
-      if (this.requests.has(frame.id)) throw new ProtocolError("duplicate request");
+      this.pruneRecent();
+      if (this.requests.has(frame.id) || this.recent.has(frame.id)) {
+        throw new ProtocolError("duplicate request");
+      }
       if (this.requests.size >= LIMITS.maxConcurrentRequests) {
+        this.rememberRecent(frame.id, "cancelled", 0, false);
         await this.send(encodeFrame(FrameType.cancel, frame.id));
         return;
       }
@@ -236,6 +274,7 @@ export class Connector {
     }
     const context = this.requests.get(frame.id);
     if (!context) {
+      if (this.handleRecentFrame(frame)) return;
       this.logger.warn("unknown_relay_request", {
         requestId: frame.id,
         frameType: frame.type,
@@ -263,6 +302,12 @@ export class Connector {
     if (frame.type === FrameType.cancel) {
       this.cancelRequest(context);
       this.requests.delete(frame.id);
+      this.rememberRecent(
+        frame.id,
+        "cancelled",
+        context.requestBytes,
+        context.ended,
+      );
       return;
     }
     throw new ProtocolError("unexpected relay frame");
@@ -334,6 +379,7 @@ export class Connector {
     if (!request) return;
     this.cancelRequest(request);
     this.requests.delete(id);
+    this.rememberRecent(id, "cancelled", request.requestBytes, request.ended);
     if (this.socket?.readyState === WebSocket.OPEN) {
       try {
         await sendFrame(this.socket, encodeFrame(FrameType.cancel, id));
@@ -356,6 +402,62 @@ export class Connector {
   private finishRequest(request: OriginRequest): void {
     this.cancelRequest(request);
     this.requests.delete(request.id);
+    this.rememberRecent(
+      request.id,
+      "completed",
+      request.requestBytes,
+      request.ended,
+    );
+  }
+
+  private rememberRecent(
+    id: string,
+    kind: RecentRequest["kind"],
+    requestBytes: number,
+    ended: boolean,
+  ): void {
+    this.pruneRecent();
+    this.recent.set(id, {
+      kind,
+      requestBytes,
+      ended,
+      expiresAt: Date.now() + LIMITS.requestTimeoutMs,
+    });
+    while (this.recent.size > LIMITS.maxCancellationTombstones) {
+      this.recent.delete(this.recent.keys().next().value!);
+    }
+  }
+
+  private handleRecentFrame(frame: Frame): boolean {
+    this.pruneRecent();
+    const recent = this.recent.get(frame.id);
+    if (!recent) return false;
+    if (frame.type === FrameType.cancel) {
+      this.recent.delete(frame.id);
+      return true;
+    }
+    if (recent.kind !== "cancelled") return false;
+    if (frame.type === FrameType.requestBody) {
+      if (recent.ended) throw new ProtocolError("request body out of order");
+      recent.requestBytes += frame.payload.length;
+      if (recent.requestBytes > LIMITS.maxBodyBytes) {
+        throw new ProtocolError("request body exceeds limit", 1009);
+      }
+      return true;
+    }
+    if (frame.type === FrameType.requestEnd) {
+      if (recent.ended) throw new ProtocolError("duplicate request end");
+      recent.ended = true;
+      return true;
+    }
+    throw new ProtocolError("unexpected relay frame");
+  }
+
+  private pruneRecent(): void {
+    const now = Date.now();
+    for (const [id, request] of this.recent) {
+      if (request.expiresAt <= now) this.recent.delete(id);
+    }
   }
 
   private checkHeartbeat(socket: WebSocket): void {
@@ -394,6 +496,15 @@ export function markAuthenticatedForTest(connector: Connector): void {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonce(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    return decodeBase64Url(value).length === 24;
+  } catch {
+    return false;
+  }
 }
 
 async function abortableDelay(

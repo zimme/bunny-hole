@@ -25,6 +25,16 @@ try {
     const response = await fetch(`${relayUrl}/readyz`);
     return response.ok;
   }, 30_000);
+
+  const getBodyStatus = await rawHttpStatus(
+    "GET /body HTTP/1.1\r\n" +
+      "Host: tunnel.test\r\n" +
+      "Content-Length: 4\r\n" +
+      "Connection: close\r\n\r\nbody",
+  );
+  if (getBodyStatus !== 400) {
+    throw new Error(`GET body was not rejected: ${getBodyStatus}`);
+  }
   await waitFor(async () => {
     const response = await fetch(`${relayUrl}/`, {
       headers: { host: "tunnel.test" },
@@ -44,6 +54,9 @@ try {
     body: "streamed request",
   });
   if (!echo.ok) throw new Error(`echo failed: ${echo.status}`);
+  if (echo.headers.get("cache-control") !== "no-store") {
+    throw new Error("public tunnel response was cacheable");
+  }
   const echoed = await echo.json();
   if (
     echoed.body !== "streamed request" ||
@@ -61,6 +74,24 @@ try {
   });
   const binaryResult = new Uint8Array(await binaryResponse.arrayBuffer());
   if (!equalBytes(binary, binaryResult)) throw new Error("binary body was corrupted");
+
+  const filtered = await fetch(`${relayUrl}/response-headers`, {
+    headers: { host: "tunnel.test" },
+  });
+  if (
+    await filtered.text() !== "filtered" ||
+    filtered.headers.get("x-bunny-hole-future-control") !== null ||
+    filtered.headers.get("x-safe-response") !== "allowed"
+  ) throw new Error("origin response header isolation check failed");
+
+  await disconnectDuringResponse();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const afterDisconnect = await fetch(`${relayUrl}/after-disconnect`, {
+    headers: { host: "tunnel.test" },
+  });
+  if (!afterDisconnect.ok) {
+    throw new Error("viewer disconnect disrupted the connector session");
+  }
 
   const bodies = Array.from(
     { length: 12 },
@@ -86,6 +117,14 @@ try {
     env: environment,
   });
   if (relayLogs.includes(secret)) throw new Error("secret leaked into relay logs");
+  const connectorLogs = await output("docker", [...compose, "logs", "connector"], {
+    env: environment,
+  });
+  if (
+    relayLogs.includes("protocol_error") || connectorLogs.includes("protocol_error")
+  ) {
+    throw new Error("cancellation race caused a protocol error");
+  }
   console.log(
     "integration: production relay image passed streaming, binary, routing, and multiplexing checks",
   );
@@ -124,13 +163,15 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 }
 
 async function rawStatus(hostname: string): Promise<number> {
+  return await rawHttpStatus(
+    `GET / HTTP/1.1\r\nHost: ${hostname}\r\nConnection: close\r\n\r\n`,
+  );
+}
+
+async function rawHttpStatus(request: string): Promise<number> {
   const connection = await Deno.connect({ hostname: testHost, port: 18080 });
   try {
-    await connection.write(
-      new TextEncoder().encode(
-        `GET / HTTP/1.1\r\nHost: ${hostname}\r\nConnection: close\r\n\r\n`,
-      ),
-    );
+    await connection.write(new TextEncoder().encode(request));
     const bytes = new Uint8Array(512);
     const count = await connection.read(bytes);
     const line =
@@ -141,4 +182,18 @@ async function rawStatus(hostname: string): Promise<number> {
   } finally {
     connection.close();
   }
+}
+
+async function disconnectDuringResponse(): Promise<void> {
+  const connection = await Deno.connect({ hostname: testHost, port: 18080 });
+  await connection.write(
+    new TextEncoder().encode(
+      "GET /disconnect-stream HTTP/1.1\r\n" +
+        "Host: tunnel.test\r\n" +
+        "Connection: close\r\n\r\n",
+    ),
+  );
+  const bytes = new Uint8Array(512);
+  await connection.read(bytes);
+  connection.close();
 }

@@ -36,6 +36,15 @@ interface ConnectorSession {
   authTimer?: ReturnType<typeof setTimeout>;
   heartbeatTimer?: ReturnType<typeof setInterval>;
   heartbeatSending: boolean;
+  messageQueue: Promise<void>;
+  closed: boolean;
+  cancelled: Map<string, CancelledRequest>;
+}
+
+interface CancelledRequest {
+  responseStarted: boolean;
+  bodyBytes: number;
+  expiresAt: number;
 }
 
 interface PendingRequest {
@@ -63,8 +72,8 @@ export type WebSocketUpgrader = (
 export class Relay {
   readonly sessions = new Map<string, ConnectorSession>();
   readonly pending = new Map<string, PendingRequest>();
+  private readonly connecting = new Set<ConnectorSession>();
   private accepting = true;
-  private readonly unknownTunnelSecret = createSecret();
 
   constructor(
     readonly config: RelayConfig,
@@ -76,12 +85,17 @@ export class Relay {
   async handle(request: Request, info?: RelayRequestInfo): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/healthz") {
-      return json({ status: this.accepting ? "ok" : "shutting_down" }, 200);
+      return json(
+        { status: this.accepting ? "ok" : "shutting_down" },
+        200,
+        { "cache-control": "no-store" },
+      );
     }
     if (url.pathname === "/readyz") {
       return json(
         { status: this.accepting ? "ready" : "not_ready" },
         this.accepting ? 200 : 503,
+        { "cache-control": "no-store" },
       );
     }
     if (url.pathname === "/_bunny/connect") {
@@ -94,6 +108,10 @@ export class Relay {
   shutdown(): void {
     if (!this.accepting) return;
     this.accepting = false;
+    for (const session of [...this.connecting]) {
+      session.socket.close(toWebSocketCloseCode(1001), "relay shutting down");
+      this.cleanupSession(session, 503);
+    }
     for (const session of this.sessions.values()) {
       session.socket.close(toWebSocketCloseCode(1001), "relay shutting down");
       this.cleanupSession(session, 503);
@@ -104,6 +122,9 @@ export class Relay {
 
   private handleConnector(request: Request, url: URL): Response {
     if (!this.accepting) return publicError(503);
+    if (this.connecting.size >= LIMITS.maxPendingAuthentications) {
+      return publicError(503);
+    }
     if (request.method !== "GET") return publicError(405);
     if (
       request.headers.get("upgrade")?.toLowerCase() !== "websocket" ||
@@ -121,6 +142,10 @@ export class Relay {
       !/^[a-z0-9][a-z0-9-]{2,62}$/.test(tunnelId)
     ) return publicError(400);
     const tunnel = this.config.tunnels.get(tunnelId);
+    // Generate the per-connection decoy on every syntactically valid attempt so known
+    // and unknown tunnel IDs perform the same random-key work before upgrading.
+    const decoySecret = createSecret();
+    const authenticationSecret = tunnel?.secret ?? decoySecret;
 
     let upgraded: { socket: WebSocket; response: Response };
     try {
@@ -138,26 +163,38 @@ export class Relay {
       lastSeen: this.now(),
       requests: new Set(),
       heartbeatSending: false,
+      messageQueue: Promise.resolve(),
+      closed: false,
+      cancelled: new Map(),
     };
+    this.connecting.add(session);
     session.authTimer = setTimeout(
-      () => socket.close(toWebSocketCloseCode(1008), "authentication timeout"),
+      () => {
+        socket.close(toWebSocketCloseCode(1008), "authentication timeout");
+        this.cleanupSession(session, 502);
+      },
       LIMITS.authenticationTimeoutMs,
     );
     socket.onopen = () => {
+      if (session.closed) return;
       socket.send(encodeFrame(
         FrameType.challenge,
         "",
         encodeControl({ nonce: session.nonce, version: PROTOCOL_VERSION }),
       ));
     };
-    socket.onmessage = (event) =>
-      void this.onConnectorMessage(
-        session,
-        tunnel?.secret ?? this.unknownTunnelSecret,
-        event,
-      );
+    socket.onmessage = (event) => {
+      session.messageQueue = session.messageQueue.then(async () => {
+        if (!session.closed) {
+          await this.onConnectorMessage(session, authenticationSecret, event);
+        }
+      });
+    };
     socket.onerror = () => this.logger.warn("connector_socket_error", { tunnelId });
-    socket.onclose = () => this.cleanupSession(session, 502);
+    socket.onclose = () => {
+      session.closed = true;
+      void session.messageQueue.finally(() => this.cleanupSession(session, 502));
+    };
     return upgraded.response;
   }
 
@@ -177,19 +214,21 @@ export class Relay {
           throw new ProtocolError("authentication required", 1008);
         }
         const control = decodeControl(frame.payload);
-        if (
-          !isRecord(control) || control.version !== PROTOCOL_VERSION ||
-          typeof control.proof !== "string" ||
-          !(await verifyProof(
+        const validProof = isRecord(control) &&
+          control.version === PROTOCOL_VERSION &&
+          typeof control.proof === "string" &&
+          await verifyProof(
             secret,
             session.tunnelId,
             session.nonce,
             PROTOCOL_VERSION,
             control.proof,
-          ))
-        ) throw new ProtocolError("authentication failed", 1008);
+          );
+        if (session.closed) return;
+        if (!validProof) throw new ProtocolError("authentication failed", 1008);
         clearTimeout(session.authTimer);
         session.authenticated = true;
+        this.connecting.delete(session);
         const replaced = this.sessions.get(session.tunnelId);
         if (replaced && replaced !== session) {
           replaced.socket.close(4101, "connector replaced");
@@ -204,6 +243,7 @@ export class Relay {
             encodeControl({ version: PROTOCOL_VERSION }),
           ),
         );
+        if (session.closed) return;
         session.heartbeatTimer = setInterval(
           () => this.heartbeat(session),
           LIMITS.heartbeatIntervalMs,
@@ -239,6 +279,7 @@ export class Relay {
     if (frame.type === FrameType.pong) return;
     const pending = this.pending.get(frame.id);
     if (!pending || pending.tunnelId !== session.tunnelId) {
+      if (this.handleCancelledFrame(session, frame)) return;
       this.logger.warn("unknown_connector_request", {
         tunnelId: session.tunnelId,
         requestId: frame.id,
@@ -250,17 +291,16 @@ export class Relay {
       if (pending.responseStarted) throw new ProtocolError("duplicate response start");
       const start = parseResponseStart(decodeControl(frame.payload));
       pending.responseStarted = true;
+      const headers = pairsToHeaders(start.headers);
+      headers.set("cache-control", "no-store");
       const stream = new ReadableStream<Uint8Array>({
         start: (controller) => pending.controller = controller,
-        cancel: () => {
-          void this.sendCancel(session, frame.id);
-          this.finishPending(pending);
-        },
+        cancel: () => this.cancelPending(pending),
       });
       pending.response.resolve(
         new Response(requestMayHaveNoBody(start.status) ? null : stream, {
           status: start.status,
-          headers: pairsToHeaders(start.headers),
+          headers,
         }),
       );
       return;
@@ -315,6 +355,10 @@ export class Relay {
       contentLength &&
       (!/^\d+$/.test(contentLength) || Number(contentLength) > LIMITS.maxBodyBytes)
     ) return publicError(413);
+    if (
+      (request.method === "GET" || request.method === "HEAD") &&
+      (request.body !== null || Number(contentLength ?? "0") > 0)
+    ) return publicError(400);
 
     const id = createCorrelationId();
     const response = Promise.withResolvers<Response>();
@@ -345,17 +389,31 @@ export class Relay {
       );
       let bodyBytes = 0;
       if (request.body) {
-        for await (const chunk of request.body) {
-          bodyBytes += chunk.length;
-          if (bodyBytes > LIMITS.maxBodyBytes) {
-            this.failPending(pending, 413);
-            return publicError(413);
+        const reader = request.body.getReader();
+        const cancelReader = () => {
+          void reader.cancel(pending.sendAbort.signal.reason).catch(() => {});
+        };
+        pending.sendAbort.signal.addEventListener("abort", cancelReader, {
+          once: true,
+        });
+        try {
+          while (true) {
+            const { done, value: chunk } = await reader.read();
+            if (done) break;
+            bodyBytes += chunk.length;
+            if (bodyBytes > LIMITS.maxBodyBytes) {
+              this.failPending(pending, 413);
+              return publicError(413);
+            }
+            await sendFrame(
+              session.socket,
+              encodeFrame(FrameType.requestBody, id, chunk),
+              pending.sendAbort.signal,
+            );
           }
-          await sendFrame(
-            session.socket,
-            encodeFrame(FrameType.requestBody, id, chunk),
-            pending.sendAbort.signal,
-          );
+        } finally {
+          pending.sendAbort.signal.removeEventListener("abort", cancelReader);
+          reader.releaseLock();
         }
       }
       await sendFrame(
@@ -370,8 +428,8 @@ export class Relay {
         requestId: id,
         message: error instanceof Error ? error.message : "unknown",
       });
-      this.failPending(pending, 502);
-      return publicError(502);
+      if (this.pending.get(id) === pending) this.failPending(pending, 502);
+      return await response.promise;
     }
   }
 
@@ -405,6 +463,9 @@ export class Relay {
   }
 
   private cleanupSession(session: ConnectorSession, status: number): void {
+    session.closed = true;
+    this.connecting.delete(session);
+    session.cancelled.clear();
     if (session.authTimer) clearTimeout(session.authTimer);
     if (session.heartbeatTimer) clearInterval(session.heartbeatTimer);
     if (this.sessions.get(session.tunnelId) === session) {
@@ -439,6 +500,7 @@ export class Relay {
     } else {
       pending.response.resolve(publicError(status));
     }
+    if (notifyConnector) this.rememberCancellation(pending);
     if (notifyConnector) this.notifyConnectorOfCancellation(pending);
     this.finishPending(pending);
   }
@@ -456,6 +518,66 @@ export class Relay {
     clearTimeout(pending.timer);
     this.pending.delete(pending.id);
     this.sessions.get(pending.tunnelId)?.requests.delete(pending.id);
+  }
+
+  private rememberCancellation(pending: PendingRequest): void {
+    const session = this.sessions.get(pending.tunnelId);
+    if (!session || session.closed) return;
+    this.pruneCancellations(session);
+    session.cancelled.set(pending.id, {
+      responseStarted: pending.responseStarted,
+      bodyBytes: pending.bodyBytes,
+      expiresAt: this.now() + LIMITS.originTimeoutMs,
+    });
+    while (session.cancelled.size > LIMITS.maxCancellationTombstones) {
+      session.cancelled.delete(session.cancelled.keys().next().value!);
+    }
+  }
+
+  private handleCancelledFrame(
+    session: ConnectorSession,
+    frame: ReturnType<typeof decodeFrame>,
+  ): boolean {
+    this.pruneCancellations(session);
+    const cancelled = session.cancelled.get(frame.id);
+    if (!cancelled) return false;
+    if (frame.type === FrameType.cancel) {
+      session.cancelled.delete(frame.id);
+      return true;
+    }
+    if (frame.type === FrameType.responseStart) {
+      if (cancelled.responseStarted) {
+        throw new ProtocolError("duplicate response start");
+      }
+      parseResponseStart(decodeControl(frame.payload));
+      cancelled.responseStarted = true;
+      return true;
+    }
+    if (frame.type === FrameType.responseBody) {
+      if (!cancelled.responseStarted) {
+        throw new ProtocolError("response body before response start");
+      }
+      cancelled.bodyBytes += frame.payload.length;
+      if (cancelled.bodyBytes > LIMITS.maxBodyBytes) {
+        throw new ProtocolError("response body exceeds limit", 1009);
+      }
+      return true;
+    }
+    if (frame.type === FrameType.responseEnd) {
+      if (!cancelled.responseStarted) {
+        throw new ProtocolError("response end before response start");
+      }
+      session.cancelled.delete(frame.id);
+      return true;
+    }
+    throw new ProtocolError("unexpected connector frame");
+  }
+
+  private pruneCancellations(session: ConnectorSession): void {
+    const now = this.now();
+    for (const [id, cancelled] of session.cancelled) {
+      if (cancelled.expiresAt <= now) session.cancelled.delete(id);
+    }
   }
 }
 

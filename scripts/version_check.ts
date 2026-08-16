@@ -29,8 +29,34 @@ export async function readProductVersion(): Promise<string> {
   return [...unique][0];
 }
 
+async function checkDenoVersion(): Promise<string> {
+  const toolVersions = await Deno.readTextFile(".tool-versions");
+  const matches = [...toolVersions.matchAll(/^deno\s+(\S+)$/gm)];
+  if (matches.length !== 1 || !/^\d+\.\d+\.\d+$/.test(matches[0][1])) {
+    throw new Error(".tool-versions must declare exactly one stable Deno version");
+  }
+  const version = matches[0][1];
+  const expected = new Map<string, string>([
+    ["AGENTS.md", `Use Deno ${version}`],
+    ["Dockerfile", `ARG DENO_VERSION=${version}`],
+    [".devcontainer/Dockerfile", `ARG DENO_VERSION=${version}`],
+    ["compose.yaml", `DENO_VERSION: "${version}"`],
+    ["docs/architecture.md", `Deno ${version} is pinned`],
+    ["docs/development.md", `Deno ${version} is the only task runner`],
+  ]);
+  for (const [path, marker] of expected) {
+    if (!(await Deno.readTextFile(path)).includes(marker)) {
+      throw new Error(`${path} does not use authoritative Deno ${version}`);
+    }
+  }
+  return version;
+}
+
 if (import.meta.main) {
   const version = await readProductVersion();
   parseComVer(version);
-  console.log(`version check: ${version} is valid ComVer`);
+  const denoVersion = await checkDenoVersion();
+  console.log(
+    `version check: ${version} is valid ComVer; Deno ${denoVersion} is consistent`,
+  );
 }

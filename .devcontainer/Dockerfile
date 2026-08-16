@@ -1,5 +1,5 @@
-ARG DENO_VERSION=2.9.3
-FROM denoland/deno:${DENO_VERSION}@sha256:6288db6be1c26473bb9d1843f906d9a219c0dda57fd85de4aac90296951cf6ef AS deno
+ARG DENO_VERSION=2.9.5
+FROM denoland/deno:${DENO_VERSION}@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463 AS deno
 
 FROM mcr.microsoft.com/devcontainers/base@sha256:1a00517e89d3075f8c9dc8d9911404de0ff8991a4d71c62068573e9b016a89da
 
@@ -61,7 +61,7 @@ RUN set -eux; \
       "docker-compose-plugin=${DOCKER_COMPOSE_VERSION}" \
       ripgrep shellcheck; \
     rm -rf /var/lib/apt/lists/* /tmp/*; \
-    test "$(deno --version | head -n 1)" = "deno 2.9.3 (stable, release, $(uname -m)-unknown-linux-gnu)"; \
+    test "$(deno --version | head -n 1)" = "deno 2.9.5 (stable, release, $(uname -m)-unknown-linux-gnu)"; \
     test "$(node --version)" = "v${NODE_VERSION}"; \
     test "$(npm --version)" = "${NPM_VERSION}"; \
     test "$(gh --version | head -n 1)" = "gh version ${GH_VERSION} (2026-07-02)"; \

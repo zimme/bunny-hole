@@ -11,12 +11,6 @@ const hopByHop = new Set([
   "transfer-encoding",
   "upgrade",
 ]);
-const internal = new Set([
-  "x-bunny-hole-id",
-  "x-bunny-hole-secret",
-  "x-bunny-hole-signature",
-  "x-bunny-hole-version",
-]);
 const forwarding = new Set([
   "forwarded",
   "x-forwarded-for",
@@ -39,7 +33,7 @@ export function filterPublicRequestHeaders(
   input.forEach((value, rawName) => {
     const name = rawName.toLowerCase();
     if (
-      hopByHop.has(name) || internal.has(name) || forwarding.has(name) ||
+      hopByHop.has(name) || isInternalHeader(name) || forwarding.has(name) ||
       connectionTokens.has(name)
     ) return;
     output.push({ name, value });
@@ -60,7 +54,7 @@ export function filterOriginResponseHeaders(input: Headers): HeaderPair[] {
   input.forEach((value, rawName) => {
     const name = rawName.toLowerCase();
     if (
-      hopByHop.has(name) || internal.has(name) || connectionTokens.has(name) ||
+      hopByHop.has(name) || isInternalHeader(name) || connectionTokens.has(name) ||
       name === "server" || name === "content-length"
     ) return;
     output.push({ name, value });
@@ -70,13 +64,25 @@ export function filterOriginResponseHeaders(input: Headers): HeaderPair[] {
 }
 
 export function normalizeHostname(raw: string): string {
-  const value = raw.trim().toLowerCase().replace(/\.$/, "");
-  const withoutPort = value.startsWith("[") ? value : value.replace(/:\d{1,5}$/, "");
+  const value = raw.trim().toLowerCase();
+  if (/[\0-\x20\x7f]/.test(value)) throw new ProtocolError("invalid hostname");
+  let parsed: URL;
+  try {
+    parsed = new URL(`http://${value}`);
+  } catch {
+    throw new ProtocolError("invalid hostname");
+  }
   if (
-    withoutPort.length < 1 || withoutPort.length > 253 ||
-    !withoutPort.split(".").every((label) => /^(?!-)[a-z0-9-]{1,63}(?<!-)$/.test(label))
+    parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search ||
+    parsed.hash
   ) throw new ProtocolError("invalid hostname");
-  return withoutPort;
+  const hostname = parsed.hostname.replace(/\.$/, "");
+  if (hostname.startsWith("[") && hostname.endsWith("]")) return hostname;
+  if (
+    hostname.length < 1 || hostname.length > 253 ||
+    !hostname.split(".").every((label) => /^(?!-)[a-z0-9-]{1,63}(?<!-)$/.test(label))
+  ) throw new ProtocolError("invalid hostname");
+  return hostname;
 }
 
 export function validateOrigin(
@@ -113,4 +119,8 @@ function enforceHeaderLimit(pairs: HeaderPair[]): void {
     pairs.reduce((size, pair) => size + pair.name.length + pair.value.length + 4, 0) >
       LIMITS.maxHeaderBytes
   ) throw new ProtocolError("headers exceed limit", 1009);
+}
+
+function isInternalHeader(name: string): boolean {
+  return name.startsWith("x-bunny-hole-");
 }

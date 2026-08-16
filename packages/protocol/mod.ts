@@ -8,6 +8,8 @@ export const LIMITS = Object.freeze({
   maxHeaderBytes: 32_768,
   maxHeaders: 100,
   maxConcurrentRequests: 64,
+  maxPendingAuthentications: 128,
+  maxCancellationTombstones: 128,
   maxCorrelationIdLength: 43,
   requestTimeoutMs: 30_000,
   originTimeoutMs: 25_000,
@@ -36,6 +38,19 @@ export const FrameType = Object.freeze({
 export type FrameTypeValue = typeof FrameType[keyof typeof FrameType];
 
 const knownTypes = new Set<number>(Object.values(FrameType));
+const connectionFrameTypes = new Set<FrameTypeValue>([
+  FrameType.challenge,
+  FrameType.authenticate,
+  FrameType.authenticated,
+  FrameType.ping,
+  FrameType.pong,
+  FrameType.error,
+]);
+const emptyPayloadFrameTypes = new Set<FrameTypeValue>([
+  FrameType.requestEnd,
+  FrameType.responseEnd,
+  FrameType.cancel,
+]);
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const idPattern = /^[A-Za-z0-9_-]{16,43}$/;
@@ -96,11 +111,9 @@ export function encodeFrame(
   payload: Uint8Array = new Uint8Array(),
 ): Uint8Array {
   if (!knownTypes.has(type)) throw new ProtocolError("unknown frame type");
-  validateCorrelationId(id, true);
+  validateFrameIdentifier(type, id);
+  validateFramePayload(type, payload);
   const idBytes = encoder.encode(id);
-  if (payload.byteLength > LIMITS.maxFrameBytes) {
-    throw new ProtocolError("frame payload exceeds limit", 1009);
-  }
   const output = new Uint8Array(3 + idBytes.length + payload.length);
   output[0] = PROTOCOL_VERSION;
   output[1] = type;
@@ -123,11 +136,9 @@ export function decodeFrame(input: ArrayBuffer | Uint8Array): Frame {
     throw new ProtocolError("invalid frame identifier");
   }
   const id = decoder.decode(bytes.subarray(3, 3 + idLength));
-  validateCorrelationId(id, true);
+  validateFrameIdentifier(type, id);
   const payload = bytes.subarray(3 + idLength);
-  if (payload.length > LIMITS.maxFrameBytes) {
-    throw new ProtocolError("frame payload exceeds limit", 1009);
-  }
+  validateFramePayload(type, payload);
   return { type, id, payload };
 }
 
@@ -162,13 +173,17 @@ export function parseRequestStart(value: unknown): RequestStart {
   ) {
     throw new ProtocolError("invalid request target");
   }
+  const remoteAddress = value.remoteAddress;
+  if (
+    remoteAddress !== undefined &&
+    (typeof remoteAddress !== "string" || remoteAddress.length > 128 ||
+      /[\0\r\n]/.test(remoteAddress))
+  ) throw new ProtocolError("invalid remote address");
   return {
     method,
     path,
     headers: parseHeaderPairs(value.headers),
-    remoteAddress: typeof value.remoteAddress === "string"
-      ? value.remoteAddress.slice(0, 128)
-      : undefined,
+    remoteAddress,
   };
 }
 
@@ -176,7 +191,7 @@ export function parseResponseStart(value: unknown): ResponseStart {
   if (!isRecord(value)) throw new ProtocolError("invalid response start");
   const status = value.status;
   if (
-    typeof status !== "number" || !Number.isInteger(status) || status < 100 ||
+    typeof status !== "number" || !Number.isInteger(status) || status < 200 ||
     status > 599
   ) {
     throw new ProtocolError("invalid response status");
@@ -236,6 +251,9 @@ export async function sendFrame(
   frame: Uint8Array,
   signal?: AbortSignal,
 ): Promise<void> {
+  if (signal?.aborted) {
+    throw signal.reason ?? new DOMException("send aborted", "AbortError");
+  }
   while (socket.bufferedAmount > LIMITS.maxBufferedAmount) {
     if (signal?.aborted) {
       throw signal.reason ?? new DOMException("send aborted", "AbortError");
@@ -244,6 +262,9 @@ export async function sendFrame(
       throw new ProtocolError("connection closed", 1001);
     }
     await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  if (signal?.aborted) {
+    throw signal.reason ?? new DOMException("send aborted", "AbortError");
   }
   if (socket.readyState !== WebSocket.OPEN) {
     throw new ProtocolError("connection closed", 1001);
@@ -266,6 +287,27 @@ export function decodeBase64Url(value: string): Uint8Array {
   } catch {
     throw new ProtocolError("invalid encoding");
   }
+}
+
+function validateFrameIdentifier(type: FrameTypeValue, id: string): void {
+  if (connectionFrameTypes.has(type)) {
+    if (id !== "") throw new ProtocolError("connection frame must not have an ID");
+    return;
+  }
+  validateCorrelationId(id);
+}
+
+function validateFramePayload(type: FrameTypeValue, payload: Uint8Array): void {
+  if (payload.byteLength > LIMITS.maxFrameBytes) {
+    throw new ProtocolError("frame payload exceeds limit", 1009);
+  }
+  if (emptyPayloadFrameTypes.has(type) && payload.byteLength !== 0) {
+    throw new ProtocolError("frame type must not have a payload");
+  }
+  if (
+    type !== FrameType.requestBody && type !== FrameType.responseBody &&
+    payload.byteLength > LIMITS.maxControlBytes
+  ) throw new ProtocolError("control message exceeds limit", 1009);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

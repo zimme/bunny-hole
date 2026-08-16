@@ -1,9 +1,82 @@
-import { calculateBackoffDelay } from "../apps/connector/connector.ts";
-import { assertEquals } from "./assert.ts";
+import { calculateBackoffDelay, Connector } from "../apps/connector/connector.ts";
+import { decodeFrame, Frame, FrameType } from "../packages/protocol/mod.ts";
+import { assertEquals, assertRejects } from "./assert.ts";
 
 Deno.test("connector backoff jitter is bounded and deterministically injectable", () => {
   assertEquals(calculateBackoffDelay(500, () => 0), 400);
   assertEquals(calculateBackoffDelay(500, () => 200 / 201), 600);
   assertEquals(calculateBackoffDelay(30_000, () => 0), 24_000);
   assertEquals(calculateBackoffDelay(30_000, () => 12_000 / 12_001), 36_000);
+});
+
+Deno.test("connector validates in-flight request frames after local cancellation", async () => {
+  const sent: Frame[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(decodeFrame(frame));
+    },
+  };
+  const connector = new Connector({
+    relayUrl: new URL("ws://127.0.0.1:8080"),
+    tunnelId: "cancel-test",
+    secret: "unused",
+    origin: new URL("http://127.0.0.1:3000"),
+  }, { info() {}, warn() {}, error() {} });
+  const internal = connector as unknown as {
+    socket: typeof socket;
+    requests: Map<string, {
+      id: string;
+      abort: AbortController;
+      started: boolean;
+      ended: boolean;
+      responseDone: boolean;
+      requestBytes: number;
+      timeout: ReturnType<typeof setTimeout>;
+    }>;
+    timeoutRequest(id: string): Promise<void>;
+    handleFrame(frame: Frame): Promise<void>;
+  };
+  internal.socket = socket;
+  internal.requests.set("abcdefghijklmnop", {
+    id: "abcdefghijklmnop",
+    abort: new AbortController(),
+    started: true,
+    ended: false,
+    responseDone: false,
+    requestBytes: 3,
+    timeout: setTimeout(() => {}, 60_000),
+  });
+
+  await internal.timeoutRequest("abcdefghijklmnop");
+  assertEquals(sent.map((frame) => frame.type), [FrameType.cancel]);
+  await internal.handleFrame({
+    type: FrameType.requestBody,
+    id: "abcdefghijklmnop",
+    payload: new Uint8Array([1, 2]),
+  });
+  await internal.handleFrame({
+    type: FrameType.requestEnd,
+    id: "abcdefghijklmnop",
+    payload: new Uint8Array(),
+  });
+  await assertRejects(
+    () =>
+      internal.handleFrame({
+        type: FrameType.requestEnd,
+        id: "abcdefghijklmnop",
+        payload: new Uint8Array(),
+      }),
+    /duplicate request end/,
+  );
+  await assertRejects(
+    () =>
+      internal.handleFrame({
+        type: FrameType.requestBody,
+        id: "unknown-request-id",
+        payload: new Uint8Array(),
+      }),
+    /unknown request/,
+  );
 });

@@ -33,9 +33,9 @@ ephemeral instance IDs and aggregate counts.
   forwarding values replaced; structured secret-redacted logging.
 - **Cross-request data:** random correlation IDs, tunnel ownership checks, strict state
   transitions, per-request stream/controller maps, concurrency tests.
-- **Memory/slow-peer exhaustion:** header/body/frame/concurrency limits, high-water-mark
-  backpressure, request/origin/authentication/heartbeat timeouts, cancellation and
-  disconnect cleanup.
+- **Memory/slow-peer exhaustion:** header/body/frame/request and pending-authentication
+  limits, high-water-mark backpressure, request/origin/authentication/heartbeat
+  timeouts, cancellation and disconnect cleanup.
 - **Connector takeover:** documented newest-authenticated-wins policy closes the old
   socket and fails its pending requests. Secret rotation revokes old clients.
 - **Container escape/persistence:** non-root distroless runtime, read-only filesystem,
@@ -55,4 +55,6 @@ protect sensitive origins with their own authorization. One instance is an avail
 and state-loss boundary.
 
 The Edge Script experiment is not a supported deployment until multi-location and load
-testing plus a Bunny platform guarantee establish its state-routing semantics.
+testing plus a Bunny platform guarantee establish its state-routing semantics. Magic
+Container rolling updates can temporarily overlap relay pods; maintenance-mode 503s are
+expected until the deployment returns to exactly one healthy instance.

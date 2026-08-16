@@ -1,6 +1,6 @@
 # Architecture and platform research
 
-Research was refreshed on 2026-07-24 against primary documentation.
+Research was refreshed on 2026-08-16 against primary documentation.
 
 ## Supported decision
 
@@ -55,10 +55,18 @@ single-location probe is evidence, not a platform guarantee; see
   startup, readiness, and liveness HTTP GETs. Use `/readyz` for startup/readiness and
   `/healthz` for liveness.
 - [Limits](https://docs.bunny.net/magic-containers/limits) currently include 8 CPU, 32
-  GiB memory, 10 GB ephemeral storage, 1 Gbps ingress/egress, up to 10 instances per
-  region, and automatic restart behavior. Bunny Hole needs no persistent volume.
+  GiB memory, 10 GB ephemeral storage, 1 Gbps ingress/egress, 500 outbound connections,
+  up to 10 instances per region on standard accounts, and automatic restart behavior.
+  Bunny Hole needs no persistent volume.
 - [Autoscaling](https://docs.bunny.net/magic-containers/autoscaling) is CPU-driven. It
   must remain disabled (one minimum and maximum instance) for this release.
+- [Rolling updates](https://docs.bunny.net/docs/magic-containters-rolling-update-process)
+  can temporarily overlap old and new pods. Bunny Hole cannot preserve in-memory socket
+  routing across that overlap, so updates require a maintenance window and are not
+  zero-downtime until the dashboard again shows exactly one instance. Magic Container's
+  separate
+  [graceful shutdown](https://docs.bunny.net/magic-containers/graceful-shutdown) window
+  does not provide cross-pod socket routing.
 - [Pricing](https://docs.bunny.net/magic-containers/pricing) charges CPU seconds, RAM in
   64 MB hourly increments, and regional egress; traffic delivered through CDN is billed
   by CDN rather than as container egress. A minimum instance still accrues charges per
@@ -98,7 +106,7 @@ single-location probe is evidence, not a platform guarantee; see
 
 ## Runtime and tooling findings
 
-- Deno 2.9.3 is pinned in `.tool-versions`, the Dev Container, production build, CI, and
+- Deno 2.9.5 is pinned in `.tool-versions`, the Dev Container, production build, CI, and
   this documentation. Deno provides TypeScript checking, formatting, linting, tests,
   coverage, compilation, permissions, WebSocket APIs, and
   [frozen lockfiles](https://docs.deno.com/runtime/packages/).

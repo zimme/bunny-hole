@@ -33,6 +33,9 @@ export async function loadConnectorConfig(
     } catch {
       throw new ProtocolError("configuration file is not valid JSON");
     }
+    if (!isConfigInput(file)) {
+      throw new ProtocolError("configuration file has unknown or invalid fields");
+    }
   }
   const localDevelopment = booleanValue(
     flags["local-development"] ??
@@ -69,10 +72,9 @@ export async function loadConnectorConfig(
     allowPrivateNetwork,
     localDevelopment,
   });
-  const logFormat =
-    (flags["log-format"] ?? env.BUNNY_HOLE_LOG_FORMAT ?? file.logFormat) === "pretty"
-      ? "pretty"
-      : "json";
+  const logFormat = logFormatValue(
+    flags["log-format"] ?? env.BUNNY_HOLE_LOG_FORMAT ?? file.logFormat ?? "json",
+  );
   return {
     ...validated,
     allowPrivateNetwork,
@@ -128,4 +130,23 @@ function booleanValue(value: unknown): boolean {
   if (value === true || value === "true") return true;
   if (value === false || value === "false") return false;
   throw new ProtocolError("boolean configuration values must be true or false");
+}
+
+function logFormatValue(value: unknown): "json" | "pretty" {
+  if (value === "json" || value === "pretty") return value;
+  throw new ProtocolError("log format must be json or pretty");
+}
+
+function isConfigInput(value: unknown): value is ConfigInput {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const allowed = new Set([
+    "relayUrl",
+    "tunnelId",
+    "secret",
+    "origin",
+    "allowPrivateNetwork",
+    "localDevelopment",
+    "logFormat",
+  ]);
+  return Object.keys(value).every((key) => allowed.has(key));
 }

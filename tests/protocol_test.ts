@@ -48,6 +48,21 @@ Deno.test("decoder rejects truncated, unknown, oversized, and wrong-version fram
       ),
     /exceeds/,
   );
+  assertThrows(() => encodeFrame(FrameType.requestStart, ""), /identifier/);
+  assertThrows(
+    () => encodeFrame(FrameType.ping, createCorrelationId()),
+    /must not have an ID/,
+  );
+  assertThrows(
+    () => encodeFrame(FrameType.cancel, createCorrelationId(), new Uint8Array([1])),
+    /must not have a payload/,
+  );
+  assertThrows(() =>
+    encodeFrame(
+      FrameType.ping,
+      "",
+      new Uint8Array(LIMITS.maxControlBytes + 1),
+    ), /control message exceeds/);
 });
 
 Deno.test("control parser rejects malformed and unconstrained data", () => {
@@ -70,7 +85,16 @@ Deno.test("request and response controls enforce syntax and orderable fields", (
   assertThrows(() =>
     parseRequestStart({ method: "GET", path: "//evil.example", headers: [] })
   );
+  assertThrows(() =>
+    parseRequestStart({
+      method: "GET",
+      path: "/",
+      headers: [],
+      remoteAddress: "x".repeat(129),
+    })
+  );
   assertEquals(parseResponseStart({ status: 201, headers: [] }).status, 201);
+  assertThrows(() => parseResponseStart({ status: 101, headers: [] }));
   assertThrows(() => parseResponseStart({ status: 700, headers: [] }));
 });
 
@@ -133,4 +157,22 @@ Deno.test("frame sending stops waiting when its request is cancelled", async () 
   );
   abort.abort(new Error("cancelled"));
   await assertRejects(() => sending, /cancelled/);
+});
+
+Deno.test("frame sending rejects an already cancelled request", async () => {
+  const sent: Uint8Array[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+  } as unknown as WebSocket;
+  const abort = new AbortController();
+  abort.abort(new Error("cancelled before send"));
+  await assertRejects(
+    () => sendFrame(socket, encodeFrame(FrameType.ping, ""), abort.signal),
+    /cancelled before send/,
+  );
+  assertEquals(sent.length, 0);
 });

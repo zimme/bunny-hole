@@ -61,9 +61,11 @@ policy deliberately accepts only normal `MAJOR.MINOR.0` versions. Nonzero patche
 suffixes, leading zeroes, downgrades, and repeated versions are rejected.
 
 Released versions are immutable. npm and JSR enforce immutable package versions, the
-release workflow refuses to overwrite an existing versioned OCI tag, and operators
-should deploy recorded OCI digests. If any released artifact is wrong, publish the next
-compatible minor or breaking major version; never replace the existing version.
+release workflow refuses to overwrite an existing versioned OCI tag or JSR version, and
+operators should deploy recorded OCI digests. Only the documented npm bootstrap for the
+first ComVer release may already exist when its tag runs; later existing npm versions
+fail closed. If any released artifact is wrong, publish the next compatible minor or
+breaking major version; never replace the existing version.
 
 Before creating a tag, update the connector CLI, connector library, relay, and root
 `deno.json` versions together and check the intended tag locally:

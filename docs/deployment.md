@@ -20,7 +20,9 @@ Releases also publish an SPDX SBOM and GitHub provenance attestation. Do not dep
 In the Bunny dashboard:
 
 1. Create a **Single region** app.
-2. Configure exactly one region and one instance; disable autoscaling.
+2. Configure exactly one region and one instance. Keep the Single region deployment's
+   no-autoscaling behavior; do not switch to Advanced deployment or add another
+   instance.
 3. Add the immutable GHCR image. Configure registry access in Bunny if the package is
    private.
 4. Set container port `8080`.
@@ -94,13 +96,16 @@ Container structured logs, and connector logs. A 404 indicates an unassigned hos
 
 ## Operations
 
-- **Rotate/revoke:** generate a fresh secret, update the relay record, wait for the
-  rolling update, then update/restart the intended connector. Removing the record
-  revokes the tunnel.
-- **Update:** select a newer immutable ComVer/digest and confirm the rolling update.
-  Existing WebSockets disconnect and connectors reconnect.
-- **Rollback:** reselect the recorded prior digest. Configuration remains independent of
-  the image.
+- **Rotate/revoke:** use a maintenance window. Stop the connector, generate a fresh
+  secret, update the relay record, and wait until the dashboard again reports exactly
+  one healthy instance. Then update and restart the intended connector. Removing the
+  record revokes the tunnel. Never depend on old and new pods sharing socket state.
+- **Update:** use a maintenance window, select a newer immutable ComVer/digest, and wait
+  until exactly one replacement instance is healthy before allowing the connector to
+  reconnect. Expect temporary 503 responses: Bunny rolling updates can overlap old and
+  new pods, and Bunny Hole cannot route in-memory sessions across them.
+- **Rollback:** repeat the same maintenance procedure with the recorded prior digest.
+  Configuration remains independent of the image.
 - **Costs:** estimate continuously allocated RAM in 64 MiB-hour increments, CPU seconds,
   CDN bandwidth in both request and response directions, and one persistent connector
   WebSocket per tunnel. The first 500 concurrent CDN WebSockets are currently included;
