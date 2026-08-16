@@ -79,8 +79,9 @@ as 4008.
 | WebSocket buffered amount high-water mark |                                    1 MiB |
 
 Senders pause while `bufferedAmount` exceeds the high-water mark. Deno request and
-response streams propagate backpressure around bounded frames. Limits are hard failures,
-not advisory configuration.
+response streams propagate backpressure around bounded frames. A stream chunk larger
+than the frame-payload limit is split into consecutive body frames without changing its
+bytes. Limits are hard failures, not advisory configuration.
 
 ## HTTP behavior
 

@@ -36,7 +36,8 @@ export function validateConnectorOptions(
   const relayUrl = toUrl(options.relayUrl, "relay URL");
   if (
     !["wss:", ...(localDevelopment ? ["ws:"] : [])].includes(relayUrl.protocol) ||
-    relayUrl.username || relayUrl.password || relayUrl.search || relayUrl.hash
+    relayUrl.username || relayUrl.password || relayUrl.pathname !== "/" ||
+    relayUrl.search || relayUrl.hash
   ) throw new ProtocolError("relay URL must be a clean WSS URL");
 
   const tunnelId = options.tunnelId;

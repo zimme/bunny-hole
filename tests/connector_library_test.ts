@@ -28,6 +28,10 @@ Deno.test("connector library preserves secure network defaults", () => {
     /WSS/,
   );
   assertThrows(
+    () => createConnector({ ...base, relayUrl: "wss://relay.example/base" }),
+    /clean WSS/,
+  );
+  assertThrows(
     () => createConnector({ ...base, origin: "http://10.0.0.1" }),
     /loopback/,
   );

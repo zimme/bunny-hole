@@ -5,6 +5,7 @@ import {
   encodeControl,
   encodeFrame,
   Frame,
+  framePayloadChunks,
   FrameType,
   LIMITS,
   pairsToHeaders,
@@ -347,7 +348,9 @@ export class Connector {
           if (bodyBytes > LIMITS.maxBodyBytes) {
             throw new ProtocolError("origin response exceeds limit", 1009);
           }
-          await this.send(encodeFrame(FrameType.responseBody, context.id, chunk));
+          for (const payload of framePayloadChunks(chunk)) {
+            await this.send(encodeFrame(FrameType.responseBody, context.id, payload));
+          }
         }
       }
       await this.send(encodeFrame(FrameType.responseEnd, context.id));

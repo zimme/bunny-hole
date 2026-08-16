@@ -49,7 +49,8 @@ stricter.
 | `--local-development` / `BUNNY_HOLE_LOCAL_DEVELOPMENT`         | no       | false                   |
 | `--log-format` / `BUNNY_HOLE_LOG_FORMAT`                       | no       | json                    |
 
-Production relay URLs must use WSS. Non-loopback origins require the explicit
+Production relay URLs must use WSS and contain only the origin with a root path; the
+connector owns the control path. Non-loopback origins require the explicit
 private-network opt-in. Origin URLs cannot contain credentials, paths, query strings, or
 fragments. Unknown or duplicate flags, unknown config-file fields, and invalid log
 formats fail closed.

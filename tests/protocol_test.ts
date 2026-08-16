@@ -4,6 +4,7 @@ import {
   decodeFrame,
   encodeControl,
   encodeFrame,
+  framePayloadChunks,
   FrameType,
   LIMITS,
   pairsToHeaders,
@@ -23,6 +24,30 @@ Deno.test("binary frame round trips without base64 body encoding", () => {
   assertEquals(decoded.type, FrameType.requestBody);
   assertEquals(decoded.id, id);
   assertEquals([...decoded.payload], [...payload]);
+});
+
+Deno.test("HTTP stream chunks are split into bounded binary frame payloads", () => {
+  const input = Uint8Array.from(
+    { length: LIMITS.maxFrameBytes * 2 + 17 },
+    (_, index) => index % 251,
+  );
+  const chunks = [...framePayloadChunks(input)];
+  assertEquals(chunks.map((chunk) => chunk.byteLength), [
+    LIMITS.maxFrameBytes,
+    LIMITS.maxFrameBytes,
+    17,
+  ]);
+  assert(
+    chunks.every((chunk, chunkIndex) =>
+      chunk.every(
+        (value, index) => value === input[chunkIndex * LIMITS.maxFrameBytes + index],
+      )
+    ),
+  );
+  assertEquals([...framePayloadChunks(new Uint8Array())], []);
+  for (const chunk of chunks) {
+    encodeFrame(FrameType.requestBody, createCorrelationId(), chunk);
+  }
 });
 
 Deno.test("correlation identifiers are random, bounded, and validated", () => {

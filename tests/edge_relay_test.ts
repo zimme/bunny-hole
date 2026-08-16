@@ -41,6 +41,8 @@ Deno.test("edge diagnostics identify an isolate without exposing tunnel records"
     new Request("https://alpha.example/_bunny/edge/diagnostics"),
   );
   assertEquals(unauthorized.status, 404);
+  assertEquals(unauthorized.headers.get("cache-control"), "no-store");
+  assertEquals(await unauthorized.json(), { error: "tunnel request failed" });
 
   const response = await handler(
     new Request("https://alpha.example/_bunny/edge/diagnostics", {

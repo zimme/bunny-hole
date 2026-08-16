@@ -272,6 +272,18 @@ export async function sendFrame(
   socket.send(frame);
 }
 
+/** Splits an HTTP stream chunk into payloads that each fit one protocol frame. */
+export function* framePayloadChunks(
+  chunk: Uint8Array,
+): Generator<Uint8Array> {
+  for (let offset = 0; offset < chunk.byteLength; offset += LIMITS.maxFrameBytes) {
+    yield chunk.subarray(
+      offset,
+      Math.min(offset + LIMITS.maxFrameBytes, chunk.byteLength),
+    );
+  }
+}
+
 export function encodeBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);

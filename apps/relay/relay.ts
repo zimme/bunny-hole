@@ -4,6 +4,7 @@ import {
   decodeFrame,
   encodeControl,
   encodeFrame,
+  framePayloadChunks,
   FrameType,
   LIMITS,
   pairsToHeaders,
@@ -405,11 +406,13 @@ export class Relay {
               this.failPending(pending, 413);
               return publicError(413);
             }
-            await sendFrame(
-              session.socket,
-              encodeFrame(FrameType.requestBody, id, chunk),
-              pending.sendAbort.signal,
-            );
+            for (const payload of framePayloadChunks(chunk)) {
+              await sendFrame(
+                session.socket,
+                encodeFrame(FrameType.requestBody, id, payload),
+                pending.sendAbort.signal,
+              );
+            }
           }
         } finally {
           pending.sendAbort.signal.removeEventListener("abort", cancelReader);

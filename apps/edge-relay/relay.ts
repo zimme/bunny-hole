@@ -142,7 +142,7 @@ async function diagnosticResponse(
       request.headers.get(DIAGNOSTIC_HEADER) ?? "",
     ))
   ) {
-    return noStoreJson({ error: "not found" }, 404);
+    return noStoreJson({ error: "tunnel request failed" }, 404);
   }
   return noStoreJson(
     {

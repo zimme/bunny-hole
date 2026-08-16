@@ -219,6 +219,66 @@ Deno.test("relay failure cancels connector work and clears request state", async
   );
 });
 
+Deno.test("relay splits a large public stream chunk into bounded request frames", async () => {
+  const sent: Uint8Array[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+    close() {},
+  } as unknown as WebSocket;
+  const relay = relayWithSessionForTest(config, socket);
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new Uint8Array(LIMITS.maxFrameBytes * 2 + 17),
+      );
+      controller.close();
+    },
+  });
+  const handled = relay.handle(
+    new Request("http://relay/large-chunk", {
+      method: "POST",
+      headers: { host: "alpha.example" },
+      body,
+    }),
+  );
+  await waitUntil(() =>
+    sent.some((bytes) => decodeFrame(bytes).type === FrameType.requestEnd)
+  );
+  const frames = sent.map(decodeFrame);
+  const start = frames.find((frame) => frame.type === FrameType.requestStart)!;
+  assertEquals(
+    frames.filter((frame) => frame.type === FrameType.requestBody).map((frame) =>
+      frame.payload.byteLength
+    ),
+    [LIMITS.maxFrameBytes, LIMITS.maxFrameBytes, 17],
+  );
+
+  const session = relay.sessions.get("alpha")!;
+  const internal = relay as unknown as {
+    handleAuthenticatedFrame(
+      session: unknown,
+      frame: ReturnType<typeof decodeFrame>,
+    ): Promise<void>;
+  };
+  await internal.handleAuthenticatedFrame(
+    session,
+    decodeFrame(encodeFrame(
+      FrameType.responseStart,
+      start.id,
+      encodeControl({ status: 204, headers: [] }),
+    )),
+  );
+  await internal.handleAuthenticatedFrame(
+    session,
+    decodeFrame(encodeFrame(FrameType.responseEnd, start.id)),
+  );
+  assertEquals((await handled).status, 204);
+});
+
 Deno.test("GET and HEAD bodies cannot disconnect a tunnel", async () => {
   const sent: Uint8Array[] = [];
   const socket = {
