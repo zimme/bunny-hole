@@ -72,9 +72,11 @@ export async function loadConnectorConfig(
     allowPrivateNetwork,
     localDevelopment,
   });
-  const logFormat = logFormatValue(
-    flags["log-format"] ?? env.BUNNY_HOLE_LOG_FORMAT ?? file.logFormat ?? "json",
-  );
+  const logFormat = flags["log-format"] ?? env.BUNNY_HOLE_LOG_FORMAT ??
+    file.logFormat ?? "json";
+  if (logFormat !== "json" && logFormat !== "pretty") {
+    throw new ProtocolError("log format must be json or pretty");
+  }
   return {
     ...validated,
     allowPrivateNetwork,
@@ -130,11 +132,6 @@ function booleanValue(value: unknown): boolean {
   if (value === true || value === "true") return true;
   if (value === false || value === "false") return false;
   throw new ProtocolError("boolean configuration values must be true or false");
-}
-
-function logFormatValue(value: unknown): "json" | "pretty" {
-  if (value === "json" || value === "pretty") return value;
-  throw new ProtocolError("log format must be json or pretty");
 }
 
 function isConfigInput(value: unknown): value is ConfigInput {

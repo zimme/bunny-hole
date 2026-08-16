@@ -98,8 +98,7 @@ export function createCorrelationId(): string {
   return encodeBase64Url(bytes);
 }
 
-export function validateCorrelationId(id: string, allowEmpty = false): void {
-  if (allowEmpty && id === "") return;
+export function validateCorrelationId(id: string): void {
   if (!idPattern.test(id) || id.length > LIMITS.maxCorrelationIdLength) {
     throw new ProtocolError("invalid correlation identifier");
   }
@@ -199,13 +198,6 @@ export function parseResponseStart(value: unknown): ResponseStart {
   return { status, headers: parseHeaderPairs(value.headers) };
 }
 
-export function headersToPairs(headers: Headers): HeaderPair[] {
-  const output: HeaderPair[] = [];
-  headers.forEach((value, name) => output.push({ name, value }));
-  validateHeaderPairs(output);
-  return output;
-}
-
 export function pairsToHeaders(pairs: HeaderPair[]): Headers {
   validateHeaderPairs(pairs);
   const headers = new Headers();
@@ -213,7 +205,7 @@ export function pairsToHeaders(pairs: HeaderPair[]): Headers {
   return headers;
 }
 
-export function validateHeaderPairs(pairs: HeaderPair[]): void {
+function validateHeaderPairs(pairs: HeaderPair[]): void {
   if (pairs.length > LIMITS.maxHeaders) {
     throw new ProtocolError("too many headers", 1009);
   }

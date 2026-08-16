@@ -19,13 +19,20 @@ export interface RelayConfig {
 export function loadRelayConfig(
   env: Record<string, string | undefined> = readRelayEnv(),
 ): RelayConfig {
-  const port = parseInteger(env.PORT ?? "8080", "PORT", 1, 65_535);
+  const port = Number(env.PORT ?? "8080");
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new ProtocolError("PORT must be an integer from 1 to 65535");
+  }
   const hostname = env.HOST ?? "0.0.0.0";
-  const localDevelopment = parseBoolean(
-    env.BUNNY_HOLE_LOCAL_DEVELOPMENT ?? "false",
-    "BUNNY_HOLE_LOCAL_DEVELOPMENT",
-  );
-  const logFormat = parseLogFormat(env.BUNNY_HOLE_LOG_FORMAT ?? "json");
+  const localDevelopmentValue = env.BUNNY_HOLE_LOCAL_DEVELOPMENT ?? "false";
+  if (localDevelopmentValue !== "true" && localDevelopmentValue !== "false") {
+    throw new ProtocolError("BUNNY_HOLE_LOCAL_DEVELOPMENT must be true or false");
+  }
+  const localDevelopment = localDevelopmentValue === "true";
+  const logFormat = env.BUNNY_HOLE_LOG_FORMAT ?? "json";
+  if (logFormat !== "json" && logFormat !== "pretty") {
+    throw new ProtocolError("BUNNY_HOLE_LOG_FORMAT must be json or pretty");
+  }
   const rawTunnels = env.BUNNY_HOLE_TUNNELS;
   if (!rawTunnels) throw new ProtocolError("BUNNY_HOLE_TUNNELS is required");
   if (rawTunnels.length > 8 * 1024 * 1024) {
@@ -46,7 +53,9 @@ export function loadRelayConfig(
   const hostnameToTunnel = new Map<string, string>();
   for (const candidate of parsed) {
     if (!isRecord(candidate)) throw new ProtocolError("invalid tunnel configuration");
-    if (!hasOnlyKeys(candidate, ["id", "secret", "hostnames"])) {
+    if (
+      Object.keys(candidate).some((key) => !["id", "secret", "hostnames"].includes(key))
+    ) {
       throw new ProtocolError("tunnel configuration contains unknown fields");
     }
     const id = candidate.id;
@@ -83,22 +92,6 @@ export function loadRelayConfig(
   };
 }
 
-function parseBoolean(raw: string, name: string): boolean {
-  if (raw === "true") return true;
-  if (raw === "false") return false;
-  throw new ProtocolError(`${name} must be true or false`);
-}
-
-function parseLogFormat(raw: string): "json" | "pretty" {
-  if (raw === "json" || raw === "pretty") return raw;
-  throw new ProtocolError("BUNNY_HOLE_LOG_FORMAT must be json or pretty");
-}
-
-function hasOnlyKeys(value: Record<string, unknown>, allowed: string[]): boolean {
-  const keys = new Set(allowed);
-  return Object.keys(value).every((key) => keys.has(key));
-}
-
 function readRelayEnv(): Record<string, string | undefined> {
   return Object.fromEntries([
     "PORT",
@@ -122,19 +115,6 @@ export function redactedConfig(config: RelayConfig): Record<string, unknown> {
       secret: "[REDACTED]",
     })),
   };
-}
-
-function parseInteger(
-  raw: string,
-  name: string,
-  minimum: number,
-  maximum: number,
-): number {
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < minimum || value > maximum) {
-    throw new ProtocolError(`${name} must be an integer from ${minimum} to ${maximum}`);
-  }
-  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -493,10 +493,6 @@ export function calculateBackoffDelay(
   return minimum + Math.floor(sample * (maximum - minimum + 1));
 }
 
-export function markAuthenticatedForTest(connector: Connector): void {
-  (connector as unknown as { authenticated: boolean }).authenticated = true;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

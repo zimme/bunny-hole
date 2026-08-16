@@ -30,7 +30,10 @@ const checksums: string[] = [];
 for (const [, filename] of targets) {
   const bytes = await Deno.readFile(`${outputDirectory}/${filename}`);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  checksums.push(`${toHex(new Uint8Array(digest))}  ${filename}`);
+  const checksum = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  checksums.push(`${checksum}  ${filename}`);
 }
 await Deno.writeTextFile(
   `${outputDirectory}/SHA256SUMS`,
@@ -39,7 +42,3 @@ await Deno.writeTextFile(
 console.log(
   `built Bunny Hole ${await readProductVersion()} for ${targets.length} targets`,
 );
-
-function toHex(bytes: Uint8Array): string {
-  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}

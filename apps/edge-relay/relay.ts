@@ -98,13 +98,29 @@ export function createEdgeRelayHandler(
     requestsSeen++;
     const url = new URL(request.url);
     if (url.pathname === DIAGNOSTIC_PATH) {
-      return await diagnosticResponse(
-        request,
-        options.config,
-        relay,
-        instanceId,
-        startedAt,
-        requestsSeen,
+      if (
+        request.method !== "GET" ||
+        options.config.diagnosticToken === undefined ||
+        !(await timingSafeEqualText(
+          options.config.diagnosticToken,
+          request.headers.get(DIAGNOSTIC_HEADER) ?? "",
+        ))
+      ) {
+        return noStoreJson({ error: "tunnel request failed" }, 404);
+      }
+      return noStoreJson(
+        {
+          product: "Bunny Hole",
+          mode: "edge-script-experiment",
+          instanceId,
+          startedAt,
+          requestsSeen,
+          authenticatedConnectors: relay.sessions.size,
+          pendingRequests: relay.pending.size,
+          configuredTunnels: options.config.relay.tunnels.size,
+        },
+        200,
+        { [INSTANCE_HEADER]: instanceId },
       );
     }
 
@@ -124,40 +140,6 @@ export function createEdgeRelayHandler(
       headers,
     });
   };
-}
-
-async function diagnosticResponse(
-  request: Request,
-  config: EdgeRelayConfig,
-  relay: RelayRuntime,
-  instanceId: string,
-  startedAt: string,
-  requestsSeen: number,
-): Promise<Response> {
-  if (
-    request.method !== "GET" ||
-    config.diagnosticToken === undefined ||
-    !(await timingSafeEqualText(
-      config.diagnosticToken,
-      request.headers.get(DIAGNOSTIC_HEADER) ?? "",
-    ))
-  ) {
-    return noStoreJson({ error: "tunnel request failed" }, 404);
-  }
-  return noStoreJson(
-    {
-      product: "Bunny Hole",
-      mode: "edge-script-experiment",
-      instanceId,
-      startedAt,
-      requestsSeen,
-      authenticatedConnectors: relay.sessions.size,
-      pendingRequests: relay.pending.size,
-      configuredTunnels: config.relay.tunnels.size,
-    },
-    200,
-    { [INSTANCE_HEADER]: instanceId },
-  );
 }
 
 function noStoreJson(

@@ -33,7 +33,12 @@ export function validateConnectorOptions(
   options: ConnectorOptions,
 ): ConnectorRuntimeConfig {
   const localDevelopment = options.localDevelopment ?? false;
-  const relayUrl = toUrl(options.relayUrl, "relay URL");
+  let relayUrl: URL;
+  try {
+    relayUrl = new URL(options.relayUrl);
+  } catch {
+    throw new ProtocolError("invalid relay URL");
+  }
   if (
     !["wss:", ...(localDevelopment ? ["ws:"] : [])].includes(relayUrl.protocol) ||
     relayUrl.username || relayUrl.password || relayUrl.pathname !== "/" ||
@@ -78,11 +83,3 @@ const NULL_LOGGER: ConnectorLogger = {
   warn: () => undefined,
   error: () => undefined,
 };
-
-function toUrl(value: string | URL, name: string): URL {
-  try {
-    return new URL(value);
-  } catch {
-    throw new ProtocolError(`invalid ${name}`);
-  }
-}

@@ -296,10 +296,10 @@ export class Relay {
       headers.set("cache-control", "no-store");
       const stream = new ReadableStream<Uint8Array>({
         start: (controller) => pending.controller = controller,
-        cancel: () => this.cancelPending(pending),
+        cancel: () => this.failPending(pending, 502, true, "cancelled"),
       });
       pending.response.resolve(
-        new Response(requestMayHaveNoBody(start.status) ? null : stream, {
+        new Response([204, 205, 304].includes(start.status) ? null : stream, {
           status: start.status,
           headers,
         }),
@@ -370,13 +370,18 @@ export class Relay {
       responseStarted: false,
       bodyBytes: 0,
       sendAbort: new AbortController(),
-      timer: setTimeout(() => this.failPendingById(id, 504), LIMITS.requestTimeoutMs),
+      timer: setTimeout(() => {
+        const timedOut = this.pending.get(id);
+        if (timedOut) this.failPending(timedOut, 504);
+      }, LIMITS.requestTimeoutMs),
     };
     this.pending.set(id, pending);
     session.requests.add(id);
-    void info?.completed?.catch(() => this.cancelPending(pending));
+    void info?.completed?.catch(() =>
+      this.failPending(pending, 502, true, "cancelled")
+    );
     try {
-      const remoteAddress = getRemoteAddress(info);
+      const remoteAddress = info?.remoteAddress ?? info?.remoteAddr?.hostname ?? "";
       const start = {
         method: request.method,
         path: new URL(request.url).pathname + new URL(request.url).search,
@@ -459,12 +464,6 @@ export class Relay {
     }).finally(() => session.heartbeatSending = false);
   }
 
-  private async sendCancel(session: ConnectorSession, id: string): Promise<void> {
-    if (session.socket.readyState === WebSocket.OPEN) {
-      await sendFrame(session.socket, encodeFrame(FrameType.cancel, id));
-    }
-  }
-
   private cleanupSession(session: ConnectorSession, status: number): void {
     session.closed = true;
     this.connecting.delete(session);
@@ -478,11 +477,6 @@ export class Relay {
       const pending = this.pending.get(id);
       if (pending) this.failPending(pending, status, false);
     }
-  }
-
-  private failPendingById(id: string, status: number): void {
-    const pending = this.pending.get(id);
-    if (pending) this.failPending(pending, status);
   }
 
   private failPending(
@@ -503,18 +497,17 @@ export class Relay {
     } else {
       pending.response.resolve(publicError(status));
     }
-    if (notifyConnector) this.rememberCancellation(pending);
-    if (notifyConnector) this.notifyConnectorOfCancellation(pending);
+    if (notifyConnector) {
+      this.rememberCancellation(pending);
+      const session = this.sessions.get(pending.tunnelId);
+      if (session?.socket.readyState === WebSocket.OPEN) {
+        void sendFrame(
+          session.socket,
+          encodeFrame(FrameType.cancel, pending.id),
+        ).catch(() => {});
+      }
+    }
     this.finishPending(pending);
-  }
-
-  private cancelPending(pending: PendingRequest): void {
-    this.failPending(pending, 502, true, "cancelled");
-  }
-
-  private notifyConnectorOfCancellation(pending: PendingRequest): void {
-    const session = this.sessions.get(pending.tunnelId);
-    if (session) void this.sendCancel(session, pending.id).catch(() => {});
   }
 
   private finishPending(pending: PendingRequest): void {
@@ -584,19 +577,11 @@ export class Relay {
   }
 }
 
-function getRemoteAddress(info?: RelayRequestInfo): string {
-  return info?.remoteAddress ?? info?.remoteAddr?.hostname ?? "";
-}
-
 function defaultWebSocketUpgrader(
   request: Request,
   protocol: string,
 ): { socket: WebSocket; response: Response } {
   return Deno.upgradeWebSocket(request, { protocol });
-}
-
-function requestMayHaveNoBody(status: number): boolean {
-  return status === 101 || status === 204 || status === 205 || status === 304;
 }
 
 function publicError(status: number): Response {

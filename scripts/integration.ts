@@ -73,7 +73,10 @@ try {
     body: binary,
   });
   const binaryResult = new Uint8Array(await binaryResponse.arrayBuffer());
-  if (!equalBytes(binary, binaryResult)) throw new Error("binary body was corrupted");
+  if (
+    binary.length !== binaryResult.length ||
+    !binary.every((byte, index) => byte === binaryResult[index])
+  ) throw new Error("binary body was corrupted");
 
   const filtered = await fetch(`${relayUrl}/response-headers`, {
     headers: { host: "tunnel.test" },
@@ -109,7 +112,11 @@ try {
     throw new Error("multiplexed requests crossed response bodies");
   }
 
-  if (await rawStatus("unknown.test") !== 404) {
+  if (
+    await rawHttpStatus(
+      "GET / HTTP/1.1\r\nHost: unknown.test\r\nConnection: close\r\n\r\n",
+    ) !== 404
+  ) {
     throw new Error("unknown hostname was routed");
   }
 
@@ -155,17 +162,6 @@ async function waitFor(
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error("integration service did not become ready");
-}
-
-function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((byte, index) => byte === right[index]);
-}
-
-async function rawStatus(hostname: string): Promise<number> {
-  return await rawHttpStatus(
-    `GET / HTTP/1.1\r\nHost: ${hostname}\r\nConnection: close\r\n\r\n`,
-  );
 }
 
 async function rawHttpStatus(request: string): Promise<number> {
