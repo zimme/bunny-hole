@@ -7,13 +7,15 @@ These steps deliberately keep all secret-bearing actions human-controlled.
 Use a ComVer release image and record its digest:
 
 ```sh
-docker pull ghcr.io/zimme/bunny-hole-relay:1.0.0
+BUNNY_HOLE_RELEASE=REPLACE_WITH_COMVER
+docker pull "ghcr.io/zimme/bunny-hole-relay:${BUNNY_HOLE_RELEASE}"
 docker inspect --format='{{index .RepoDigests 0}}' \
-  ghcr.io/zimme/bunny-hole-relay:1.0.0
+  "ghcr.io/zimme/bunny-hole-relay:${BUNNY_HOLE_RELEASE}"
 ```
 
-Releases also publish an SPDX SBOM and GitHub provenance attestation. Do not deploy
-`latest` or a branch tag.
+Replace `REPLACE_WITH_COMVER` with an existing immutable `MAJOR.MINOR.0` release from
+GitHub. Releases also publish an SPDX SBOM and GitHub provenance attestation. Do not
+deploy `latest` or a branch tag.
 
 ## 2. Create the Magic Container app
 

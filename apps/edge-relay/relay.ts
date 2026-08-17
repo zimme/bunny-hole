@@ -159,8 +159,8 @@ function noStoreJson(
 
 function withInstance(logger: Logger, instanceId: string): Logger {
   const fields = (input: Record<string, unknown> = {}) => ({
-    edgeInstanceId: instanceId,
     ...input,
+    edgeInstanceId: instanceId,
   });
   return {
     info: (event, input) => logger.info(event, fields(input)),
