@@ -1,10 +1,7 @@
 {
   "name": "@zimme/bunny-hole",
   "version": "0.1.0",
-  "exports": {
-    ".": "./apps/connector/mod.ts",
-    "./edge-relay": "./apps/edge-relay/mod.ts"
-  },
+  "exports": "./apps/connector/mod.ts",
   "license": "MIT",
   "publish": {
     "include": [
@@ -13,11 +10,6 @@
       "apps/connector/connector.ts",
       "apps/connector/library.ts",
       "apps/connector/mod.ts",
-      "apps/edge-relay/mod.ts",
-      "apps/edge-relay/relay.ts",
-      "apps/relay/config.ts",
-      "apps/relay/logger.ts",
-      "apps/relay/relay.ts",
       "packages/protocol"
     ]
   },

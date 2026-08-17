@@ -86,5 +86,6 @@ runtime for each target. `deno task package:build` creates the npm tarball. The 
 release workflow publishes both OCI images, native binaries, JSR source, and the npm
 library at one matching ComVer version. After publishing, it reruns the Compose topology
 with the exact relay and connector image digests before creating the GitHub release. The
-library contains the connector and the experimental `./edge-relay` export; the generated
-Edge Script bundle is a validation artifact rather than a separately versioned package.
+library contains only the supported connector API. The experimental Edge Script adapter
+remains source-only in this repository, and its generated bundle is a validation
+artifact rather than a package export or separately versioned package.

@@ -157,6 +157,72 @@ Deno.test("connector cleans up an origin failure before request upload ends", as
   assertEquals(sent.map((frame) => frame.type), [FrameType.cancel]);
 });
 
+Deno.test("relay cancellation aborts an origin response send under backpressure", async () => {
+  const sendStarted = Promise.withResolvers<void>();
+  const sent: Frame[] = [];
+  const socket = {
+    get bufferedAmount() {
+      sendStarted.resolve();
+      return LIMITS.maxBufferedAmount + 1;
+    },
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(decodeFrame(frame));
+    },
+  };
+  const connector = new Connector({
+    relayUrl: new URL("ws://127.0.0.1:8080"),
+    tunnelId: "response-cancel-test",
+    secret: "unused",
+    origin: new URL("http://127.0.0.1:3000"),
+  }, { info() {}, warn() {}, error() {} });
+  const request = {
+    id: "abcdefghijklmnop",
+    abort: new AbortController(),
+    ended: true,
+    responseDone: false,
+    requestBytes: 0,
+    timeout: setTimeout(() => {}, 60_000),
+  };
+  const internal = connector as unknown as {
+    socket: typeof socket;
+    requests: Map<string, typeof request>;
+    proxyOrigin(
+      context: typeof request,
+      target: URL,
+      method: string,
+      headers: { name: string; value: string }[],
+    ): Promise<void>;
+    handleFrame(frame: Frame): Promise<void>;
+  };
+  internal.socket = socket;
+  internal.requests.set(request.id, request);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(new Response("origin response"));
+  try {
+    const proxying = internal.proxyOrigin(
+      request,
+      new URL("http://127.0.0.1:3000/cancelled"),
+      "GET",
+      [],
+    );
+    await sendStarted.promise;
+    await internal.handleFrame({
+      type: FrameType.cancel,
+      id: request.id,
+      payload: new Uint8Array(),
+    });
+    await proxying;
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assertEquals(request.abort.signal.aborted, true);
+  assertEquals(request.responseDone, true);
+  assertEquals(internal.requests.has(request.id), false);
+  assertEquals(sent, []);
+});
+
 Deno.test("connector splits a large origin stream chunk into bounded response frames", async () => {
   const sent: Frame[] = [];
   const socket = {

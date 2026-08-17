@@ -32,9 +32,11 @@ deno task devcontainer:exec -- deno task edge:build
 ```
 
 The deployable file is `dist/bunny-hole-edge-relay.js`. It imports Bunny's runtime
-`@bunny.net/edgescript-sdk` and bundles all Bunny Hole code. The reusable package export
-is `@zimme/bunny-hole/edge-relay`, matching the package-and-template pattern in the
-local Bunny Edge Scripts repository.
+`@bunny.net/edgescript-sdk` and bundles all Bunny Hole code. The adapter is deliberately
+not exported from the published `@zimme/bunny-hole` package: an unsupported experiment
+must not become a compatibility promise or invite production use. Run it from this
+repository until the affinity requirement is proven and the adapter can move to the
+Bunny Edge Scripts repository.
 
 ## Human-controlled setup
 

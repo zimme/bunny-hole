@@ -12,7 +12,7 @@ ComVer requires a precise public API because compatibility is measured against i
 supported use cases. Bunny Hole's public API is:
 
 - the `@zimme/bunny-hole` root export (`createConnector`, `VERSION`, and its exported
-  types) and the exported `./edge-relay` experiment;
+  types);
 - connector CLI commands, flags, exit codes, environment variables, and configuration
   file behavior documented in [Configuration](configuration.md);
 - relay and connector OCI entrypoints, environment variables, health endpoints, and
@@ -22,10 +22,10 @@ supported use cases. Bunny Hole's public API is:
 - published artifact names and the security guarantees documented in
   [Security policy](../SECURITY.md) and the [Threat model](threat-model.md).
 
-Documented experimental limitations are part of that contract. Exporting the Edge Script
-experiment does not exempt its supported API from ComVer. Files not reachable through a
-package export, repository scripts, tests, fixtures, and unexported implementation
-details are not public API.
+Files not reachable through a package export, repository scripts, tests, fixtures, and
+unexported implementation details are not public API. In particular, the in-tree Edge
+Script affinity experiment is deliberately not a published package API or supported
+deployment contract.
 
 Compatibility determines the release line:
 

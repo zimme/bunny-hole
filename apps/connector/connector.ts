@@ -357,14 +357,17 @@ export class Connector {
       };
       if (body) init.duplex = "half";
       const response = await fetch(target, init);
-      await this.send(encodeFrame(
-        FrameType.responseStart,
-        context.id,
-        encodeControl({
-          status: response.status,
-          headers: filterOriginResponseHeaders(response.headers),
-        }),
-      ));
+      await this.send(
+        encodeFrame(
+          FrameType.responseStart,
+          context.id,
+          encodeControl({
+            status: response.status,
+            headers: filterOriginResponseHeaders(response.headers),
+          }),
+        ),
+        context.abort.signal,
+      );
       let bodyBytes = 0;
       const responseBodyAllowed = method !== "HEAD" &&
         ![204, 205, 304].includes(response.status);
@@ -375,13 +378,19 @@ export class Connector {
             throw new ProtocolError("origin response exceeds limit", 1009);
           }
           for (const payload of framePayloadChunks(chunk)) {
-            await this.send(encodeFrame(FrameType.responseBody, context.id, payload));
+            await this.send(
+              encodeFrame(FrameType.responseBody, context.id, payload),
+              context.abort.signal,
+            );
           }
         }
       } else {
         await response.body?.cancel();
       }
-      await this.send(encodeFrame(FrameType.responseEnd, context.id));
+      await this.send(
+        encodeFrame(FrameType.responseEnd, context.id),
+        context.abort.signal,
+      );
     } catch (error) {
       const notifyRelay = !context.abort.signal.aborted;
       if (this.requests.get(context.id) === context) {
@@ -413,9 +422,9 @@ export class Connector {
     }
   }
 
-  private async send(frame: Uint8Array): Promise<void> {
+  private async send(frame: Uint8Array, signal?: AbortSignal): Promise<void> {
     if (!this.socket) throw new ProtocolError("connection is not open", 1001);
-    await sendFrame(this.socket, frame);
+    await sendFrame(this.socket, frame, signal);
   }
 
   private async timeoutRequest(id: string): Promise<void> {

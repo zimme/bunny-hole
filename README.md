@@ -20,7 +20,8 @@ Database, inbound firewall changes, and public IP discovery are not used.
 > [!IMPORTANT]
 > Version 0.1 is intentionally one relay instance in one Magic Container region. It does
 > not support multiple replicas, public WebSocket proxying, TCP, UDP, or end-to-end
-> HTTP/2.
+> HTTP/2. Each tunneled request and response body is limited to 10 MiB; Bunny Hole is
+> not intended for large uploads in this release.
 
 ## Quick start
 
@@ -63,7 +64,7 @@ Each ComVer release publishes the same connector implementation in four forms:
   or server.
 - Native connector executables for Linux, macOS, and Windows in the GitHub release.
 - `@zimme/bunny-hole` on JSR and npm for embedding the connector lifecycle in a Deno or
-  Node.js application, and for importing the experimental Edge Script handler.
+  Node.js application.
 
 The npm artifact is a library, not a CLI wrapper. Use the native executable or connector
 OCI image for daemon operation. An embedded connector still connects only to its fixed
@@ -86,9 +87,10 @@ Node.js 22.14 or newer consumers can install `@zimme/bunny-hole` from npm and im
 same API. Applications are responsible for loading the secret from protected input and
 shutting down with an `AbortSignal` or `connector.stop()`.
 
-The package also exports `@zimme/bunny-hole/edge-relay`. That handler is for the
-documented [Edge Script affinity experiment](docs/edge-script-experiment.md), not a
-production availability claim. The repository builds a single deployable script with:
+The experimental Edge Script adapter is deliberately not part of the published package
+API. It remains in the repository solely for the documented
+[affinity experiment](docs/edge-script-experiment.md), and the repository builds its
+single deployable script with:
 
 ```sh
 deno task edge:build

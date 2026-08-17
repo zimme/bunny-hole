@@ -54,6 +54,14 @@ requests to connected origins. Bunny Hole supplies transport, not viewer authent
 protect sensitive origins with their own authorization. One instance is an availability
 and state-loss boundary.
 
+The relay configuration contains the shared connector secrets. Read-only disclosure of
+that configuration is therefore sufficient to impersonate a connector and trigger the
+newest-authenticated-wins replacement policy. Limit dashboard and environment access and
+rotate a disclosed secret. A future negotiated protocol version may instead keep a
+signing key only on the connector and configure its public verification key on the
+relay. That would reduce configuration-disclosure risk, but it would not protect traffic
+from a relay process compromise and is not required to make challenge-response safe.
+
 The Edge Script experiment is not a supported deployment until multi-location and load
 testing plus a Bunny platform guarantee establish its state-routing semantics. Magic
 Container rolling updates can temporarily overlap relay pods; maintenance-mode 503s are
