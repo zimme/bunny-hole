@@ -12,11 +12,12 @@ export const LIMITS = Object.freeze({
   maxCancellationTombstones: 128,
   maxCorrelationIdLength: 43,
   requestTimeoutMs: 30_000,
-  originTimeoutMs: 25_000,
+  originTimeoutMs: 35_000,
   authenticationTimeoutMs: 5_000,
   heartbeatIntervalMs: 20_000,
   heartbeatTimeoutMs: 45_000,
   maxBufferedAmount: 1_048_576,
+  maxQueuedMessageBytes: 2_097_152,
   backpressureTimeoutMs: 5_000,
 });
 
@@ -33,7 +34,6 @@ export const FrameType = Object.freeze({
   cancel: 30,
   ping: 40,
   pong: 41,
-  error: 255,
 });
 
 export type FrameTypeValue = typeof FrameType[keyof typeof FrameType];
@@ -45,7 +45,6 @@ const connectionFrameTypes = new Set<FrameTypeValue>([
   FrameType.authenticated,
   FrameType.ping,
   FrameType.pong,
-  FrameType.error,
 ]);
 const emptyPayloadFrameTypes = new Set<FrameTypeValue>([
   FrameType.requestEnd,
@@ -172,9 +171,11 @@ export function parseRequestStart(value: unknown): RequestStart {
   const path = value.path;
   if (
     typeof method !== "string" || !/^[A-Z]{1,16}$/.test(method) ||
+    ["CONNECT", "TRACE", "TRACK"].includes(method) ||
     typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") ||
     path.length > 8_192 ||
-    path.includes("\0") || path.includes("\r") || path.includes("\n")
+    path.includes("\\") || path.includes("\0") || path.includes("\r") ||
+    path.includes("\n")
   ) {
     throw new ProtocolError("invalid request target");
   }

@@ -110,6 +110,16 @@ jobs:
             test "$(docker inspect --format '{{.Config.User}}' "$image")" != "root"
           done
           docker run --rm "$CONNECTOR_IMAGE" --version
+      - name: Exercise the exact published images end to end
+        uses: devcontainers/ci@v0.3
+        with:
+          configFile: .devcontainer/devcontainer.json
+          cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
+          push: never
+          runCmd: >-
+            BUNNY_HOLE_RELAY_IMAGE=ghcr.io/${{ github.repository }}-relay@${{ steps.relay.outputs.digest }}
+            BUNNY_HOLE_CONNECTOR_IMAGE=ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
+            CI=true deno task integration
       - name: Generate relay SPDX SBOM
         uses: anchore/sbom-action@v0
         with:

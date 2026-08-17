@@ -28,6 +28,24 @@ jobs:
         run: |
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.0$ ]] || exit 1
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the version tag resolves to the supplied digest
+        env:
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ inputs.digest }}
+          IMAGE_NAME: ghcr.io/${{ github.repository }}-relay
+        run: |
+          actual="$(docker buildx imagetools inspect \
+            "${IMAGE_NAME}:${VERSION}" --format '{{.Manifest.Digest}}')"
+          test "$actual" = "$DIGEST" || {
+            echo "The release tag does not resolve to the supplied digest" >&2
+            exit 1
+          }
+          docker buildx imagetools inspect "${IMAGE_NAME}@${DIGEST}" >/dev/null
       - name: Update the configured Magic Container
         env:
           BUNNYNET_API_KEY: ${{ secrets.BUNNYNET_API_KEY }}

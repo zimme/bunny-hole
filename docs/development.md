@@ -84,6 +84,7 @@ x86-64/ARM64, and Windows x86-64 and writes SHA-256 checksums. It is intentional
 release task rather than part of every validation because Deno must download a separate
 runtime for each target. `deno task package:build` creates the npm tarball. The tag-only
 release workflow publishes both OCI images, native binaries, JSR source, and the npm
-library at one matching ComVer version. The library contains the connector and the
-experimental `./edge-relay` export; the generated Edge Script bundle is a validation
-artifact rather than a separately versioned package.
+library at one matching ComVer version. After publishing, it reruns the Compose topology
+with the exact relay and connector image digests before creating the GitHub release. The
+library contains the connector and the experimental `./edge-relay` export; the generated
+Edge Script bundle is a validation artifact rather than a separately versioned package.

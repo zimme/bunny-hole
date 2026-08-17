@@ -74,28 +74,40 @@ as 4008.
 | Correlation ID                            | 18 random bytes, 24 base64url characters |
 | Authentication                            |                                      5 s |
 | Public request                            |                                     30 s |
-| Origin request                            |                                     25 s |
+| Origin request                            |                                     35 s |
 | Heartbeat send/dead                       |                              20 s / 45 s |
 | WebSocket buffered amount high-water mark |                                    1 MiB |
+| Queued inbound WebSocket messages         |                                    2 MiB |
 | Backpressure wait                         |                                      5 s |
+
+Request and response start messages must satisfy both the decoded header-block limit and
+the smaller encoded control-payload limit; JSON escaping and the request path count
+toward the latter. The relay returns 431 instead of forwarding an oversized public
+control message.
 
 Senders pause while `bufferedAmount` exceeds the high-water mark, but fail the send if
 pressure does not fall within five seconds. This bound also applies to authentication
-and heartbeat control frames. Deno request and response streams propagate backpressure
-around bounded frames. A stream chunk larger than the frame-payload limit is split into
+and heartbeat control frames. Receivers serialize message handling and close a peer
+whose queued messages exceed the connection-level limit. Per-request body limits bound
+each stream. A stream chunk larger than the frame-payload limit is split into
 consecutive body frames without changing its bytes. Limits are hard failures, not
-advisory configuration.
+advisory configuration. The connector's origin timeout is deliberately longer than the
+relay's public request timeout, so the relay owns the normal 504 response and its
+cancellation stops the origin; the connector timeout remains a fail-safe if that
+cancellation is lost.
 
 ## HTTP behavior
 
-- Methods must be uppercase tokens. Paths must begin with one `/`; scheme-relative
-  targets, control characters, and targets over 8 KiB are rejected.
+- Methods must be uppercase tokens. Fetch-forbidden `CONNECT`, `TRACE`, and `TRACK` are
+  rejected. Paths must begin with one `/`; scheme-relative targets, backslashes, control
+  characters, and targets over 8 KiB are rejected.
 - GET and HEAD requests with bodies are rejected at the relay instead of risking an
   out-of-order stream at the connector. Origin response statuses must be final HTTP
   statuses from 200 through 599.
 - Header names and values use platform parsing plus explicit token/injection validation.
-  Deno combines duplicate request headers according to Fetch semantics; no trailers are
-  forwarded.
+  Deno combines duplicate request headers according to Fetch semantics; separate
+  `Set-Cookie` response fields remain separate. No trailers are forwarded.
+- `HEAD` responses and statuses 204, 205, and 304 never carry protocol body frames.
 - Hop-by-hop headers (including the non-standard `Proxy-Connection`) and headers named
   by `Connection` are removed both ways. Internal `x-bunny-hole-*` fields and spoofed
   forwarding fields are removed.
@@ -108,3 +120,6 @@ advisory configuration.
   must also have caching disabled for all tunnel paths.
 - WebSocket upgrades, arbitrary TCP/UDP, HTTP trailers, and end-to-end HTTP/2 are
   unsupported.
+- `/healthz`, `/readyz`, and `/_bunny/connect` are reserved relay control paths and are
+  never forwarded to an origin. The experimental Edge Script additionally reserves
+  `/_bunny/edge/diagnostics`.

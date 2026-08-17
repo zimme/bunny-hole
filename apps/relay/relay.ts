@@ -8,6 +8,7 @@ import {
   FrameType,
   LIMITS,
   pairsToHeaders,
+  parseRequestStart,
   parseResponseStart,
   PROTOCOL_VERSION,
   ProtocolError,
@@ -37,6 +38,7 @@ interface ConnectorSession {
   authTimer?: ReturnType<typeof setTimeout>;
   heartbeatTimer?: ReturnType<typeof setInterval>;
   heartbeatSending: boolean;
+  queuedMessageBytes: number;
   messageQueue: Promise<void>;
   closed: boolean;
   cancelled: Map<string, CancelledRequest>;
@@ -44,6 +46,7 @@ interface ConnectorSession {
 
 interface CancelledRequest {
   responseStarted: boolean;
+  responseBodyAllowed: boolean;
   bodyBytes: number;
   expiresAt: number;
 }
@@ -53,7 +56,9 @@ interface PendingRequest {
   tunnelId: string;
   response: PromiseWithResolvers<Response>;
   controller?: ReadableStreamDefaultController<Uint8Array>;
+  requestStarted: boolean;
   responseStarted: boolean;
+  responseBodyAllowed: boolean;
   bodyBytes: number;
   timer: ReturnType<typeof setTimeout>;
   sendAbort: AbortController;
@@ -103,7 +108,7 @@ export class Relay {
       return this.handleConnector(request, url);
     }
     if (!this.accepting) return publicError(503);
-    return await this.handlePublic(request, info);
+    return await this.handlePublic(request, url, info);
   }
 
   shutdown(): void {
@@ -164,6 +169,7 @@ export class Relay {
       lastSeen: this.now(),
       requests: new Set(),
       heartbeatSending: false,
+      queuedMessageBytes: 0,
       messageQueue: Promise.resolve(),
       closed: false,
       cancelled: new Map(),
@@ -192,11 +198,23 @@ export class Relay {
       });
     };
     socket.onmessage = (event) => {
+      if (session.closed) return;
+      const messageBytes = event.data instanceof ArrayBuffer
+        ? event.data.byteLength
+        : typeof event.data === "string"
+        ? event.data.length * 2
+        : LIMITS.maxQueuedMessageBytes + 1;
+      if (session.queuedMessageBytes + messageBytes > LIMITS.maxQueuedMessageBytes) {
+        socket.close(toWebSocketCloseCode(1009), "message queue limit");
+        this.cleanupSession(session, 502);
+        return;
+      }
+      session.queuedMessageBytes += messageBytes;
       session.messageQueue = session.messageQueue.then(async () => {
         if (!session.closed) {
           await this.onConnectorMessage(session, authenticationSecret, event);
         }
-      });
+      }).finally(() => session.queuedMessageBytes -= messageBytes);
     };
     socket.onerror = () => this.logger.warn("connector_socket_error", { tunnelId });
     socket.onclose = () => {
@@ -299,14 +317,18 @@ export class Relay {
       if (pending.responseStarted) throw new ProtocolError("duplicate response start");
       const start = parseResponseStart(decodeControl(frame.payload));
       pending.responseStarted = true;
+      pending.responseBodyAllowed = pending.responseBodyAllowed &&
+        ![204, 205, 304].includes(start.status);
       const headers = pairsToHeaders(start.headers);
       headers.set("cache-control", "no-store");
-      const stream = new ReadableStream<Uint8Array>({
-        start: (controller) => pending.controller = controller,
-        cancel: () => this.failPending(pending, 502, true, "cancelled"),
-      });
+      const stream = pending.responseBodyAllowed
+        ? new ReadableStream<Uint8Array>({
+          start: (controller) => pending.controller = controller,
+          cancel: () => this.failPending(pending, 502, true, "cancelled"),
+        })
+        : null;
       pending.response.resolve(
-        new Response([204, 205, 304].includes(start.status) ? null : stream, {
+        new Response(stream, {
           status: start.status,
           headers,
         }),
@@ -314,8 +336,11 @@ export class Relay {
       return;
     }
     if (frame.type === FrameType.responseBody) {
-      if (!pending.responseStarted || !pending.controller) {
+      if (!pending.responseStarted) {
         throw new ProtocolError("response body before response start");
+      }
+      if (!pending.responseBodyAllowed || !pending.controller) {
+        throw new ProtocolError("response body is not allowed");
       }
       pending.bodyBytes += frame.payload.length;
       if (pending.bodyBytes > LIMITS.maxBodyBytes) {
@@ -325,10 +350,10 @@ export class Relay {
       return;
     }
     if (frame.type === FrameType.responseEnd) {
-      if (!pending.responseStarted || !pending.controller) {
+      if (!pending.responseStarted) {
         throw new ProtocolError("response end before response start");
       }
-      pending.controller.close();
+      pending.controller?.close();
       this.finishPending(pending);
       return;
     }
@@ -341,6 +366,7 @@ export class Relay {
 
   private async handlePublic(
     request: Request,
+    url: URL,
     info?: RelayRequestInfo,
   ): Promise<Response> {
     let hostname: string;
@@ -368,13 +394,30 @@ export class Relay {
       (request.body !== null || Number(contentLength ?? "0") > 0)
     ) return publicError(400);
 
+    let startPayload: Uint8Array;
+    try {
+      const remoteAddress = info?.remoteAddress ?? info?.remoteAddr?.hostname ?? "";
+      startPayload = encodeControl(parseRequestStart({
+        method: request.method,
+        path: url.pathname + url.search,
+        headers: filterPublicRequestHeaders(request.headers, hostname, remoteAddress),
+        remoteAddress,
+      }));
+    } catch (error) {
+      return publicError(
+        error instanceof ProtocolError && error.closeCode === 1009 ? 431 : 400,
+      );
+    }
+
     const id = createCorrelationId();
     const response = Promise.withResolvers<Response>();
     const pending: PendingRequest = {
       id,
       tunnelId,
       response,
+      requestStarted: false,
       responseStarted: false,
+      responseBodyAllowed: request.method !== "HEAD",
       bodyBytes: 0,
       sendAbort: new AbortController(),
       timer: setTimeout(() => {
@@ -384,21 +427,15 @@ export class Relay {
     };
     this.pending.set(id, pending);
     session.requests.add(id);
-    void info?.completed?.catch(() =>
-      this.failPending(pending, 502, true, "cancelled")
-    );
     try {
-      const remoteAddress = info?.remoteAddress ?? info?.remoteAddr?.hostname ?? "";
-      const start = {
-        method: request.method,
-        path: new URL(request.url).pathname + new URL(request.url).search,
-        headers: filterPublicRequestHeaders(request.headers, hostname, remoteAddress),
-        remoteAddress,
-      };
       await sendFrame(
         session.socket,
-        encodeFrame(FrameType.requestStart, id, encodeControl(start)),
+        encodeFrame(FrameType.requestStart, id, startPayload),
         pending.sendAbort.signal,
+      );
+      pending.requestStarted = true;
+      void info?.completed?.catch(() =>
+        this.failPending(pending, 502, true, "cancelled")
       );
       let bodyBytes = 0;
       if (request.body) {
@@ -504,7 +541,7 @@ export class Relay {
     } else {
       pending.response.resolve(publicError(status));
     }
-    if (notifyConnector) {
+    if (notifyConnector && pending.requestStarted) {
       this.rememberCancellation(pending);
       const session = this.sessions.get(pending.tunnelId);
       if (session?.socket.readyState === WebSocket.OPEN) {
@@ -529,6 +566,7 @@ export class Relay {
     this.pruneCancellations(session);
     session.cancelled.set(pending.id, {
       responseStarted: pending.responseStarted,
+      responseBodyAllowed: pending.responseBodyAllowed,
       bodyBytes: pending.bodyBytes,
       expiresAt: this.now() + LIMITS.originTimeoutMs,
     });
@@ -552,13 +590,18 @@ export class Relay {
       if (cancelled.responseStarted) {
         throw new ProtocolError("duplicate response start");
       }
-      parseResponseStart(decodeControl(frame.payload));
+      const start = parseResponseStart(decodeControl(frame.payload));
       cancelled.responseStarted = true;
+      cancelled.responseBodyAllowed = cancelled.responseBodyAllowed &&
+        ![204, 205, 304].includes(start.status);
       return true;
     }
     if (frame.type === FrameType.responseBody) {
       if (!cancelled.responseStarted) {
         throw new ProtocolError("response body before response start");
+      }
+      if (!cancelled.responseBodyAllowed) {
+        throw new ProtocolError("response body is not allowed");
       }
       cancelled.bodyBytes += frame.payload.length;
       if (cancelled.bodyBytes > LIMITS.maxBodyBytes) {

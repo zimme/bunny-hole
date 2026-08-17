@@ -126,6 +126,12 @@ Deno.test("request and response controls enforce syntax and orderable fields", (
     parseRequestStart({ method: "GET", path: "//evil.example", headers: [] })
   );
   assertThrows(() =>
+    parseRequestStart({ method: "GET", path: "/\\evil.example", headers: [] })
+  );
+  for (const method of ["CONNECT", "TRACE", "TRACK"]) {
+    assertThrows(() => parseRequestStart({ method, path: "/", headers: [] }));
+  }
+  assertThrows(() =>
     parseRequestStart({
       method: "GET",
       path: "/",

@@ -35,7 +35,6 @@ interface OriginRequest {
   id: string;
   controller?: ReadableStreamDefaultController<Uint8Array>;
   abort: AbortController;
-  started: boolean;
   ended: boolean;
   responseDone: boolean;
   requestBytes: number;
@@ -71,7 +70,8 @@ export class Connector {
     if (this.stopping) throw new ProtocolError("connector has been stopped");
     this.running = true;
     let attempt = 0;
-    signal?.addEventListener("abort", () => this.stop(), { once: true });
+    const stop = () => this.stop();
+    signal?.addEventListener("abort", stop, { once: true });
     try {
       while (!this.stopping && !signal?.aborted) {
         try {
@@ -90,6 +90,7 @@ export class Connector {
         await abortableDelay(delay, signal);
       }
     } finally {
+      signal?.removeEventListener("abort", stop);
       this.running = false;
     }
   }
@@ -112,23 +113,55 @@ export class Connector {
     this.authenticated = false;
     this.proofSent = false;
     this.lastSeen = Date.now();
+    this.heartbeatSending = false;
     const completion = Promise.withResolvers<void>();
     let messageQueue = Promise.resolve();
     let closed = false;
     let protocolFailed = false;
+    let queuedMessageBytes = 0;
+    let failureMessage: string | undefined;
     const authTimer = setTimeout(() => {
+      failureMessage = "relay authentication timed out";
       socket.close(toWebSocketCloseCode(1008), "authentication timeout");
-      completion.reject(new Error("relay authentication timed out"));
     }, LIMITS.authenticationTimeoutMs * 2);
-    socket.onopen = () =>
+    socket.onopen = () => {
+      if (socket.protocol !== SUBPROTOCOL) {
+        protocolFailed = true;
+        failureMessage = "relay did not negotiate the tunnel subprotocol";
+        socket.close(toWebSocketCloseCode(1003), "subprotocol required");
+        return;
+      }
       this.logger.info("connector_connected", { tunnelId: this.config.tunnelId });
+    };
     socket.onmessage = (event) => {
+      if (closed || protocolFailed) return;
+      const messageBytes = event.data instanceof ArrayBuffer
+        ? event.data.byteLength
+        : typeof event.data === "string"
+        ? event.data.length * 2
+        : LIMITS.maxQueuedMessageBytes + 1;
+      if (queuedMessageBytes + messageBytes > LIMITS.maxQueuedMessageBytes) {
+        protocolFailed = true;
+        failureMessage = "relay exceeded the message queue limit";
+        socket.close(toWebSocketCloseCode(1009), "message queue limit");
+        return;
+      }
+      queuedMessageBytes += messageBytes;
       messageQueue = messageQueue.then(async () => {
         if (closed || protocolFailed) return;
         try {
+          const wasAuthenticated = this.authenticated;
           await this.onMessage(event);
+          if (!wasAuthenticated && this.authenticated && !closed) {
+            clearTimeout(authTimer);
+            this.heartbeatTimer = setInterval(
+              () => this.checkHeartbeat(socket),
+              LIMITS.heartbeatIntervalMs,
+            );
+          }
         } catch (error) {
           protocolFailed = true;
+          failureMessage = "relay sent invalid protocol traffic";
           this.logger.warn("protocol_error", {
             message: error instanceof Error ? error.message : "protocol error",
           });
@@ -139,7 +172,7 @@ export class Connector {
             "protocol error",
           );
         }
-      });
+      }).finally(() => queuedMessageBytes -= messageBytes);
     };
     socket.onerror = () => {
       // The close event provides the stable reconnect path.
@@ -149,6 +182,7 @@ export class Connector {
       clearTimeout(authTimer);
       if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
+      this.heartbeatSending = false;
       void messageQueue.finally(() => {
         for (const request of this.requests.values()) this.cancelRequest(request);
         this.requests.clear();
@@ -158,27 +192,15 @@ export class Connector {
         else {
           completion.reject(
             new Error(
-              event.code === 4101
-                ? "connector was replaced"
-                : "relay connection closed",
+              failureMessage ??
+                (event.code === 4101
+                  ? "connector was replaced"
+                  : "relay connection closed"),
             ),
           );
         }
       });
     };
-    const waitForAuth = setInterval(() => {
-      if (!this.authenticated) return;
-      clearInterval(waitForAuth);
-      clearTimeout(authTimer);
-      this.heartbeatTimer = setInterval(
-        () => this.checkHeartbeat(socket),
-        LIMITS.heartbeatIntervalMs,
-      );
-    }, 10);
-    void completion.promise.then(
-      () => clearInterval(waitForAuth),
-      () => clearInterval(waitForAuth),
-    );
     return completion.promise;
   }
 
@@ -189,7 +211,10 @@ export class Connector {
     const frame = decodeFrame(event.data);
     this.lastSeen = Date.now();
     if (!this.authenticated) {
-      if (frame.type === FrameType.authenticated && this.proofSent) {
+      if (this.proofSent) {
+        if (frame.type !== FrameType.authenticated || frame.id !== "") {
+          throw new ProtocolError("expected authentication response", 1008);
+        }
         const accepted = decodeControl(frame.payload);
         if (!isRecord(accepted) || accepted.version !== PROTOCOL_VERSION) {
           throw new ProtocolError("invalid authentication response", 1008);
@@ -249,7 +274,6 @@ export class Connector {
       const context: OriginRequest = {
         id: frame.id,
         abort,
-        started: true,
         ended: false,
         responseDone: false,
         requestBytes: 0,
@@ -342,7 +366,9 @@ export class Connector {
         }),
       ));
       let bodyBytes = 0;
-      if (response.body) {
+      const responseBodyAllowed = method !== "HEAD" &&
+        ![204, 205, 304].includes(response.status);
+      if (responseBodyAllowed && response.body) {
         for await (const chunk of response.body) {
           bodyBytes += chunk.length;
           if (bodyBytes > LIMITS.maxBodyBytes) {
@@ -352,6 +378,8 @@ export class Connector {
             await this.send(encodeFrame(FrameType.responseBody, context.id, payload));
           }
         }
+      } else {
+        await response.body?.cancel();
       }
       await this.send(encodeFrame(FrameType.responseEnd, context.id));
     } catch (error) {
@@ -525,10 +553,13 @@ async function abortableDelay(
 ): Promise<void> {
   if (signal?.aborted) return;
   await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal?.addEventListener("abort", () => {
+    const done = () => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
       resolve();
-    }, { once: true });
+    };
+    const timer = setTimeout(done, milliseconds);
+    signal?.addEventListener("abort", done, { once: true });
+    if (signal?.aborted) done();
   });
 }

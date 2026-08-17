@@ -55,10 +55,13 @@ export function filterOriginResponseHeaders(input: Headers): HeaderPair[] {
     const name = rawName.toLowerCase();
     if (
       hopByHop.has(name) || isInternalHeader(name) || connectionTokens.has(name) ||
-      name === "server" || name === "content-length"
+      name === "server" || name === "content-length" || name === "set-cookie"
     ) return;
     output.push({ name, value });
   });
+  for (const value of input.getSetCookie()) {
+    output.push({ name: "set-cookie", value });
+  }
   enforceHeaderLimit(output);
   return output;
 }
@@ -104,7 +107,7 @@ export function validateOrigin(
   ) throw new ProtocolError("origin must not contain credentials or a path");
   const host = origin.hostname.toLowerCase();
   const loopback = host === "localhost" || host === "::1" || host === "[::1]" ||
-    host.startsWith("127.");
+    /^127(?:\.\d{1,3}){3}$/.test(host);
   if (!loopback && !allowPrivateNetwork) {
     throw new ProtocolError(
       "non-loopback origin requires explicit --allow-private-network opt-in",

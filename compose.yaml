@@ -39,6 +39,7 @@ services:
     working_dir: /workspaces/bunny-hole
 
   relay:
+    image: "${BUNNY_HOLE_RELAY_IMAGE:-bunny-hole-relay:local}"
     build:
       context: .
       target: relay-runtime
@@ -64,6 +65,7 @@ services:
       retries: 20
 
   origin:
+    image: bunny-hole-origin-fixture:local
     build:
       context: .
       target: fixture-runtime
@@ -76,6 +78,7 @@ services:
       - ALL
 
   connector:
+    image: "${BUNNY_HOLE_CONNECTOR_IMAGE:-bunny-hole-connector:local}"
     build:
       context: .
       target: connector-runtime

@@ -36,7 +36,12 @@ if (import.meta.main) {
     };
     Deno.addSignalListener("SIGTERM", shutdown);
     Deno.addSignalListener("SIGINT", shutdown);
-    await server.finished;
+    try {
+      await server.finished;
+    } finally {
+      Deno.removeSignalListener("SIGTERM", shutdown);
+      Deno.removeSignalListener("SIGINT", shutdown);
+    }
   } catch (error) {
     console.error(JSON.stringify({
       level: "error",

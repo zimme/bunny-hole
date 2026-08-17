@@ -4,6 +4,7 @@ import {
   normalizeHostname,
   validateOrigin,
 } from "../packages/protocol/security.ts";
+import { pairsToHeaders } from "../packages/protocol/mod.ts";
 import { assert, assertEquals, assertThrows } from "./assert.ts";
 
 Deno.test("public header filter strips control, hop-by-hop, and spoofed forwarding data", () => {
@@ -55,6 +56,22 @@ Deno.test("origin response filter strips internal and hop-by-hop headers", () =>
   assertEquals(output.get("x-bunny-hole-unknown"), null);
 });
 
+Deno.test("origin response filter preserves separate Set-Cookie fields", () => {
+  const headers = new Headers();
+  headers.append("set-cookie", "first=one; Path=/; HttpOnly");
+  headers.append("set-cookie", "second=two; Path=/; Secure");
+  const pairs = filterOriginResponseHeaders(headers);
+
+  assertEquals(
+    pairs.filter(({ name }) => name === "set-cookie").map(({ value }) => value),
+    ["first=one; Path=/; HttpOnly", "second=two; Path=/; Secure"],
+  );
+  assertEquals(pairsToHeaders(pairs).getSetCookie(), [
+    "first=one; Path=/; HttpOnly",
+    "second=two; Path=/; Secure",
+  ]);
+});
+
 Deno.test("hostname normalization prevents confusion", () => {
   assertEquals(normalizeHostname("App.Example.COM:443"), "app.example.com");
   assertEquals(normalizeHostname("app.example.com."), "app.example.com");
@@ -77,6 +94,7 @@ Deno.test("hostname normalization prevents confusion", () => {
 
 Deno.test("connector origin defaults to loopback-only policy", () => {
   assertEquals(validateOrigin("http://127.0.0.1:3000", false).port, "3000");
+  assertThrows(() => validateOrigin("http://127.attacker.example", false), /opt-in/);
   assertThrows(() => validateOrigin("http://192.168.1.3", false), /opt-in/);
   assert(validateOrigin("http://192.168.1.3", true) instanceof URL);
   assertThrows(() => validateOrigin("file:///etc/passwd", true));

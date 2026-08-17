@@ -11,7 +11,7 @@ import {
   PROTOCOL_VERSION,
   SUBPROTOCOL,
 } from "../packages/protocol/mod.ts";
-import { assert, assertEquals } from "./assert.ts";
+import { assert, assertEquals, assertRejects } from "./assert.ts";
 
 const logger = { info() {}, warn() {}, error() {} };
 const config = loadRelayConfig({
@@ -222,6 +222,42 @@ Deno.test("connector messages are serialized across authentication", async () =>
   assertEquals(relay.sessions.has("alpha"), false);
 });
 
+Deno.test("relay bounds queued connector messages before parsing them", async () => {
+  const closeCodes: number[] = [];
+  const socket = {
+    binaryType: "",
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send() {},
+    close(code: number) {
+      closeCodes.push(code);
+    },
+  } as unknown as WebSocket;
+  const relay = new Relay(config, logger, Date.now, () => ({
+    socket,
+    response: new Response(null, { status: 200 }),
+  }));
+  await relay.handle(
+    new Request("http://relay/_bunny/connect?id=alpha", {
+      headers: {
+        upgrade: "websocket",
+        "sec-websocket-protocol": SUBPROTOCOL,
+      },
+    }),
+  );
+  const message = new ArrayBuffer(LIMITS.maxFrameBytes);
+  for (
+    let count = 0;
+    count <= LIMITS.maxQueuedMessageBytes / LIMITS.maxFrameBytes;
+    count++
+  ) {
+    socket.onmessage?.(new MessageEvent("message", { data: message }));
+  }
+
+  assertEquals(closeCodes, [4009]);
+  assertEquals(relay.pending.size, 0);
+});
+
 Deno.test("relay failure cancels connector work and clears request state", async () => {
   const sent: Uint8Array[] = [];
   const socket = {
@@ -341,6 +377,131 @@ Deno.test("GET and HEAD bodies cannot disconnect a tunnel", async () => {
   assertEquals(relay.sessions.has("alpha"), true);
 });
 
+Deno.test("malformed public requests cannot send frames or disrupt a connector", async () => {
+  const sent: Uint8Array[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+    close() {},
+  } as unknown as WebSocket;
+  const relay = relayWithSessionForTest(config, socket);
+  const requests = [
+    {
+      request: {
+        url: "http://relay/path",
+        method: "get",
+        headers: new Headers({ host: "alpha.example" }),
+        body: null,
+      } as Request,
+      status: 400,
+    },
+    {
+      request: new Request("http://relay//other.example/path", {
+        headers: { host: "alpha.example" },
+      }),
+      status: 400,
+    },
+    {
+      request: new Request("http://relay/path", {
+        headers: {
+          host: "alpha.example",
+          "x-large": "x".repeat(LIMITS.maxControlBytes),
+        },
+      }),
+      status: 431,
+    },
+  ];
+
+  for (const { request, status } of requests) {
+    assertEquals((await relay.handle(request)).status, status);
+  }
+  assertEquals(sent.length, 0);
+  assertEquals(relay.pending.size, 0);
+  assertEquals(relay.sessions.has("alpha"), true);
+});
+
+Deno.test("responses without bodies end cleanly and reject body frames", async () => {
+  const sent: Uint8Array[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(frame);
+    },
+    close() {},
+  } as unknown as WebSocket;
+  const relay = relayWithSessionForTest(config, socket);
+  const session = relay.sessions.get("alpha")!;
+  const internal = relay as unknown as {
+    handleAuthenticatedFrame(
+      session: unknown,
+      frame: ReturnType<typeof decodeFrame>,
+    ): Promise<void>;
+  };
+
+  const headHandled = relay.handle(
+    new Request("http://relay/head", {
+      method: "HEAD",
+      headers: { host: "alpha.example" },
+    }),
+  );
+  await waitUntil(() => sent.length >= 2);
+  const headId = decodeFrame(sent[0]).id;
+  await internal.handleAuthenticatedFrame(
+    session,
+    decodeFrame(encodeFrame(
+      FrameType.responseStart,
+      headId,
+      encodeControl({ status: 200, headers: [] }),
+    )),
+  );
+  await internal.handleAuthenticatedFrame(
+    session,
+    decodeFrame(encodeFrame(FrameType.responseEnd, headId)),
+  );
+  const headResponse = await headHandled;
+  assertEquals(headResponse.status, 200);
+  assertEquals(headResponse.body, null);
+
+  const postHandled = relay.handle(
+    new Request("http://relay/no-content", {
+      method: "POST",
+      headers: { host: "alpha.example" },
+      body: "body",
+    }),
+  );
+  await waitUntil(() => sent.length >= 5);
+  const postId = decodeFrame(sent[2]).id;
+  await internal.handleAuthenticatedFrame(
+    session,
+    decodeFrame(encodeFrame(
+      FrameType.responseStart,
+      postId,
+      encodeControl({ status: 204, headers: [] }),
+    )),
+  );
+  await assertRejects(
+    () =>
+      internal.handleAuthenticatedFrame(
+        session,
+        decodeFrame(encodeFrame(
+          FrameType.responseBody,
+          postId,
+          new Uint8Array([1]),
+        )),
+      ),
+    /not allowed/,
+  );
+  await internal.handleAuthenticatedFrame(
+    session,
+    decodeFrame(encodeFrame(FrameType.responseEnd, postId)),
+  );
+  assertEquals((await postHandled).status, 204);
+});
+
 Deno.test("shutdown cancels a slow public request body", async () => {
   const socket = {
     bufferedAmount: 0,
@@ -415,6 +576,7 @@ function relayWithSessionForTest(
     lastSeen: Date.now(),
     requests: new Set(),
     heartbeatSending: false,
+    queuedMessageBytes: 0,
     messageQueue: Promise.resolve(),
     closed: false,
     cancelled: new Map(),

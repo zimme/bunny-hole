@@ -5,14 +5,31 @@ const project = `bunny-hole-test-${crypto.randomUUID().slice(0, 8)}`;
 const secret = createSecret();
 const testHost = Deno.env.get("BUNNY_HOLE_TEST_HOST") ?? "127.0.0.1";
 const relayUrl = `http://${testHost}:18080`;
-const environment = { ...Deno.env.toObject(), BUNNY_HOLE_TEST_SECRET: secret };
+const environment: Record<string, string> = {
+  ...Deno.env.toObject(),
+  BUNNY_HOLE_TEST_SECRET: secret,
+};
 const compose = ["compose", "-p", project, "-f", "compose.yaml"];
+const publishedImages = Boolean(
+  environment.BUNNY_HOLE_RELAY_IMAGE && environment.BUNNY_HOLE_CONNECTOR_IMAGE,
+);
 
 try {
   try {
-    await run("docker", [...compose, "up", "--build", "--detach", "--wait"], {
-      env: environment,
-    });
+    if (publishedImages) {
+      await run("docker", [...compose, "build", "origin"], { env: environment });
+    }
+    await run(
+      "docker",
+      [
+        ...compose,
+        "up",
+        publishedImages ? "--no-build" : "--build",
+        "--detach",
+        "--wait",
+      ],
+      { env: environment },
+    );
   } catch (error) {
     console.error(
       await output("docker", [...compose, "logs", "--no-color"], {
@@ -133,7 +150,9 @@ try {
     throw new Error("cancellation race caused a protocol error");
   }
   console.log(
-    "integration: production relay image passed streaming, binary, routing, and multiplexing checks",
+    `integration: ${
+      publishedImages ? "published" : "locally built"
+    } production images passed streaming, binary, routing, and multiplexing checks`,
   );
 } catch (error) {
   console.error(

@@ -16,7 +16,8 @@ if (tag !== productVersion) {
   );
 }
 
-const tags = (await output("git", ["tag", "--list"])).split("\n")
+const tags = (await output("git", ["tag", "--merged", "HEAD", "--list"]))
+  .split("\n")
   .filter((candidate) => candidate && candidate !== tag)
   .flatMap((candidate) => {
     try {

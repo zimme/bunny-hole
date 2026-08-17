@@ -103,7 +103,12 @@ if (import.meta.main) {
     };
     Deno.addSignalListener("SIGINT", stop);
     Deno.addSignalListener("SIGTERM", stop);
-    await connector.run(abort.signal);
+    try {
+      await connector.run(abort.signal);
+    } finally {
+      Deno.removeSignalListener("SIGINT", stop);
+      Deno.removeSignalListener("SIGTERM", stop);
+    }
   } catch (error) {
     console.error(
       error instanceof Error ? error.message : "connector configuration failed",

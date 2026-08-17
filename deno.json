@@ -48,7 +48,7 @@
     "lint": "deno lint",
     "check": "deno check apps/edge-relay/main.ts apps/edge-relay/mod.ts apps/relay/main.ts apps/connector/main.ts apps/connector/mod.ts fixtures/origin/main.ts scripts/*.ts tests/*.ts",
     "docs:check": "deno run --allow-read=. --allow-run=deno scripts/docs_check.ts",
-    "test": "deno cache --reload apps/relay/relay.ts apps/connector/connector.ts packages/protocol/mod.ts && deno test --allow-env --allow-net --allow-read --coverage=coverage --clean --coverage-raw-data-only tests",
+    "test": "deno test --allow-env --allow-net --allow-read --coverage=coverage --clean --coverage-raw-data-only tests",
     "coverage": "deno coverage coverage --threshold=70",
     "integration": "deno run --allow-env --allow-net --allow-read=. --allow-run=docker --allow-write=/tmp scripts/integration.ts",
     "build": "deno run --allow-read=. --allow-write=dist --allow-run=deno scripts/build.ts",

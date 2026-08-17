@@ -105,6 +105,28 @@ if (!rejected) throw new Error("insecure relay URL was accepted");
 `,
   );
   await run("node", [smoke], { cwd: consumer });
+  const typeSmoke = `${consumer}/type-smoke.ts`;
+  await Deno.writeTextFile(
+    typeSmoke,
+    `import {
+  createConnector,
+  type ConnectorHandle,
+  type ConnectorOptions,
+} from "@zimme/bunny-hole";
+import { createEdgeRelayHandler } from "@zimme/bunny-hole/edge-relay";
+const options: ConnectorOptions = {
+  relayUrl: "wss://relay.example",
+  tunnelId: "example-tunnel",
+  secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+};
+const connector: ConnectorHandle = createConnector(options);
+connector.stop();
+void createEdgeRelayHandler;
+`,
+  );
+  await run("deno", ["check", "--node-modules-dir=manual", typeSmoke], {
+    cwd: consumer,
+  });
   await verifyNodeConnectorTraffic(consumer);
   console.log("JSR dry run and isolated npm consumer checks passed.");
 } finally {

@@ -1,5 +1,14 @@
 import { calculateBackoffDelay, Connector } from "../apps/connector/connector.ts";
-import { decodeFrame, Frame, FrameType, LIMITS } from "../packages/protocol/mod.ts";
+import { createNonce, createSecret } from "../packages/protocol/auth.ts";
+import {
+  decodeFrame,
+  encodeControl,
+  encodeFrame,
+  Frame,
+  FrameType,
+  LIMITS,
+  PROTOCOL_VERSION,
+} from "../packages/protocol/mod.ts";
 import { assertEquals, assertRejects } from "./assert.ts";
 
 Deno.test("connector backoff jitter is bounded and deterministically injectable", () => {
@@ -29,7 +38,6 @@ Deno.test("connector validates in-flight request frames after local cancellation
     requests: Map<string, {
       id: string;
       abort: AbortController;
-      started: boolean;
       ended: boolean;
       responseDone: boolean;
       requestBytes: number;
@@ -42,7 +50,6 @@ Deno.test("connector validates in-flight request frames after local cancellation
   internal.requests.set("abcdefghijklmnop", {
     id: "abcdefghijklmnop",
     abort: new AbortController(),
-    started: true,
     ended: false,
     responseDone: false,
     requestBytes: 3,
@@ -99,7 +106,6 @@ Deno.test("connector cleans up an origin failure before request upload ends", as
   const request = {
     id: "abcdefghijklmnop",
     abort: new AbortController(),
-    started: true,
     ended: false,
     responseDone: false,
     requestBytes: 0,
@@ -169,7 +175,6 @@ Deno.test("connector splits a large origin stream chunk into bounded response fr
   type TestContext = {
     id: string;
     abort: AbortController;
-    started: boolean;
     ended: boolean;
     responseDone: boolean;
     requestBytes: number;
@@ -178,7 +183,6 @@ Deno.test("connector splits a large origin stream chunk into bounded response fr
   const context: TestContext = {
     id: "abcdefghijklmnop",
     abort: new AbortController(),
-    started: true,
     ended: true,
     responseDone: false,
     requestBytes: 0,
@@ -228,3 +232,87 @@ Deno.test("connector splits a large origin stream chunk into bounded response fr
   );
   assertEquals(sent.at(-1)?.type, FrameType.responseEnd);
 });
+
+Deno.test("connector rejects a duplicate authentication challenge", async () => {
+  const sent: Frame[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(decodeFrame(frame));
+    },
+  };
+  const connector = new Connector({
+    relayUrl: new URL("ws://127.0.0.1:8080"),
+    tunnelId: "authentication-test",
+    secret: createSecret(),
+    origin: new URL("http://127.0.0.1:3000"),
+  }, { info() {}, warn() {}, error() {} });
+  const internal = connector as unknown as {
+    socket: typeof socket;
+    onMessage(event: MessageEvent): Promise<void>;
+  };
+  internal.socket = socket;
+  const challenge = encodeFrame(
+    FrameType.challenge,
+    "",
+    encodeControl({ nonce: createNonce(), version: PROTOCOL_VERSION }),
+  );
+  const event = new MessageEvent("message", {
+    data: challenge.buffer as ArrayBuffer,
+  });
+
+  await internal.onMessage(event);
+  assertEquals(sent.map((frame) => frame.type), [FrameType.authenticate]);
+  await assertRejects(() => internal.onMessage(event), /authentication response/);
+});
+
+Deno.test({
+  name: "connector requires the negotiated WebSocket subprotocol",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const port = freePort();
+    const serverAbort = new AbortController();
+    const closed = Promise.withResolvers<number>();
+    const server = Deno.serve({
+      hostname: "127.0.0.1",
+      port,
+      signal: serverAbort.signal,
+      onListen() {},
+    }, (request) => {
+      const upgraded = Deno.upgradeWebSocket(request);
+      upgraded.socket.onclose = (event) => closed.resolve(event.code);
+      return upgraded.response;
+    });
+    const runAbort = new AbortController();
+    const connector = new Connector({
+      relayUrl: new URL(`ws://127.0.0.1:${port}`),
+      tunnelId: "subprotocol-test",
+      secret: createSecret(),
+      origin: new URL("http://127.0.0.1:3000"),
+    }, {
+      info() {},
+      warn(event) {
+        if (event === "connector_disconnected") runAbort.abort();
+      },
+      error() {},
+    });
+
+    try {
+      await connector.run(runAbort.signal);
+      assertEquals(await closed.promise, 4003);
+    } finally {
+      connector.stop();
+      serverAbort.abort();
+      await server.finished;
+    }
+  },
+});
+
+function freePort(): number {
+  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+  return port;
+}
