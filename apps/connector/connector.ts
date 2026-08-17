@@ -355,7 +355,18 @@ export class Connector {
       }
       await this.send(encodeFrame(FrameType.responseEnd, context.id));
     } catch (error) {
-      if (!context.abort.signal.aborted) {
+      const notifyRelay = !context.abort.signal.aborted;
+      if (this.requests.get(context.id) === context) {
+        this.cancelRequest(context);
+        this.requests.delete(context.id);
+        this.rememberRecent(
+          context.id,
+          "cancelled",
+          context.requestBytes,
+          context.ended,
+        );
+      }
+      if (notifyRelay) {
         this.logger.warn("origin_request_failed", {
           requestId: context.id,
           message: error instanceof Error ? error.message : "origin failed",
@@ -368,7 +379,9 @@ export class Connector {
       }
     } finally {
       context.responseDone = true;
-      if (context.ended) this.finishRequest(context);
+      if (context.ended && this.requests.get(context.id) === context) {
+        this.finishRequest(context);
+      }
     }
   }
 
