@@ -33,11 +33,20 @@ Deno.test("connector library preserves secure network defaults", () => {
   );
   assertThrows(
     () => createConnector({ ...base, relayUrl: "wss://relay.example/base" }),
-    /clean WSS/,
+    /use WSS and contain only an origin/,
+  );
+  assertThrows(
+    () =>
+      createConnector({
+        ...base,
+        relayUrl: "ftp://relay.example",
+        localDevelopment: true,
+      }),
+    /WSS or local-development WS/,
   );
   assertThrows(
     () => createConnector({ ...base, origin: "http://10.0.0.1" }),
-    /loopback/,
+    /private-network opt-in/,
   );
   assertThrows(
     () => createConnector({ ...base, tunnelId: "../victim" }),

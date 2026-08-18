@@ -49,7 +49,13 @@ export function validateConnectorOptions(
     !["wss:", ...(localDevelopment ? ["ws:"] : [])].includes(relayUrl.protocol) ||
     relayUrl.username || relayUrl.password || relayUrl.pathname !== "/" ||
     relayUrl.search || relayUrl.hash
-  ) throw new ProtocolError("relay URL must be a clean WSS URL");
+  ) {
+    throw new ProtocolError(
+      localDevelopment
+        ? "relay URL must use WSS or local-development WS and contain only an origin"
+        : "relay URL must use WSS and contain only an origin",
+    );
+  }
 
   const tunnelId = options.tunnelId;
   if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(tunnelId)) {

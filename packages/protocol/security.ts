@@ -110,7 +110,7 @@ export function validateOrigin(
     /^127(?:\.\d{1,3}){3}$/.test(host);
   if (!loopback && !allowPrivateNetwork) {
     throw new ProtocolError(
-      "non-loopback origin requires explicit --allow-private-network opt-in",
+      "non-loopback origin requires explicit private-network opt-in",
     );
   }
   return origin;
