@@ -212,11 +212,20 @@ export function pairsToHeaders(pairs: HeaderPair[]): Headers {
   return headers;
 }
 
+/** UTF-8 size of a header block, including four framing bytes per field. */
+export function headerBlockBytes(pairs: HeaderPair[]): number {
+  let bytes = 0;
+  for (const pair of pairs) {
+    bytes += encoder.encode(pair.name).byteLength +
+      encoder.encode(pair.value).byteLength + 4;
+  }
+  return bytes;
+}
+
 function validateHeaderPairs(pairs: HeaderPair[]): void {
   if (pairs.length > LIMITS.maxHeaders) {
     throw new ProtocolError("too many headers", 1009);
   }
-  let bytes = 0;
   for (const pair of pairs) {
     if (
       !pair || typeof pair.name !== "string" ||
@@ -224,9 +233,8 @@ function validateHeaderPairs(pairs: HeaderPair[]): void {
       typeof pair.value !== "string" ||
       /[\0\r\n]/.test(pair.value)
     ) throw new ProtocolError("invalid header");
-    bytes += pair.name.length + pair.value.length + 4;
   }
-  if (bytes > LIMITS.maxHeaderBytes) {
+  if (headerBlockBytes(pairs) > LIMITS.maxHeaderBytes) {
     throw new ProtocolError("headers exceed limit", 1009);
   }
 }

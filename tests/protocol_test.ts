@@ -6,6 +6,7 @@ import {
   encodeFrame,
   framePayloadChunks,
   FrameType,
+  headerBlockBytes,
   LIMITS,
   pairsToHeaders,
   parseRequestStart,
@@ -155,6 +156,20 @@ Deno.test("header pairs reject injection, excessive count, and bad names", () =>
       })),
     )
   );
+});
+
+Deno.test("header block limits use UTF-8 bytes, not string length", () => {
+  const asciiFit = "a".repeat(LIMITS.maxHeaderBytes - 5);
+  const asciiPairs = [{ name: "x", value: asciiFit }];
+  assertEquals(headerBlockBytes(asciiPairs), LIMITS.maxHeaderBytes);
+  assertEquals(pairsToHeaders(asciiPairs).get("x"), asciiFit);
+
+  const emoji = "😀";
+  const emojiCount = Math.floor((LIMITS.maxHeaderBytes - 5) / 2);
+  const oversized = [{ name: "x", value: emoji.repeat(emojiCount) }];
+  assert(headerBlockBytes(oversized) > LIMITS.maxHeaderBytes);
+  assert(oversized[0].value.length + 5 <= LIMITS.maxHeaderBytes);
+  assertThrows(() => pairsToHeaders(oversized), /headers exceed limit/);
 });
 
 Deno.test("ProtocolError carries a safe WebSocket close code", () => {

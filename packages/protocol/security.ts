@@ -1,4 +1,4 @@
-import { HeaderPair, LIMITS, ProtocolError } from "./mod.ts";
+import { headerBlockBytes, HeaderPair, LIMITS, ProtocolError } from "./mod.ts";
 
 const hopByHop = new Set([
   "connection",
@@ -119,8 +119,7 @@ export function validateOrigin(
 function enforceHeaderLimit(pairs: HeaderPair[]): void {
   if (
     pairs.length > LIMITS.maxHeaders ||
-    pairs.reduce((size, pair) => size + pair.name.length + pair.value.length + 4, 0) >
-      LIMITS.maxHeaderBytes
+    headerBlockBytes(pairs) > LIMITS.maxHeaderBytes
   ) throw new ProtocolError("headers exceed limit", 1009);
 }
 

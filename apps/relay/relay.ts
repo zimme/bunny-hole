@@ -278,6 +278,7 @@ export class Relay {
       }
       await this.handleAuthenticatedFrame(session, frame);
     } catch (error) {
+      if (session.closed) return;
       const protocolError = error instanceof ProtocolError
         ? error
         : new ProtocolError("internal protocol error", 1011);

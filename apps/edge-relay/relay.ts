@@ -78,7 +78,7 @@ export function createEdgeRelayHandler(
 ): (request: Request) => Promise<Response> {
   const instanceId = options.instanceId ?? crypto.randomUUID();
   const startedAt = options.startedAt ?? new Date().toISOString();
-  const baseLogger = options.logger ?? createLogger("json");
+  const baseLogger = options.logger ?? createLogger(options.config.relay.logFormat);
   const logger = withInstance(baseLogger, instanceId);
   const relay = options.relay ??
     new Relay(

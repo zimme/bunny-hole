@@ -56,6 +56,25 @@ Deno.test("origin response filter strips internal and hop-by-hop headers", () =>
   assertEquals(output.get("x-bunny-hole-unknown"), null);
 });
 
+Deno.test("header filters enforce UTF-8 byte limits", () => {
+  // Fetch Headers are Latin-1 ByteStrings. A 0xFF unit is one code unit but two
+  // UTF-8 bytes, which is the undercount the limit must close.
+  const value = "\u00FF".repeat(20_000);
+  assertThrows(
+    () =>
+      filterPublicRequestHeaders(
+        new Headers({ "x-data": value }),
+        "app.example.com",
+        "192.0.2.1",
+      ),
+    /headers exceed limit/,
+  );
+  assertThrows(
+    () => filterOriginResponseHeaders(new Headers({ "x-data": value })),
+    /headers exceed limit/,
+  );
+});
+
 Deno.test("origin response filter preserves separate Set-Cookie fields", () => {
   const headers = new Headers();
   headers.append("set-cookie", "first=one; Path=/; HttpOnly");

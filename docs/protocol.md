@@ -73,7 +73,7 @@ as 4008.
 | Request or response body                  |                                   10 MiB |
 | Frame payload                             |                                   64 KiB |
 | Control payload                           |                                   16 KiB |
-| Header block/count                        |                             32 KiB / 100 |
+| Header block/count                        |                32 KiB UTF-8 / 100 fields |
 | Correlation ID                            | 18 random bytes, 24 base64url characters |
 | Authentication                            |                                      5 s |
 | Public request                            |                                     30 s |
@@ -85,8 +85,9 @@ as 4008.
 
 Request and response start messages must satisfy both the decoded header-block limit and
 the smaller encoded control-payload limit; JSON escaping and the request path count
-toward the latter. The relay returns 431 instead of forwarding an oversized public
-control message.
+toward the latter. Header-block size is the UTF-8 byte length of names and values plus
+four framing bytes per field, not JavaScript string length. The relay returns 431
+instead of forwarding an oversized public control message.
 
 Senders pause while `bufferedAmount` exceeds the high-water mark, but fail the send if
 pressure does not fall within five seconds. This bound also applies to authentication
