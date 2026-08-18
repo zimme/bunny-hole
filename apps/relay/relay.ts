@@ -2,6 +2,7 @@ import {
   createCorrelationId,
   decodeControl,
   decodeFrame,
+  encodeBase64Url,
   encodeControl,
   encodeFrame,
   framePayloadChunks,
@@ -16,11 +17,7 @@ import {
   SUBPROTOCOL,
   toWebSocketCloseCode,
 } from "../../packages/protocol/mod.ts";
-import {
-  createNonce,
-  createSecret,
-  verifyProof,
-} from "../../packages/protocol/auth.ts";
+import { createNonce, verifyChallengeSignature } from "../../packages/protocol/auth.ts";
 import {
   filterPublicRequestHeaders,
   normalizeHostname,
@@ -150,8 +147,10 @@ export class Relay {
     const tunnel = this.config.tunnels.get(tunnelId);
     // Generate the per-connection decoy on every syntactically valid attempt so known
     // and unknown tunnel IDs perform the same random-key work before upgrading.
-    const decoySecret = createSecret();
-    const authenticationSecret = tunnel?.secret ?? decoySecret;
+    const decoyPublicKey = encodeBase64Url(
+      crypto.getRandomValues(new Uint8Array(32)),
+    );
+    const authenticationPublicKey = tunnel?.publicKey ?? decoyPublicKey;
 
     let upgraded: { socket: WebSocket; response: Response };
     try {
@@ -212,7 +211,7 @@ export class Relay {
       session.queuedMessageBytes += messageBytes;
       session.messageQueue = session.messageQueue.then(async () => {
         if (!session.closed) {
-          await this.onConnectorMessage(session, authenticationSecret, event);
+          await this.onConnectorMessage(session, authenticationPublicKey, event);
         }
       }).finally(() => session.queuedMessageBytes -= messageBytes);
     };
@@ -226,7 +225,7 @@ export class Relay {
 
   private async onConnectorMessage(
     session: ConnectorSession,
-    secret: string,
+    publicKey: string,
     event: MessageEvent,
   ): Promise<void> {
     try {
@@ -240,18 +239,18 @@ export class Relay {
           throw new ProtocolError("authentication required", 1008);
         }
         const control = decodeControl(frame.payload);
-        const validProof = isRecord(control) &&
+        const validSignature = isRecord(control) &&
           control.version === PROTOCOL_VERSION &&
-          typeof control.proof === "string" &&
-          await verifyProof(
-            secret,
+          typeof control.signature === "string" &&
+          await verifyChallengeSignature(
+            publicKey,
             session.tunnelId,
             session.nonce,
             PROTOCOL_VERSION,
-            control.proof,
+            control.signature,
           );
         if (session.closed) return;
-        if (!validProof) throw new ProtocolError("authentication failed", 1008);
+        if (!validSignature) throw new ProtocolError("authentication failed", 1008);
         clearTimeout(session.authTimer);
         session.authenticated = true;
         this.connecting.delete(session);

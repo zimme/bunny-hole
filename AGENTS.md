@@ -28,8 +28,9 @@ Container and agent tooling; never add npm task wrappers.
 - Public traffic routes only by exact configured hostname. A viewer never selects a
   tunnel or destination.
 - Connector origins remain loopback-only unless explicitly opted into a private network.
-- Preserve challenge-response authentication, timing-safe proof checks, bounded binary
-  framing, strict state transitions, backpressure, cancellation, and timeouts.
+- Preserve Ed25519 challenge-response authentication, cryptographic signature checks,
+  bounded binary framing, strict state transitions, backpressure, cancellation, and
+  timeouts.
 - Strip internal, hop-by-hop, and spoofable forwarding headers. Never log secrets.
 - Never request credentials in an agent-controlled conversation or command. Pause while
   a human uses the dashboard or a private interactive terminal.

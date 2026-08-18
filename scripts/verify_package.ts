@@ -2,7 +2,7 @@ import { buildNpmPackage } from "./build_npm_package.ts";
 import { output, run } from "./process.ts";
 import { loadRelayConfig } from "../apps/relay/config.ts";
 import { Relay } from "../apps/relay/relay.ts";
-import { createSecret } from "../packages/protocol/auth.ts";
+import { generateTunnelKeyPair } from "../packages/protocol/auth.ts";
 
 const EXPECTED_FILES = [
   "package/LICENSE",
@@ -14,6 +14,7 @@ const EXPECTED_FILES = [
   "package/apps/connector/mod.d.ts",
   "package/apps/connector/mod.js",
   "package/package.json",
+  "package/packages/protocol/auth.d.ts",
   "package/packages/protocol/auth.js",
   "package/packages/protocol/mod.js",
   "package/packages/protocol/security.js",
@@ -69,12 +70,17 @@ try {
   const smoke = `${consumer}/smoke.mjs`;
   await Deno.writeTextFile(
     smoke,
-    `import { createConnector, VERSION } from "@zimme/bunny-hole";
+    `import {
+  createConnector,
+  generateConnectorKeyPair,
+  VERSION,
+} from "@zimme/bunny-hole";
 if (VERSION !== "0.1.0") throw new Error("unexpected package version");
+const keys = await generateConnectorKeyPair();
 const options = {
   relayUrl: "wss://relay.example",
   tunnelId: "example-tunnel",
-  secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  privateKey: keys.privateKey,
 };
 const connector = createConnector(options);
 if (typeof connector.run !== "function" || typeof connector.stop !== "function") {
@@ -98,11 +104,14 @@ if (!rejected) throw new Error("insecure relay URL was accepted");
   createConnector,
   type ConnectorHandle,
   type ConnectorOptions,
+  generateConnectorKeyPair,
+  type TunnelKeyPair,
 } from "@zimme/bunny-hole";
+const keys: TunnelKeyPair = await generateConnectorKeyPair();
 const options: ConnectorOptions = {
   relayUrl: "wss://relay.example",
   tunnelId: "example-tunnel",
-  secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  privateKey: keys.privateKey,
 };
 const connector: ConnectorHandle = createConnector(options);
 connector.stop();
@@ -120,7 +129,7 @@ connector.stop();
 async function verifyNodeConnectorTraffic(consumer: string): Promise<void> {
   const originPort = freePort();
   const relayPort = freePort();
-  const secret = createSecret();
+  const { publicKey, privateKey } = await generateTunnelKeyPair();
   const originAbort = new AbortController();
   const relayAbort = new AbortController();
   const origin = Deno.serve({
@@ -132,7 +141,7 @@ async function verifyNodeConnectorTraffic(consumer: string): Promise<void> {
     const body = await request.text();
     return Response.json({
       body,
-      internalHeader: request.headers.get("x-bunny-hole-secret"),
+      internalHeader: request.headers.get("x-bunny-hole-private-key"),
     });
   });
   const relayConfig = loadRelayConfig({
@@ -141,7 +150,7 @@ async function verifyNodeConnectorTraffic(consumer: string): Promise<void> {
     BUNNY_HOLE_LOCAL_DEVELOPMENT: "true",
     BUNNY_HOLE_TUNNELS: JSON.stringify([{
       id: "npm-consumer",
-      secret,
+      publicKey,
       hostnames: ["127.0.0.1"],
     }]),
   });
@@ -164,7 +173,7 @@ const abort = new AbortController();
 const connector = createConnector({
   relayUrl: process.env.TEST_RELAY_URL,
   tunnelId: "npm-consumer",
-  secret: process.env.TEST_TUNNEL_SECRET,
+  privateKey: process.env.TEST_TUNNEL_PRIVATE_KEY,
   origin: process.env.TEST_ORIGIN_URL,
   localDevelopment: true,
   logger: {
@@ -182,7 +191,7 @@ await connector.run(abort.signal);
     cwd: consumer,
     env: {
       TEST_RELAY_URL: `ws://127.0.0.1:${relayPort}`,
-      TEST_TUNNEL_SECRET: secret,
+      TEST_TUNNEL_PRIVATE_KEY: privateKey,
       TEST_ORIGIN_URL: `http://127.0.0.1:${originPort}`,
     },
     stdin: "null",
@@ -194,7 +203,7 @@ await connector.run(abort.signal);
     await waitUntil(() => relay.sessions.has("npm-consumer"));
     const response = await fetch(`http://127.0.0.1:${relayPort}/npm`, {
       method: "POST",
-      headers: { "x-bunny-hole-secret": secret },
+      headers: { "x-bunny-hole-private-key": privateKey },
       body: "node-library-traffic",
     });
     const result = await response.json();

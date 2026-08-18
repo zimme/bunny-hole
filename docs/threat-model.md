@@ -2,7 +2,7 @@
 
 ## Assets and trust boundaries
 
-Assets are tunnel secrets, local-origin confidentiality/integrity, public viewer
+Assets are connector private keys, local-origin confidentiality/integrity, public viewer
 credentials, relay availability, and released artifact integrity. Untrusted parties
 include public HTTP clients, unauthenticated WebSocket peers, compromised networks,
 malicious origins, package consumers, and contributors modifying CI.
@@ -11,8 +11,8 @@ The Bunny CDN and Magic Container platform are trusted to terminate TLS and run 
 configured image. Relay operators can observe proxied application traffic. Local
 connectors trust the configured relay hostname and their configured origin. An
 application embedding the connector library shares the connector trust boundary: that
-process can read the tunnel secret and all tunneled origin traffic. The library does not
-provide process isolation or secret storage.
+process can read the tunnel private key and all tunneled origin traffic. The library
+does not provide process isolation or key storage.
 
 The experimental Edge Script relay additionally trusts Bunny to keep a WebSocket and the
 invocation state owning it alive. Correctness also requires public HTTP requests to
@@ -23,8 +23,9 @@ ephemeral instance IDs and aggregate counts.
 
 ## Principal threats and controls
 
-- **Connector impersonation/replay:** 256-bit secrets, fresh nonce HMAC
-  challenge-response, WSS, authentication timeout, generic failure.
+- **Connector impersonation/replay:** connector-held Ed25519 private keys, relay-held
+  public keys, fresh nonce signatures bound to the tunnel and protocol version, WSS,
+  authentication timeout, generic failure.
 - **Open proxy/SSRF:** exact hostname-to-tunnel mapping; no viewer-selected tunnel or
   destination; connector origin is fixed and loopback by default.
 - **Request smuggling/injection:** Deno's HTTP parser, token/header validation, single
@@ -37,7 +38,7 @@ ephemeral instance IDs and aggregate counts.
   limits, bounded high-water-mark backpressure waits, request/origin/authentication/
   heartbeat timeouts, cancellation and disconnect cleanup.
 - **Connector takeover:** documented newest-authenticated-wins policy closes the old
-  socket and fails its pending requests. Secret rotation revokes old clients.
+  socket and fails its pending requests. Private-key rotation revokes old clients.
 - **Container escape/persistence:** non-root distroless runtime, read-only filesystem,
   no capabilities, no-new-privileges, no persistent volume.
 - **Supply chain:** frozen lockfile, minimal runtime dependencies, pinned toolchain and
@@ -54,13 +55,12 @@ requests to connected origins. Bunny Hole supplies transport, not viewer authent
 protect sensitive origins with their own authorization. One instance is an availability
 and state-loss boundary.
 
-The relay configuration contains the shared connector secrets. Read-only disclosure of
-that configuration is therefore sufficient to impersonate a connector and trigger the
-newest-authenticated-wins replacement policy. Limit dashboard and environment access and
-rotate a disclosed secret. A future negotiated protocol version may instead keep a
-signing key only on the connector and configure its public verification key on the
-relay. That would reduce configuration-disclosure risk, but it would not protect traffic
-from a relay process compromise and is not required to make challenge-response safe.
+The relay configuration contains only connector public keys, so read-only disclosure
+does not enable connector impersonation. A relay process compromise can still authorize
+an attacker, observe live HTTP, or send requests to connected origins; public-key
+authentication cannot protect against a compromised verifier. A connector-host or
+embedding-process compromise can disclose that tunnel's private key and traffic. Rotate
+the key pair after either event.
 
 The Edge Script experiment is not a supported deployment until multi-location and load
 testing plus a Bunny platform guarantee establish its state-routing semantics. Magic

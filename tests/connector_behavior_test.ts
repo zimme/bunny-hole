@@ -1,5 +1,5 @@
 import { calculateBackoffDelay, Connector } from "../apps/connector/connector.ts";
-import { createNonce, createSecret } from "../packages/protocol/auth.ts";
+import { createNonce, generateTunnelKeyPair } from "../packages/protocol/auth.ts";
 import {
   decodeFrame,
   encodeControl,
@@ -30,7 +30,7 @@ Deno.test("connector validates in-flight request frames after local cancellation
   const connector = new Connector({
     relayUrl: new URL("ws://127.0.0.1:8080"),
     tunnelId: "cancel-test",
-    secret: "unused",
+    privateKey: "unused",
     origin: new URL("http://127.0.0.1:3000"),
   }, { info() {}, warn() {}, error() {} });
   const internal = connector as unknown as {
@@ -100,7 +100,7 @@ Deno.test("connector cleans up an origin failure before request upload ends", as
   const connector = new Connector({
     relayUrl: new URL("ws://127.0.0.1:8080"),
     tunnelId: "origin-failure-test",
-    secret: "unused",
+    privateKey: "unused",
     origin: new URL("http://127.0.0.1:3000"),
   }, { info() {}, warn() {}, error() {} });
   const request = {
@@ -173,7 +173,7 @@ Deno.test("relay cancellation aborts an origin response send under backpressure"
   const connector = new Connector({
     relayUrl: new URL("ws://127.0.0.1:8080"),
     tunnelId: "response-cancel-test",
-    secret: "unused",
+    privateKey: "unused",
     origin: new URL("http://127.0.0.1:3000"),
   }, { info() {}, warn() {}, error() {} });
   const request = {
@@ -235,7 +235,7 @@ Deno.test("connector splits a large origin stream chunk into bounded response fr
   const connector = new Connector({
     relayUrl: new URL("ws://127.0.0.1:8080"),
     tunnelId: "chunk-test",
-    secret: "unused",
+    privateKey: "unused",
     origin: new URL("http://127.0.0.1:3000"),
   }, { info() {}, warn() {}, error() {} });
   type TestContext = {
@@ -300,6 +300,7 @@ Deno.test("connector splits a large origin stream chunk into bounded response fr
 });
 
 Deno.test("connector rejects a duplicate authentication challenge", async () => {
+  const { privateKey } = await generateTunnelKeyPair();
   const sent: Frame[] = [];
   const socket = {
     bufferedAmount: 0,
@@ -311,7 +312,7 @@ Deno.test("connector rejects a duplicate authentication challenge", async () => 
   const connector = new Connector({
     relayUrl: new URL("ws://127.0.0.1:8080"),
     tunnelId: "authentication-test",
-    secret: createSecret(),
+    privateKey,
     origin: new URL("http://127.0.0.1:3000"),
   }, { info() {}, warn() {}, error() {} });
   const internal = connector as unknown as {
@@ -352,10 +353,11 @@ Deno.test({
       return upgraded.response;
     });
     const runAbort = new AbortController();
+    const { privateKey } = await generateTunnelKeyPair();
     const connector = new Connector({
       relayUrl: new URL(`ws://127.0.0.1:${port}`),
       tunnelId: "subprotocol-test",
-      secret: createSecret(),
+      privateKey,
       origin: new URL("http://127.0.0.1:3000"),
     }, {
       info() {},

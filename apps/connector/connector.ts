@@ -16,12 +16,12 @@ import {
   SUBPROTOCOL,
   toWebSocketCloseCode,
 } from "../../packages/protocol/mod.ts";
-import { createProof } from "../../packages/protocol/auth.ts";
+import { signChallenge } from "../../packages/protocol/auth.ts";
 import { filterOriginResponseHeaders } from "../../packages/protocol/security.ts";
 export interface ConnectorRuntimeConfig {
   relayUrl: URL;
   tunnelId: string;
-  secret: string;
+  privateKey: string;
   origin: URL;
 }
 
@@ -52,7 +52,7 @@ export class Connector {
   private socket?: WebSocket;
   private requests = new Map<string, OriginRequest>();
   private authenticated = false;
-  private proofSent = false;
+  private authenticationSent = false;
   private stopping = false;
   private lastSeen = Date.now();
   private heartbeatTimer?: ReturnType<typeof setInterval>;
@@ -111,7 +111,7 @@ export class Connector {
     socket.binaryType = "arraybuffer";
     this.socket = socket;
     this.authenticated = false;
-    this.proofSent = false;
+    this.authenticationSent = false;
     this.lastSeen = Date.now();
     this.heartbeatSending = false;
     const completion = Promise.withResolvers<void>();
@@ -211,7 +211,7 @@ export class Connector {
     const frame = decodeFrame(event.data);
     this.lastSeen = Date.now();
     if (!this.authenticated) {
-      if (this.proofSent) {
+      if (this.authenticationSent) {
         if (frame.type !== FrameType.authenticated || frame.id !== "") {
           throw new ProtocolError("expected authentication response", 1008);
         }
@@ -233,8 +233,8 @@ export class Connector {
         !isRecord(challenge) || challenge.version !== PROTOCOL_VERSION ||
         !isNonce(challenge.nonce)
       ) throw new ProtocolError("invalid authentication challenge", 1008);
-      const proof = await createProof(
-        this.config.secret,
+      const signature = await signChallenge(
+        this.config.privateKey,
         this.config.tunnelId,
         challenge.nonce,
         PROTOCOL_VERSION,
@@ -242,9 +242,9 @@ export class Connector {
       await this.send(encodeFrame(
         FrameType.authenticate,
         "",
-        encodeControl({ version: PROTOCOL_VERSION, proof }),
+        encodeControl({ version: PROTOCOL_VERSION, signature }),
       ));
-      this.proofSent = true;
+      this.authenticationSent = true;
       return;
     }
     await this.handleFrame(frame);

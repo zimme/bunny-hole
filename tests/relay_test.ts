@@ -1,4 +1,4 @@
-import { createProof, createSecret } from "../packages/protocol/auth.ts";
+import { generateTunnelKeyPair, signChallenge } from "../packages/protocol/auth.ts";
 import { loadRelayConfig } from "../apps/relay/config.ts";
 import { Relay } from "../apps/relay/relay.ts";
 import {
@@ -14,11 +14,12 @@ import {
 import { assert, assertEquals, assertRejects } from "./assert.ts";
 
 const logger = { info() {}, warn() {}, error() {} };
+const keys = await generateTunnelKeyPair();
 const config = loadRelayConfig({
   BUNNY_HOLE_LOCAL_DEVELOPMENT: "true",
   BUNNY_HOLE_TUNNELS: JSON.stringify([{
     id: "alpha",
-    secret: createSecret(),
+    publicKey: keys.publicKey,
     hostnames: ["alpha.example"],
   }]),
 });
@@ -202,8 +203,8 @@ Deno.test("connector messages are serialized across authentication", async () =>
   const challenge = decodeControl(decodeFrame(sent[0]).payload) as {
     nonce: string;
   };
-  const proof = await createProof(
-    config.tunnels.get("alpha")!.secret,
+  const signature = await signChallenge(
+    keys.privateKey,
     "alpha",
     challenge.nonce,
     PROTOCOL_VERSION,
@@ -211,7 +212,7 @@ Deno.test("connector messages are serialized across authentication", async () =>
   const authenticate = encodeFrame(
     FrameType.authenticate,
     "",
-    encodeControl({ version: PROTOCOL_VERSION, proof }),
+    encodeControl({ version: PROTOCOL_VERSION, signature }),
   );
   const event = new MessageEvent("message", {
     data: authenticate.buffer as ArrayBuffer,

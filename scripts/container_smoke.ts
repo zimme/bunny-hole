@@ -1,4 +1,4 @@
-import { createSecret } from "../packages/protocol/auth.ts";
+import { generateTunnelKeyPair } from "../packages/protocol/auth.ts";
 import { output, run } from "./process.ts";
 
 await run("docker", [
@@ -35,12 +35,12 @@ await run("docker", [
   "bunny-hole-connector:local",
   "--version",
 ]);
-const secret = createSecret();
+const { publicKey } = await generateTunnelKeyPair();
 const bindAddress = Deno.env.get("BUNNY_HOLE_BIND_ADDRESS") ?? "127.0.0.1";
 const testHost = Deno.env.get("BUNNY_HOLE_TEST_HOST") ?? "127.0.0.1";
 const tunnels = JSON.stringify([{
   id: "smoke",
-  secret,
+  publicKey,
   hostnames: ["smoke.test"],
 }]);
 const id = (await output("docker", [

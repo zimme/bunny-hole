@@ -33,26 +33,29 @@ deno task test
 deno task integration
 ```
 
-Generate a tunnel record locally:
+Generate the connector identity locally. Shell redirection keeps the private key out of
+the terminal while separating it from the public relay configuration:
 
 ```sh
-deno run --allow-env --allow-read apps/connector/main.ts generate \
-  --tunnel home --hostname home.example.com
+umask 077
+deno run apps/connector/main.ts generate \
+  --tunnel home --hostname home.example.com \
+  > connector.json 2> relay-tunnels.json
 ```
 
-The command prints a new secret once. Redirect it to a protected file and set mode
-`0600`; do not paste it into an AI chat, shell argument, issue, or commit. See
+`connector.json` contains the private key and is ready to use. `relay-tunnels.json`
+contains only the public key and exact hostname; copy that file's JSON into the relay's
+`BUNNY_HOLE_TUNNELS` value. Never paste `connector.json` or its private key into an AI
+chat, shell argument, issue, or commit. See
 [deployment instructions](https://github.com/zimme/bunny-hole/blob/main/docs/deployment.md)
 for Bunny setup.
 
 Run the connector after configuring the relay:
 
 ```sh
-export BUNNY_HOLE_TUNNEL_SECRET # enter interactively in your own terminal
+deno run --allow-read apps/connector/main.ts check --config connector.json
 deno run --allow-env --allow-net --allow-read apps/connector/main.ts connect \
-  --relay wss://home.example.com \
-  --tunnel home \
-  --origin http://127.0.0.1:3000
+  --config connector.json
 ```
 
 ## Distribution
@@ -77,15 +80,15 @@ import { createConnector } from "jsr:@zimme/bunny-hole@0.1.0";
 const connector = createConnector({
   relayUrl: "wss://home.example.com",
   tunnelId: "home",
-  secret: Deno.env.get("BUNNY_HOLE_TUNNEL_SECRET")!,
+  privateKey: Deno.env.get("BUNNY_HOLE_TUNNEL_PRIVATE_KEY")!,
   origin: "http://127.0.0.1:3000",
 });
 await connector.run();
 ```
 
 Node.js 22.14 or newer consumers can install `@zimme/bunny-hole` from npm and import the
-same API. Applications are responsible for loading the secret from protected input and
-shutting down with an `AbortSignal` or `connector.stop()`.
+same API. Applications are responsible for loading the private key from protected input
+and shutting down with an `AbortSignal` or `connector.stop()`.
 
 The experimental Edge Script adapter is deliberately not part of the published package
 API. It remains in the repository solely for the documented
@@ -98,8 +101,8 @@ deno task edge:build
 
 ## Security model
 
-- Challenge-response HMAC proves possession of a per-tunnel 256-bit secret; the secret
-  is never sent across the WebSocket.
+- Ed25519 challenge-response proves possession of a per-tunnel private key. The relay
+  stores only the public key, and the private key is never sent across the WebSocket.
 - Only exact configured hostnames route to exact configured tunnel IDs.
 - The public request cannot choose an origin. A connector reaches only its local
   configured origin, which is loopback-only unless explicitly relaxed.

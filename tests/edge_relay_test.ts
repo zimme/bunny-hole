@@ -3,16 +3,17 @@ import {
   edgeWebSocketUpgrader,
   loadEdgeRelayConfig,
 } from "../apps/edge-relay/relay.ts";
-import { createSecret } from "../packages/protocol/auth.ts";
+import { generateTunnelKeyPair } from "../packages/protocol/auth.ts";
 import { assertEquals } from "./assert.ts";
 
 const token = "d".repeat(32);
+const { publicKey } = await generateTunnelKeyPair();
 const environment = new Map<string, string>([
   [
     "BUNNY_HOLE_TUNNELS",
     JSON.stringify([{
       id: "alpha",
-      secret: createSecret(),
+      publicKey,
       hostnames: ["alpha.example"],
     }]),
   ],

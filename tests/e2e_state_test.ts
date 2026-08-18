@@ -2,7 +2,7 @@ import { Connector, ConnectorLogger } from "../apps/connector/connector.ts";
 import { ConnectorConfig } from "../apps/connector/config.ts";
 import { loadRelayConfig } from "../apps/relay/config.ts";
 import { Relay } from "../apps/relay/relay.ts";
-import { createSecret } from "../packages/protocol/auth.ts";
+import { generateTunnelKeyPair } from "../packages/protocol/auth.ts";
 import { assert, assertEquals } from "./assert.ts";
 
 const silentLogger = { info() {}, warn() {}, error() {} };
@@ -15,7 +15,7 @@ Deno.test({
   fn: async () => {
     const originPort = freePort();
     const relayPort = freePort();
-    const secret = createSecret();
+    const { publicKey, privateKey } = await generateTunnelKeyPair();
     const originAbort = new AbortController();
     const relayAbort = new AbortController();
     const origin = Deno.serve({
@@ -58,7 +58,7 @@ Deno.test({
       BUNNY_HOLE_LOCAL_DEVELOPMENT: "true",
       BUNNY_HOLE_TUNNELS: JSON.stringify([{
         id: "integration",
-        secret,
+        publicKey,
         hostnames: ["tunnel.test", "127.0.0.1"],
       }]),
     });
@@ -72,7 +72,7 @@ Deno.test({
     const connectorConfig: ConnectorConfig = {
       relayUrl: new URL(`ws://127.0.0.1:${relayPort}`),
       tunnelId: "integration",
-      secret,
+      privateKey,
       origin: new URL(`http://127.0.0.1:${originPort}`),
       allowPrivateNetwork: false,
       localDevelopment: true,
@@ -92,7 +92,7 @@ Deno.test({
         const response = await publicFetch(relayPort, `/echo?id=${index}`, {
           method: "POST",
           headers: {
-            "x-bunny-hole-secret": secret,
+            "x-bunny-hole-private-key": privateKey,
             "x-forwarded-for": "attacker",
           },
           body,
@@ -103,7 +103,7 @@ Deno.test({
       assertEquals(results.map((result) => result.body), bodies);
       assert(
         results.every((result) =>
-          result.headers["x-bunny-hole-secret"] === undefined &&
+          result.headers["x-bunny-hole-private-key"] === undefined &&
           result.headers["x-forwarded-for"] !== "attacker"
         ),
       );

@@ -1,4 +1,10 @@
-import { decodeBase64Url, ProtocolError } from "../../packages/protocol/mod.ts";
+import { ProtocolError } from "../../packages/protocol/mod.ts";
+import { validateTunnelPrivateKey } from "../../packages/protocol/auth.ts";
+/** Generates a new Ed25519 identity for one tunnel. */
+export {
+  generateTunnelKeyPair as generateConnectorKeyPair,
+} from "../../packages/protocol/auth.ts";
+export type { TunnelKeyPair } from "../../packages/protocol/auth.ts";
 import { validateOrigin } from "../../packages/protocol/security.ts";
 import {
   Connector,
@@ -9,13 +15,13 @@ import {
 /**
  * Options for a connector embedded in a Deno or Node.js application.
  *
- * `secret` is retained in memory for authentication. Applications must source it from
- * a secret manager or protected file and must never log this object.
+ * `privateKey` is retained in memory for authentication. Applications must source it
+ * from a secret manager or protected file and must never log this object.
  */
 export interface ConnectorOptions {
   relayUrl: string | URL;
   tunnelId: string;
-  secret: string;
+  privateKey: string;
   origin?: string | URL;
   allowPrivateNetwork?: boolean;
   localDevelopment?: boolean;
@@ -49,20 +55,12 @@ export function validateConnectorOptions(
   if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(tunnelId)) {
     throw new ProtocolError("invalid tunnel ID");
   }
-  let secretLength = 0;
-  try {
-    secretLength = decodeBase64Url(options.secret).length;
-  } catch {
-    throw new ProtocolError("invalid tunnel secret");
-  }
-  if (secretLength < 32) {
-    throw new ProtocolError("tunnel secret is too short");
-  }
+  validateTunnelPrivateKey(options.privateKey);
   const origin = validateOrigin(
     options.origin?.toString() ?? "http://127.0.0.1:3000",
     options.allowPrivateNetwork ?? false,
   );
-  return { relayUrl, tunnelId, secret: options.secret, origin };
+  return { relayUrl, tunnelId, privateKey: options.privateKey, origin };
 }
 
 /**

@@ -22,14 +22,17 @@ enforced by both encoders and decoders.
 ## Authentication
 
 1. Relay sends `challenge` with a fresh 192-bit nonce and version.
-2. Connector sends `authenticate` with version and
-   `HMAC-SHA-256(secret, "bunny-hole\0" || version || tunnel || nonce)`.
-3. Relay uses a timing-independent byte comparison and sends `authenticated`.
+2. Connector signs the domain-separated version, tunnel ID, and nonce with its Ed25519
+   private key, then sends `authenticate` with the version and signature.
+3. Relay verifies the signature with the configured public key and sends
+   `authenticated`.
 
-The nonce prevents reuse of an observed proof on a new connection. Authentication must
-finish within 5 seconds. Errors are generic and never include the ID, secret, proof, or
+The signed bytes are UTF-8 `bunny-hole\0connector-auth\0VERSION\0TUNNEL\0NONCE`. The
+nonce prevents reuse of an observed signature on a new connection, while the tunnel ID
+and version prevent cross-tunnel or cross-version reuse. Authentication must finish
+within 5 seconds. Errors are generic and never include the ID, key, signature, or
 configured hostnames. A syntactically valid but unknown tunnel ID receives the same
-upgrade and challenge flow using an ephemeral decoy key, then fails authentication
+upgrade, challenge, random decoy-key work, and signature-verification path, then fails
 generically; the initial HTTP status therefore does not enumerate configured IDs.
 
 ## Request state machine

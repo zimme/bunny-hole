@@ -4,7 +4,7 @@ import { validateConnectorOptions } from "./library.ts";
 export interface ConnectorConfig {
   relayUrl: URL;
   tunnelId: string;
-  secret: string;
+  privateKey: string;
   origin: URL;
   allowPrivateNetwork: boolean;
   localDevelopment: boolean;
@@ -14,7 +14,7 @@ export interface ConnectorConfig {
 interface ConfigInput {
   relayUrl?: unknown;
   tunnelId?: unknown;
-  secret?: unknown;
+  privateKey?: unknown;
   origin?: unknown;
   allowPrivateNetwork?: unknown;
   localDevelopment?: unknown;
@@ -57,14 +57,14 @@ export async function loadConnectorConfig(
     flags.tunnel ?? env.BUNNY_HOLE_TUNNEL_ID ?? file.tunnelId,
     "tunnel ID",
   );
-  const secret = stringValue(
-    env.BUNNY_HOLE_TUNNEL_SECRET ?? file.secret,
-    "tunnel secret",
+  const privateKey = stringValue(
+    env.BUNNY_HOLE_TUNNEL_PRIVATE_KEY ?? file.privateKey,
+    "tunnel private key",
   );
   const validated = validateConnectorOptions({
     relayUrl: relayRaw,
     tunnelId,
-    secret,
+    privateKey,
     origin: stringValue(
       flags.origin ?? env.BUNNY_HOLE_ORIGIN ?? file.origin ?? "http://127.0.0.1:3000",
       "origin",
@@ -91,7 +91,7 @@ function readConnectorEnv(): Record<string, string | undefined> {
     "BUNNY_HOLE_ALLOW_PRIVATE_NETWORK",
     "BUNNY_HOLE_RELAY_URL",
     "BUNNY_HOLE_TUNNEL_ID",
-    "BUNNY_HOLE_TUNNEL_SECRET",
+    "BUNNY_HOLE_TUNNEL_PRIVATE_KEY",
     "BUNNY_HOLE_ORIGIN",
     "BUNNY_HOLE_LOG_FORMAT",
   ].map((name) => [name, Deno.env.get(name)]));
@@ -103,7 +103,7 @@ export function redactedConnectorConfig(
   return {
     relayUrl: config.relayUrl.href,
     tunnelId: config.tunnelId,
-    secret: "[REDACTED]",
+    privateKey: "[REDACTED]",
     origin: config.origin.href,
     allowPrivateNetwork: config.allowPrivateNetwork,
     localDevelopment: config.localDevelopment,
@@ -139,7 +139,7 @@ function isConfigInput(value: unknown): value is ConfigInput {
   const allowed = new Set([
     "relayUrl",
     "tunnelId",
-    "secret",
+    "privateKey",
     "origin",
     "allowPrivateNetwork",
     "localDevelopment",

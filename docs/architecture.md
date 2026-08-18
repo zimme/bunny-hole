@@ -10,6 +10,12 @@ container. The local connector opens an outbound WSS connection to the same endp
 Edge Script is required for this supported path: Deno's server in the container performs
 authentication, hostname routing, framing, proxying, health checks, and limits.
 
+Each connector owns an Ed25519 private key and proves possession by signing a fresh
+relay nonce. The relay configuration contains only the matching raw public key. This is
+slightly more machinery than a shared secret, but operationally simpler and safer: the
+same generation command creates both configuration fragments, and compromising the relay
+configuration does not reveal credentials that can impersonate a connector.
+
 ```mermaid
 flowchart LR
   C["Public HTTP client"] --> CDN["Bunny CDN endpoint<br/>TLS + hostname"]

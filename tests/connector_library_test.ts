@@ -1,12 +1,16 @@
-import { createConnector, VERSION } from "../apps/connector/mod.ts";
+import {
+  createConnector,
+  generateConnectorKeyPair,
+  VERSION,
+} from "../apps/connector/mod.ts";
 import { validateConnectorOptions } from "../apps/connector/library.ts";
-import { createSecret } from "../packages/protocol/auth.ts";
 import { assertEquals, assertRejects, assertThrows } from "./assert.ts";
 
+const keys = await generateConnectorKeyPair();
 const base = {
   relayUrl: "wss://relay.example",
   tunnelId: "library-test",
-  secret: createSecret(),
+  privateKey: keys.privateKey,
 };
 
 Deno.test("connector library validates without connecting or side effects", async () => {
@@ -40,8 +44,8 @@ Deno.test("connector library preserves secure network defaults", () => {
     /tunnel ID/,
   );
   assertThrows(
-    () => createConnector({ ...base, secret: "too-short" }),
-    /secret/,
+    () => createConnector({ ...base, privateKey: "too-short" }),
+    /private key/,
   );
 
   const privateOrigin = validateConnectorOptions({

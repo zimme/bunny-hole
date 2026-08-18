@@ -46,7 +46,7 @@ services:
     environment:
       BUNNY_HOLE_LOCAL_DEVELOPMENT: "true"
       BUNNY_HOLE_TUNNELS: >-
-        [{"id":"integration","secret":"${BUNNY_HOLE_TEST_SECRET:-}","hostnames":["tunnel.test","127.0.0.1","host.docker.internal"]}]
+        [{"id":"integration","publicKey":"${BUNNY_HOLE_TEST_PUBLIC_KEY:-}","hostnames":["tunnel.test","127.0.0.1","host.docker.internal"]}]
     networks:
       - tunnel
     ports:
@@ -94,7 +94,7 @@ services:
       BUNNY_HOLE_ORIGIN: http://origin:3000
       BUNNY_HOLE_RELAY_URL: ws://relay:8080
       BUNNY_HOLE_TUNNEL_ID: integration
-      BUNNY_HOLE_TUNNEL_SECRET: ${BUNNY_HOLE_TEST_SECRET:-}
+      BUNNY_HOLE_TUNNEL_PRIVATE_KEY: ${BUNNY_HOLE_TEST_PRIVATE_KEY:-}
     networks:
       - tunnel
     read_only: true

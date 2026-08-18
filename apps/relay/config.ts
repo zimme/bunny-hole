@@ -1,9 +1,10 @@
-import { decodeBase64Url, LIMITS, ProtocolError } from "../../packages/protocol/mod.ts";
+import { LIMITS, ProtocolError } from "../../packages/protocol/mod.ts";
+import { validateTunnelPublicKey } from "../../packages/protocol/auth.ts";
 import { normalizeHostname } from "../../packages/protocol/security.ts";
 
 export interface TunnelConfig {
   id: string;
-  secret: string;
+  publicKey: string;
   hostnames: string[];
 }
 
@@ -54,20 +55,24 @@ export function loadRelayConfig(
   for (const candidate of parsed) {
     if (!isRecord(candidate)) throw new ProtocolError("invalid tunnel configuration");
     if (
-      Object.keys(candidate).some((key) => !["id", "secret", "hostnames"].includes(key))
+      Object.keys(candidate).some((key) =>
+        !["id", "publicKey", "hostnames"].includes(key)
+      )
     ) {
       throw new ProtocolError("tunnel configuration contains unknown fields");
     }
     const id = candidate.id;
-    const secret = candidate.secret;
+    const publicKey = candidate.publicKey;
     const hostnames = candidate.hostnames;
     if (
       typeof id !== "string" || !/^[a-z0-9][a-z0-9-]{2,62}$/.test(id) ||
-      typeof secret !== "string" || !Array.isArray(hostnames) ||
+      typeof publicKey !== "string" || !Array.isArray(hostnames) ||
       hostnames.length < 1 || hostnames.length > 20
     ) throw new ProtocolError("invalid tunnel configuration");
-    if (decodeBase64Url(secret).length < 32) {
-      throw new ProtocolError(`secret for tunnel ${id} is too short`);
+    try {
+      validateTunnelPublicKey(publicKey);
+    } catch {
+      throw new ProtocolError(`public key for tunnel ${id} is invalid`);
     }
     if (tunnels.has(id)) throw new ProtocolError(`duplicate tunnel id: ${id}`);
     const normalized = hostnames.map((value) => {
@@ -80,7 +85,7 @@ export function loadRelayConfig(
       }
       hostnameToTunnel.set(host, id);
     }
-    tunnels.set(id, { id, secret, hostnames: normalized });
+    tunnels.set(id, { id, publicKey, hostnames: normalized });
   }
   return {
     hostname,
@@ -112,7 +117,7 @@ export function redactedConfig(config: RelayConfig): Record<string, unknown> {
     tunnels: [...config.tunnels.values()].map(({ id, hostnames }) => ({
       id,
       hostnames,
-      secret: "[REDACTED]",
+      publicKey: "[CONFIGURED]",
     })),
   };
 }

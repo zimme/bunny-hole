@@ -7,7 +7,7 @@ COPY packages ./packages
 COPY apps ./apps
 COPY fixtures ./fixtures
 RUN deno compile --frozen --allow-env=HOST,PORT,BUNNY_HOLE_LOCAL_DEVELOPMENT,BUNNY_HOLE_LOG_FORMAT,BUNNY_HOLE_TUNNELS --allow-net --output /out/relay apps/relay/main.ts \
-    && deno compile --frozen --allow-env=BUNNY_HOLE_LOCAL_DEVELOPMENT,BUNNY_HOLE_ALLOW_PRIVATE_NETWORK,BUNNY_HOLE_RELAY_URL,BUNNY_HOLE_TUNNEL_ID,BUNNY_HOLE_TUNNEL_SECRET,BUNNY_HOLE_ORIGIN,BUNNY_HOLE_LOG_FORMAT --allow-net --allow-read --output /out/connector apps/connector/main.ts \
+    && deno compile --frozen --allow-env=BUNNY_HOLE_LOCAL_DEVELOPMENT,BUNNY_HOLE_ALLOW_PRIVATE_NETWORK,BUNNY_HOLE_RELAY_URL,BUNNY_HOLE_TUNNEL_ID,BUNNY_HOLE_TUNNEL_PRIVATE_KEY,BUNNY_HOLE_ORIGIN,BUNNY_HOLE_LOG_FORMAT --allow-net --allow-read --output /out/connector apps/connector/main.ts \
     && deno compile --frozen --allow-env=PORT --allow-net --output /out/origin fixtures/origin/main.ts
 
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS relay-runtime

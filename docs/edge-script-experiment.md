@@ -18,9 +18,10 @@ diagnostics are enabled:
 - ordinary responses include `X-Bunny-Hole-Edge-Instance`; and
 - structured relay logs include `edgeInstanceId`.
 
-The endpoint never returns tunnel IDs, hostnames, tunnel records, or secrets. Failed
-diagnostic authentication returns the same generic 404 as a missing control resource.
-The diagnostic token is timing-safely compared and independent of every tunnel secret.
+The endpoint never returns tunnel IDs, hostnames, tunnel records, or private keys.
+Failed diagnostic authentication returns the same generic 404 as a missing control
+resource. The diagnostic token is timing-safely compared and independent of every
+connector key.
 
 ## Build
 
@@ -40,15 +41,15 @@ Bunny Edge Scripts repository.
 
 ## Human-controlled setup
 
-Do not paste Bunny credentials, the diagnostic token, or a tunnel secret into an AI
-conversation. In the Bunny dashboard or a private terminal:
+Do not paste Bunny credentials, the diagnostic token, or a connector private key into an
+AI conversation. In the Bunny dashboard or a private terminal:
 
 1. Create a **Standalone** Edge Script.
 2. Deploy `dist/bunny-hole-edge-relay.js`. The current official CLI supports
    `bunny scripts deploy`; authenticate interactively and never put an API key in the
    command.
-3. Add `BUNNY_HOLE_TUNNELS` as an environment secret using the normal tunnel-record
-   JSON.
+3. Add `BUNNY_HOLE_TUNNELS` using the normal public tunnel-record JSON. It contains no
+   connector private key.
 4. Generate an independent random diagnostic token and add it as the
    `BUNNY_HOLE_EDGE_DIAGNOSTIC_TOKEN` secret.
 5. Use the Pull Zone created for the standalone script. Enable WebSockets, disable
@@ -82,8 +83,8 @@ cache-bypassed diagnostic/public pairs in concurrent batches and prints only:
 - how often each diagnostic instance saw an authenticated connector; and
 - public HTTP status counts per serving instance.
 
-It never prints the diagnostic token or a tunnel secret. Save the JSON report only if
-the hostname and ephemeral instance identifiers are acceptable to disclose.
+It never prints the diagnostic token or a connector private key. Save the JSON report
+only if the hostname and ephemeral instance identifiers are acceptable to disclose.
 
 Repeat from networks that reach different Bunny PoPs and while generating concurrent
 traffic. One local run cannot establish global affinity.
@@ -111,7 +112,7 @@ The Edge Script relay fails the experiment if any of these occur:
 - the connector and public responses consistently show different identifiers;
 - Origin Shield interrupts the WebSocket or does not change divergent placement;
 - load, deployment, or idle eviction loses the socket without prompt reconnection; or
-- secrets or internal headers appear in responses or logs.
+- private keys, diagnostic tokens, or internal headers appear in responses or logs.
 
 Seeing one identifier with successful requests is encouraging but not sufficient. A
 supported Edge Script deployment still requires Bunny to guarantee that the observed

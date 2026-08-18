@@ -1,13 +1,14 @@
-import { createSecret } from "../packages/protocol/auth.ts";
+import { generateTunnelKeyPair } from "../packages/protocol/auth.ts";
 import { output, run } from "./process.ts";
 
 const project = `bunny-hole-test-${crypto.randomUUID().slice(0, 8)}`;
-const secret = createSecret();
+const { publicKey, privateKey } = await generateTunnelKeyPair();
 const testHost = Deno.env.get("BUNNY_HOLE_TEST_HOST") ?? "127.0.0.1";
 const relayUrl = `http://${testHost}:18080`;
 const environment: Record<string, string> = {
   ...Deno.env.toObject(),
-  BUNNY_HOLE_TEST_SECRET: secret,
+  BUNNY_HOLE_TEST_PUBLIC_KEY: publicKey,
+  BUNNY_HOLE_TEST_PRIVATE_KEY: privateKey,
 };
 const compose = ["compose", "-p", project, "-f", "compose.yaml"];
 const publishedImages = Boolean(
@@ -64,7 +65,7 @@ try {
     headers: {
       host: "tunnel.test",
       "content-type": "text/plain",
-      "x-bunny-hole-secret": secret,
+      "x-bunny-hole-private-key": privateKey,
       "x-forwarded-for": "attacker",
       "x-test": "safe",
     },
@@ -79,7 +80,7 @@ try {
     echoed.body !== "streamed request" ||
     echoed.path !== "/hello?case=echo" ||
     echoed.headers["x-test"] !== "safe" ||
-    echoed.headers["x-bunny-hole-secret"] !== undefined ||
+    echoed.headers["x-bunny-hole-private-key"] !== undefined ||
     echoed.headers["x-forwarded-for"] === "attacker"
   ) throw new Error("header or body isolation check failed");
 
@@ -140,7 +141,9 @@ try {
   const relayLogs = await output("docker", [...compose, "logs", "relay"], {
     env: environment,
   });
-  if (relayLogs.includes(secret)) throw new Error("secret leaked into relay logs");
+  if (relayLogs.includes(privateKey)) {
+    throw new Error("private key leaked into relay logs");
+  }
   const connectorLogs = await output("docker", [...compose, "logs", "connector"], {
     env: environment,
   });

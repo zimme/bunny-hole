@@ -1,4 +1,4 @@
-import { createSecret } from "../packages/protocol/auth.ts";
+import { generateTunnelKeyPair } from "../packages/protocol/auth.ts";
 import { loadConnectorConfig } from "../apps/connector/config.ts";
 import { parseFlags } from "../apps/connector/main.ts";
 import { loadRelayConfig, redactedConfig } from "../apps/relay/config.ts";
@@ -14,20 +14,24 @@ Deno.test("connector CLI flags reject ambiguity and secret arguments", () => {
     /duplicate/,
   );
   assertThrows(() => parseFlags(["--secret", "value"], ["secret"]), /forbidden/);
+  assertThrows(
+    () => parseFlags(["--private-key", "value"], ["private-key"]),
+    /forbidden/,
+  );
 });
 
-Deno.test("relay config is fail-closed and maps only explicit hostnames", () => {
-  const secret = createSecret();
+Deno.test("relay config is fail-closed and maps only explicit hostnames", async () => {
+  const { publicKey } = await generateTunnelKeyPair();
   const config = loadRelayConfig({
     BUNNY_HOLE_TUNNELS: JSON.stringify([
-      { id: "alpha", secret, hostnames: ["A.Example.com"] },
+      { id: "alpha", publicKey, hostnames: ["A.Example.com"] },
     ]),
   });
   assertEquals(config.hostnameToTunnel.get("a.example.com"), "alpha");
   assertEquals(config.hostnameToTunnel.get("b.example.com"), undefined);
   assertEquals(
-    (redactedConfig(config).tunnels as Record<string, unknown>[])[0].secret,
-    "[REDACTED]",
+    (redactedConfig(config).tunnels as Record<string, unknown>[])[0].publicKey,
+    "[CONFIGURED]",
   );
   assertThrows(() => loadRelayConfig({}), /required/);
   assertThrows(() =>
@@ -39,31 +43,43 @@ Deno.test("relay config is fail-closed and maps only explicit hostnames", () => 
     loadRelayConfig({
       BUNNY_HOLE_LOG_FORMAT: "verbose",
       BUNNY_HOLE_TUNNELS: JSON.stringify([
-        { id: "alpha", secret, hostnames: ["alpha.example"] },
+        { id: "alpha", publicKey, hostnames: ["alpha.example"] },
       ]),
     }), /json or pretty/);
   assertThrows(() =>
     loadRelayConfig({
       BUNNY_HOLE_TUNNELS: JSON.stringify([
-        { id: "alpha", secret, hostnames: ["alpha.example"], typo: true },
+        { id: "alpha", publicKey, hostnames: ["alpha.example"], typo: true },
       ]),
     }), /unknown fields/);
   assertThrows(() =>
     loadRelayConfig({
       BUNNY_HOLE_TUNNELS: JSON.stringify([
-        { id: "one", secret, hostnames: ["same.example"] },
-        { id: "two", secret, hostnames: ["same.example"] },
+        { id: "alpha", publicKey: "not-a-key", hostnames: ["alpha.example"] },
+      ]),
+    }), /public key/);
+  assertThrows(() =>
+    loadRelayConfig({
+      BUNNY_HOLE_TUNNELS: JSON.stringify([
+        { id: "alpha", secret: "obsolete", hostnames: ["alpha.example"] },
+      ]),
+    }), /unknown fields/);
+  assertThrows(() =>
+    loadRelayConfig({
+      BUNNY_HOLE_TUNNELS: JSON.stringify([
+        { id: "one", publicKey, hostnames: ["same.example"] },
+        { id: "two", publicKey, hostnames: ["same.example"] },
       ]),
     })
   );
 });
 
 Deno.test("connector config requires WSS and explicit private-network opt-in", async () => {
-  const secret = createSecret();
+  const { privateKey } = await generateTunnelKeyPair();
   const base = {
     BUNNY_HOLE_RELAY_URL: "wss://relay.example",
     BUNNY_HOLE_TUNNEL_ID: "alpha",
-    BUNNY_HOLE_TUNNEL_SECRET: secret,
+    BUNNY_HOLE_TUNNEL_PRIVATE_KEY: privateKey,
   };
   const config = await loadConnectorConfig({}, base);
   assertEquals(config.origin.href, "http://127.0.0.1:3000/");
