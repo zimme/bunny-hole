@@ -80,7 +80,10 @@ export function normalizeHostname(raw: string): string {
     parsed.hash
   ) throw new ProtocolError("invalid hostname");
   const hostname = parsed.hostname.replace(/\.$/, "");
-  if (hostname.startsWith("[") && hostname.endsWith("]")) return hostname;
+  // Deno currently keeps IPv6 brackets on URL.hostname; the URL standard omits them.
+  if (hostname.includes(":")) {
+    return hostname.startsWith("[") ? hostname : `[${hostname}]`;
+  }
   if (
     hostname.length < 1 || hostname.length > 253 ||
     !hostname.split(".").every((label) => /^(?!-)[a-z0-9-]{1,63}(?<!-)$/.test(label))

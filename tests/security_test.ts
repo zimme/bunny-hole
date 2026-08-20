@@ -58,7 +58,7 @@ Deno.test("origin response filter strips internal and hop-by-hop headers", () =>
 
 Deno.test("header filters enforce UTF-8 byte limits", () => {
   // Fetch Headers are Latin-1 ByteStrings. A 0xFF unit is one code unit but two
-  // UTF-8 bytes, which is the undercount the limit must close.
+  // UTF-8 bytes, so a JS-length check would accept a block over 32 KiB.
   const value = "\u00FF".repeat(20_000);
   assertThrows(
     () =>
@@ -95,6 +95,7 @@ Deno.test("hostname normalization prevents confusion", () => {
   assertEquals(normalizeHostname("App.Example.COM:443"), "app.example.com");
   assertEquals(normalizeHostname("app.example.com."), "app.example.com");
   assertEquals(normalizeHostname("[::1]:8080"), "[::1]");
+  assertEquals(normalizeHostname("[2001:db8::1]"), "[2001:db8::1]");
   assertEquals(normalizeHostname("127.0.0.1:8080"), "127.0.0.1");
   for (
     const bad of [
@@ -113,6 +114,7 @@ Deno.test("hostname normalization prevents confusion", () => {
 
 Deno.test("connector origin defaults to loopback-only policy", () => {
   assertEquals(validateOrigin("http://127.0.0.1:3000", false).port, "3000");
+  assertEquals(validateOrigin("http://[::1]:3000", false).port, "3000");
   assertThrows(() => validateOrigin("http://127.attacker.example", false), /opt-in/);
   assertThrows(() => validateOrigin("http://192.168.1.3", false), /opt-in/);
   assert(validateOrigin("http://192.168.1.3", true) instanceof URL);
