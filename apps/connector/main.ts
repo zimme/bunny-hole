@@ -16,11 +16,11 @@ const HELP = `Bunny Hole connector ${VERSION}
 Usage:
   bunny-hole connect [options]
   bunny-hole check [options]
-  bunny-hole generate [--tunnel NAME] [--hostname HOST] [options]
+  bunny-hole generate [generate-options]
   bunny-hole --help
   bunny-hole --version
 
-Options:
+Connect and check options:
   --config PATH                  Read a JSON config file (must be mode 0600)
   --relay WSS_URL                Relay base URL
   --tunnel ID                    Configured tunnel ID
@@ -28,6 +28,14 @@ Options:
   --allow-private-network        Permit a non-loopback origin
   --local-development            Permit ws:// relay URLs
   --log-format json|pretty       Log format
+
+Generate options:
+  --tunnel NAME                  Tunnel ID (default my-tunnel)
+  --hostname HOST                Public hostname (default tunnel.example.com)
+  --relay WSS_URL                Relay base URL
+  --origin HTTP_URL              Local origin (default http://127.0.0.1:3000)
+  --allow-private-network        Permit a non-loopback origin
+  --local-development            Permit ws:// relay URLs
 
 The private key is read from BUNNY_HOLE_TUNNEL_PRIVATE_KEY or the restricted config
 file. It is intentionally not accepted as a command-line argument. The generate command

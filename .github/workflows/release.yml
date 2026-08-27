@@ -121,13 +121,13 @@ jobs:
             BUNNY_HOLE_CONNECTOR_IMAGE=ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
             CI=true deno task integration
       - name: Generate relay SPDX SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@v0.24.0
         with:
           image: ghcr.io/${{ github.repository }}-relay@${{ steps.relay.outputs.digest }}
           format: spdx-json
           output-file: bunny-hole-relay-${{ github.ref_name }}.spdx.json
       - name: Generate connector SPDX SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@v0.24.0
         with:
           image: ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
           format: spdx-json

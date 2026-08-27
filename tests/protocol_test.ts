@@ -113,6 +113,21 @@ Deno.test("control parser rejects malformed and unconstrained data", () => {
   assertEquals(decodeControl(encodeControl(control)), control);
 });
 
+Deno.test("control encoder reports unserializable values as protocol errors", () => {
+  const cyclic: { self?: unknown } = {};
+  cyclic.self = cyclic;
+  for (const value of [undefined, () => {}, 1n, cyclic]) {
+    let error: unknown;
+    try {
+      encodeControl(value);
+    } catch (caught) {
+      error = caught;
+    }
+    assert(error instanceof ProtocolError);
+    assertEquals(error.message, "invalid control message");
+  }
+});
+
 Deno.test("request and response controls enforce syntax and orderable fields", () => {
   assertEquals(
     parseRequestStart({

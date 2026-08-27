@@ -18,6 +18,22 @@ Deno.test("connector CLI flags reject ambiguity and secret arguments", () => {
     () => parseFlags(["--private-key", "value"], ["private-key"]),
     /forbidden/,
   );
+  const generateFlags = [
+    "tunnel",
+    "hostname",
+    "relay",
+    "origin",
+    "allow-private-network",
+    "local-development",
+  ];
+  assertThrows(
+    () => parseFlags(["--config", "connector.json"], generateFlags),
+    /unknown flag/,
+  );
+  assertThrows(
+    () => parseFlags(["--log-format", "json"], generateFlags),
+    /unknown flag/,
+  );
 });
 
 Deno.test("relay config is fail-closed and maps only explicit hostnames", async () => {

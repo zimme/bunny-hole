@@ -147,7 +147,14 @@ export function decodeFrame(input: ArrayBuffer | Uint8Array): Frame {
 }
 
 export function encodeControl(value: unknown): Uint8Array {
-  const encoded = encoder.encode(JSON.stringify(value));
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(value);
+  } catch {
+    throw new ProtocolError("invalid control message");
+  }
+  if (typeof json !== "string") throw new ProtocolError("invalid control message");
+  const encoded = encoder.encode(json);
   if (encoded.length > LIMITS.maxControlBytes) {
     throw new ProtocolError("control message exceeds limit", 1009);
   }
