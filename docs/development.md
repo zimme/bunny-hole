@@ -63,6 +63,11 @@ ports on both platforms. CI also passes the host socket's numeric group to Compo
 `group_add`, because Dev Container remote-user execution cannot reliably inherit a group
 created by the running entrypoint.
 
+The local `group_add` fallback is deliberately GID 0 because Docker Desktop presents its
+Linux VM socket as `root:root`; Linux CI supplies the actual socket GID instead. This
+applies only to the development service. Mounting the Docker socket already grants
+host-root-equivalent daemon control, so do not run untrusted code in that service.
+
 `.devcontainer/devcontainer.json` only supplies editor metadata and points at the same
 Compose service. It has no Features or lifecycle command, so opening the repository in a
 Dev Container cannot produce a different toolchain. Its `runServices` list starts only

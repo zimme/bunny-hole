@@ -114,6 +114,8 @@ Deno.test("hostname normalization prevents confusion", () => {
 
 Deno.test("connector origin defaults to loopback-only policy", () => {
   assertEquals(validateOrigin("http://127.0.0.1:3000", false).port, "3000");
+  assertEquals(validateOrigin("http://127.1:3000", false).hostname, "127.0.0.1");
+  assertEquals(validateOrigin("http://127.0.1:3000", false).hostname, "127.0.0.1");
   assertEquals(validateOrigin("http://[::1]:3000", false).port, "3000");
   assertThrows(() => validateOrigin("http://127.attacker.example", false), /opt-in/);
   assertThrows(() => validateOrigin("http://192.168.1.3", false), /opt-in/);

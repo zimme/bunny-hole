@@ -22,6 +22,7 @@ services:
         DOCKER_BUILDX_VERSION: "0.35.0-1~debian.13~trixie"
         DOCKER_COMPOSE_VERSION: "5.3.1-1~debian.13~trixie"
     init: true
+    # Docker Desktop presents the mounted socket as GID 0; Linux CI overrides this.
     group_add:
       - "${BUNNY_HOLE_DOCKER_GID:-0}"
     environment:
