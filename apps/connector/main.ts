@@ -9,7 +9,7 @@ import { createLogger } from "../relay/logger.ts";
 
 export const VERSION = "0.1.0";
 
-class UsageError extends Error {}
+export class UsageError extends Error {}
 
 const HELP = `Bunny Hole connector ${VERSION}
 
@@ -84,13 +84,7 @@ if (import.meta.main) {
           "refusing to print a private key to a terminal; redirect stdout to a mode-0600 config file",
         );
       }
-      const tunnelId = typeof flags.tunnel === "string" ? flags.tunnel : "my-tunnel";
-      if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(tunnelId)) {
-        throw new Error("invalid tunnel ID");
-      }
-      const hostname = normalizeHostname(
-        typeof flags.hostname === "string" ? flags.hostname : "tunnel.example.com",
-      );
+      const { tunnelId, hostname } = parseGenerateTarget(flags);
       const { publicKey, privateKey } = await generateConnectorKeyPair();
       const relayUrl = typeof flags.relay === "string"
         ? flags.relay
@@ -104,14 +98,21 @@ if (import.meta.main) {
         : "http://127.0.0.1:3000";
       const allowPrivateNetwork = flags["allow-private-network"] === true;
       const localDevelopment = flags["local-development"] === true;
-      const validated = validateConnectorOptions({
-        relayUrl,
-        tunnelId,
-        privateKey,
-        origin,
-        allowPrivateNetwork,
-        localDevelopment,
-      });
+      let validated;
+      try {
+        validated = validateConnectorOptions({
+          relayUrl,
+          tunnelId,
+          privateKey,
+          origin,
+          allowPrivateNetwork,
+          localDevelopment,
+        });
+      } catch (error) {
+        throw new UsageError(
+          error instanceof Error ? error.message : "invalid generate options",
+        );
+      }
       console.log(JSON.stringify(
         {
           relayUrl: validated.relayUrl.href,
@@ -167,6 +168,25 @@ if (import.meta.main) {
       error instanceof Error ? error.message : "connector configuration failed",
     );
     Deno.exit(error instanceof UsageError ? 64 : 78);
+  }
+}
+
+export function parseGenerateTarget(
+  flags: Record<string, string | boolean>,
+): { tunnelId: string; hostname: string } {
+  const tunnelId = typeof flags.tunnel === "string" ? flags.tunnel : "my-tunnel";
+  if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(tunnelId)) {
+    throw new UsageError("invalid tunnel ID");
+  }
+  try {
+    return {
+      tunnelId,
+      hostname: normalizeHostname(
+        typeof flags.hostname === "string" ? flags.hostname : "tunnel.example.com",
+      ),
+    };
+  } catch {
+    throw new UsageError("invalid hostname");
   }
 }
 

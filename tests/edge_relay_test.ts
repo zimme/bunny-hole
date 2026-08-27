@@ -127,3 +127,24 @@ Deno.test("edge diagnostics require a strong bounded token", () => {
   assertEquals(message.includes("32-512"), true);
   environment.set("BUNNY_HOLE_EDGE_DIAGNOSTIC_TOKEN", token);
 });
+
+Deno.test("edge relay default logger honors the configured format", () => {
+  environment.set("BUNNY_HOLE_LOG_FORMAT", "pretty");
+  const output: unknown[][] = [];
+  const original = console.log;
+  console.log = (...values: unknown[]) => output.push(values);
+  try {
+    createEdgeRelayHandler({
+      config: config(),
+      relay: {
+        sessions: new Map(),
+        pending: new Map(),
+        handle: () => Promise.resolve(new Response("proxied")),
+      },
+    });
+  } finally {
+    console.log = original;
+    environment.delete("BUNNY_HOLE_LOG_FORMAT");
+  }
+  assertEquals(output[0]?.[0], "INFO edge_relay_started");
+});

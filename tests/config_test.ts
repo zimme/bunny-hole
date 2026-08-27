@@ -1,8 +1,8 @@
 import { generateTunnelKeyPair } from "../packages/protocol/auth.ts";
 import { loadConnectorConfig } from "../apps/connector/config.ts";
-import { parseFlags } from "../apps/connector/main.ts";
+import { parseFlags, parseGenerateTarget, UsageError } from "../apps/connector/main.ts";
 import { loadRelayConfig, redactedConfig } from "../apps/relay/config.ts";
-import { assertEquals, assertRejects, assertThrows } from "./assert.ts";
+import { assert, assertEquals, assertRejects, assertThrows } from "./assert.ts";
 
 Deno.test("connector CLI flags reject ambiguity and secret arguments", () => {
   assertEquals(parseFlags(["--relay", "wss://relay.example"], ["relay"]), {
@@ -34,6 +34,26 @@ Deno.test("connector CLI flags reject ambiguity and secret arguments", () => {
     () => parseFlags(["--log-format", "json"], generateFlags),
     /unknown flag/,
   );
+});
+
+Deno.test("connector generate classifies invalid targets as usage errors", () => {
+  const invalid: Record<string, string | boolean>[] = [
+    { tunnel: "../invalid" },
+    { hostname: "user@example.com" },
+  ];
+  for (const flags of invalid) {
+    let error: unknown;
+    try {
+      parseGenerateTarget(flags);
+    } catch (caught) {
+      error = caught;
+    }
+    assert(error instanceof UsageError);
+  }
+  assertEquals(parseGenerateTarget({}), {
+    tunnelId: "my-tunnel",
+    hostname: "tunnel.example.com",
+  });
 });
 
 Deno.test("relay config is fail-closed and maps only explicit hostnames", async () => {
