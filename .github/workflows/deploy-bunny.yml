@@ -56,7 +56,7 @@ jobs:
           IMAGE_DIGEST: ${{ inputs.digest }}
         shell: bash
         run: |
-          node <<'NODE'
+          node --input-type=module <<'NODE'
           const headers = { Accept: "application/json", AccessKey: process.env.BUNNYNET_API_KEY };
           const base = `https://api.bunny.net/mc/apps/${encodeURIComponent(process.env.BUNNY_APP_ID)}`;
           const app = await fetch(base, { headers });
