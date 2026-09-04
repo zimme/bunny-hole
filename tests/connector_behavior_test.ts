@@ -157,6 +157,105 @@ Deno.test("connector cleans up an origin failure before request upload ends", as
   assertEquals(sent.map((frame) => frame.type), [FrameType.cancel]);
 });
 
+Deno.test("connector retains an early origin response until request upload ends", async () => {
+  const sent: Frame[] = [];
+  const socket = {
+    bufferedAmount: 0,
+    readyState: WebSocket.OPEN,
+    send(frame: Uint8Array) {
+      sent.push(decodeFrame(frame));
+    },
+  };
+  type TestRequest = {
+    id: string;
+    abort: AbortController;
+    ended: boolean;
+    responseDone: boolean;
+    requestBytes: number;
+    timeout: ReturnType<typeof setTimeout>;
+    controller?: ReadableStreamDefaultController<Uint8Array>;
+  };
+  const request: TestRequest = {
+    id: "abcdefghijklmnop",
+    abort: new AbortController(),
+    ended: false,
+    responseDone: false,
+    requestBytes: 0,
+    timeout: setTimeout(() => {}, 60_000),
+  };
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      request.controller = controller;
+    },
+  });
+  const connector = new Connector({
+    relayUrl: new URL("ws://127.0.0.1:8080"),
+    tunnelId: "early-response-test",
+    privateKey: "unused",
+    origin: new URL("http://127.0.0.1:3000"),
+  }, { info() {}, warn() {}, error() {} });
+  const internal = connector as unknown as {
+    socket: typeof socket;
+    requests: Map<string, typeof request>;
+    recent: Map<string, {
+      kind: string;
+      requestBytes: number;
+      ended: boolean;
+      expiresAt: number;
+    }>;
+    proxyOrigin(
+      context: typeof request,
+      target: URL,
+      method: string,
+      headers: { name: string; value: string }[],
+      body: ReadableStream<Uint8Array>,
+    ): Promise<void>;
+    handleFrame(frame: Frame): Promise<void>;
+  };
+  internal.socket = socket;
+  internal.requests.set(request.id, request);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(new Response(null, { status: 204 }));
+  try {
+    await internal.proxyOrigin(
+      request,
+      new URL("http://127.0.0.1:3000/early"),
+      "POST",
+      [],
+      body,
+    );
+    assertEquals(request.responseDone, true);
+    assertEquals(internal.requests.has(request.id), true);
+    assertEquals(internal.recent.has(request.id), false);
+
+    await internal.handleFrame({
+      type: FrameType.requestBody,
+      id: request.id,
+      payload: new Uint8Array([1, 2, 3]),
+    });
+    await internal.handleFrame({
+      type: FrameType.requestEnd,
+      id: request.id,
+      payload: new Uint8Array(),
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearTimeout(request.timeout);
+  }
+
+  assertEquals(request.ended, true);
+  assertEquals(request.requestBytes, 3);
+  assertEquals(internal.requests.has(request.id), false);
+  const recent = internal.recent.get(request.id);
+  assertEquals(recent?.kind, "completed");
+  assertEquals(recent?.requestBytes, 3);
+  assertEquals(recent?.ended, true);
+  assertEquals(sent.map((frame) => frame.type), [
+    FrameType.responseStart,
+    FrameType.responseEnd,
+  ]);
+});
+
 Deno.test("relay cancellation aborts an origin response send under backpressure", async () => {
   const sendStarted = Promise.withResolvers<void>();
   const sent: Frame[] = [];
