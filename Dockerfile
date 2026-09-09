@@ -6,6 +6,7 @@ ARG FRP_VERSION=0.70.1
 ARG FRP_SHA_AMD64=333da23d1b9009d7c01638e9ba38cf4600f7d37d393f854e96ee1396adefa9a6
 ARG FRP_SHA_ARM64=3990f396a9a490ee7f0e5f355287750ed41520064ed999eab443b5e9a78d773d
 USER root
+# Deno 2.9 `eval` has implicit permissions; the downloaded bytes are checksum-pinned.
 RUN case "${TARGETARCH}" in \
       amd64) FRP_SHA="${FRP_SHA_AMD64}" ;; \
       arm64) FRP_SHA="${FRP_SHA_ARM64}" ;; \

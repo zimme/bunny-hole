@@ -5,6 +5,7 @@ import { assert, assertThrows } from "./assert.ts";
 
 const identity = await generateKeyPair();
 const session: Session = {
+  enrollmentId: "enr_AAAAAAAAAAAAAAAAAAAAAAAA",
   accessToken: "short-lived-token",
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
   descriptor: {
@@ -35,10 +36,19 @@ Deno.test("FRP configuration is secure, scoped, and contains no private key", ()
   assert(config.includes('transport.protocol = "wss"'));
   assert(config.includes("transport.tls.enable = true"));
   assert(config.includes('customDomains = ["home.example.com"]'));
+  assert(config.includes('user = "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA"'));
   assert(config.includes("short-lived-token"));
   assert(!config.includes("privateKey"));
   assertThrows(() => frpcConfig(session, "tcp"), /production connectors require/);
   assert(frpcConfig(session, "tcp", true).includes('transport.protocol = "tcp"'));
+});
+
+Deno.test("FRP configuration isolates an enrollment with no routes", () => {
+  const routeLessSession = structuredClone(session);
+  routeLessSession.routes = [];
+  const config = frpcConfig(routeLessSession, "wss");
+  assert(config.includes('user = "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA"'));
+  assert(!config.includes('user = "bh-device"'));
 });
 
 Deno.test("FRP configuration rejects private-network targets without opt-in", () => {

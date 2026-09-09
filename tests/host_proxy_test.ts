@@ -41,7 +41,7 @@ Deno.test("public proxy preserves bodies and strips untrusted headers", async ()
     assertEquals(value.headers["x-bunny-hole-secret"], undefined);
     assertEquals(value.headers["x-forwarded-for"], "192.0.2.10");
     assertEquals(value.headers["x-forwarded-host"], "home.example.com");
-    assertEquals(value.headers["x-forwarded-proto"], "https");
+    assertEquals(value.headers["x-forwarded-proto"], "http");
     assertEquals(
       (await context.host.handle(
         new Request("http://relay.test/", {

@@ -13,7 +13,7 @@ export function frpcConfig(
   const lines = [
     `serverAddr = ${toml(session.descriptor.connectorHost)}`,
     `serverPort = ${session.descriptor.connectorPort}`,
-    `user = ${toml(`bh-${session.routes[0]?.enrollmentId ?? "device"}`)}`,
+    `user = ${toml(`bh-${session.enrollmentId}`)}`,
     `transport.protocol = ${toml(transport)}`,
     "transport.tcpMux = true",
     `transport.tcpMuxKeepaliveInterval = ${LIMITS.heartbeatIntervalMs / 1_000}`,

@@ -1,4 +1,5 @@
 import { BunnyHoleClient } from "../apps/connector/client.ts";
+import { createConnector } from "../apps/connector/library.ts";
 import { generateKeyPair } from "../packages/api/auth.ts";
 import { assertEquals, assertRejects, assertThrows } from "./assert.ts";
 
@@ -128,6 +129,53 @@ Deno.test("client pins host identity and validates every admitted route", async 
     () => new BunnyHoleClient(credentials.url, malformed).session(credentials),
     /invalid port/,
   );
+});
+
+Deno.test("library connector can run again after stop", async () => {
+  const credentials = {
+    url: "https://hole.example.com/",
+    identityPublicKey: identity.publicKey,
+    enrollmentId: "enr_AAAAAAAAAAAAAAAAAAAAAAAA",
+    ...device,
+  };
+  let requests = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input) => {
+    requests++;
+    const path = new URL(input instanceof Request ? input.url : input).pathname;
+    return responder(
+      path.endsWith("challenge")
+        ? {
+          challengeId: "chl_AAAAAAAAAAAAAAAAAAAAAAAA",
+          challenge: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        }
+        : {
+          accessToken: "token",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          descriptor,
+          routes: [],
+        },
+    )(input);
+  };
+  const directory = await Deno.makeTempDir();
+  try {
+    const connector = createConnector({
+      credentials,
+      frpcPath: Deno.execPath(),
+      workingDirectory: directory,
+      stderr: "pipe",
+    });
+    connector.stop();
+    const firstRun = connector.run();
+    await assertRejects(() => connector.run(), /already running/);
+    assertEquals(typeof await firstRun, "number");
+    assertEquals(typeof await connector.run(), "number");
+    assertEquals(requests, 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await Deno.remove(directory, { recursive: true });
+  }
 });
 
 function responder(value: unknown): typeof fetch {

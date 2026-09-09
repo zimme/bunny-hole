@@ -613,6 +613,7 @@ export class Host {
       hostname,
       remoteAddress(info),
     );
+    headers.set("x-forwarded-proto", this.config.publicUrl.protocol.slice(0, -1));
     headers.set("host", hostname);
     if (this.#inFlight >= LIMITS.maxConcurrentRequests) return publicError(503);
     this.#inFlight++;

@@ -34,44 +34,58 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
     throw new ValidationError("library connectors require WSS");
   }
   const client = new BunnyHoleClient(options.credentials.url);
-  const controller = new AbortController();
+  let controller = new AbortController();
   let child: ChildProcess | undefined;
+  let running = false;
   return {
     async run(signal?: AbortSignal): Promise<number> {
-      if (child) throw new ValidationError("connector is already running");
-      if (controller.signal.aborted || signal?.aborted) return 0;
-      const session = await client.session(options.credentials);
-      const directory = await mkdtemp(
-        join(options.workingDirectory ?? tmpdir(), "bunny-hole-library-"),
-      );
-      const path = join(directory, "frpc.toml");
-      await writeFile(path, frpcConfig(session, options.transport ?? "wss"), {
-        mode: 0o600,
-        flag: "wx",
-      });
-      const abort = () => child?.kill("SIGTERM");
-      controller.signal.addEventListener("abort", abort, { once: true });
-      signal?.addEventListener("abort", abort, { once: true });
+      if (running) throw new ValidationError("connector is already running");
+      if (signal?.aborted) return 0;
+      if (controller.signal.aborted) controller = new AbortController();
+      const runController = controller;
+      running = true;
       try {
-        child = spawn(options.frpcPath, ["-c", path], {
-          stdio: ["ignore", "inherit", options.stderr ?? "inherit"],
-          windowsHide: true,
-        });
-        return await new Promise<number>((resolve, reject) => {
-          child!.once("error", reject);
-          child!.once("exit", (code, exitSignal) => {
-            if (exitSignal && !controller.signal.aborted && !signal?.aborted) {
-              reject(new Error(`frpc stopped by ${exitSignal}`));
-            } else {
-              resolve(code ?? 0);
-            }
+        const session = await client.session(options.credentials);
+        if (runController.signal.aborted || signal?.aborted) return 0;
+        const directory = await mkdtemp(
+          join(options.workingDirectory ?? tmpdir(), "bunny-hole-library-"),
+        );
+        try {
+          const path = join(directory, "frpc.toml");
+          await writeFile(path, frpcConfig(session, options.transport ?? "wss"), {
+            mode: 0o600,
+            flag: "wx",
           });
-        });
+          if (runController.signal.aborted || signal?.aborted) return 0;
+          const abort = () => child?.kill("SIGTERM");
+          runController.signal.addEventListener("abort", abort, { once: true });
+          signal?.addEventListener("abort", abort, { once: true });
+          try {
+            child = spawn(options.frpcPath, ["-c", path], {
+              stdio: ["ignore", "inherit", options.stderr ?? "inherit"],
+              windowsHide: true,
+            });
+            return await new Promise<number>((resolve, reject) => {
+              child!.once("error", reject);
+              child!.once("exit", (code, exitSignal) => {
+                if (exitSignal && !runController.signal.aborted && !signal?.aborted) {
+                  reject(new Error(`frpc stopped by ${exitSignal}`));
+                } else {
+                  resolve(code ?? 0);
+                }
+              });
+            });
+          } finally {
+            child = undefined;
+            runController.signal.removeEventListener("abort", abort);
+            signal?.removeEventListener("abort", abort);
+          }
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
       } finally {
-        child = undefined;
-        controller.signal.removeEventListener("abort", abort);
-        signal?.removeEventListener("abort", abort);
-        await rm(directory, { recursive: true, force: true });
+        running = false;
+        if (controller === runController) controller = new AbortController();
       }
     },
     stop(): void {

@@ -59,6 +59,7 @@ export function parseHostCredentials(value: unknown): HostCredentials {
 }
 
 export interface Session {
+  enrollmentId: string;
   accessToken: string;
   expiresAt: string;
   descriptor: HostDescriptor;
@@ -180,6 +181,7 @@ export class BunnyHoleClient {
       throw new ValidationError("invalid session response");
     }
     return {
+      enrollmentId: credentials.enrollmentId,
       accessToken: value.accessToken,
       expiresAt: value.expiresAt,
       descriptor,
