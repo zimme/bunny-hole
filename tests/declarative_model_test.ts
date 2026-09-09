@@ -2,7 +2,7 @@ import { routesFromCompose } from "../apps/compose/model.ts";
 import { desiredRoutes } from "../apps/operator/model.ts";
 import { assert, assertEquals, assertThrows } from "./assert.ts";
 
-Deno.test("Compose labels produce an explicit private-network route", () => {
+Deno.test("Compose labels produce a loopback route by default", () => {
   assertEquals(
     routesFromCompose({
       services: {

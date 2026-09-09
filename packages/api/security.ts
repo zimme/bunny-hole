@@ -88,8 +88,10 @@ export function validateOrigin(raw: string, allowPrivateNetwork: boolean): URL {
     throw new ValidationError("origin must contain only an origin");
   }
   const host = url.hostname.toLowerCase();
-  const loopback = host === "localhost" || host === "::1" || host === "[::1]" ||
-    /^127(?:\.\d{1,3}){3}$/.test(host);
+  const octets = host.split(".");
+  const loopbackV4 = octets.length === 4 && octets[0] === "127" &&
+    octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255);
+  const loopback = host === "localhost" || host === "::1" || loopbackV4;
   if (!loopback && !allowPrivateNetwork) {
     throw new ValidationError(
       "non-loopback origin requires explicit private-network opt-in",

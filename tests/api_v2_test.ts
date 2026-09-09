@@ -80,5 +80,7 @@ Deno.test("headers and origin policy fail closed", () => {
     () => validateOrigin("http://home.internal:8123", false),
     /explicit private-network opt-in/,
   );
+  assertThrows(() => validateOrigin("http://127.999.999.999:8123", false));
+  assertEquals(validateOrigin("http://127.1:8123", false).hostname, "127.0.0.1");
   assertEquals(normalizeHostname("HOME.Example.com."), "home.example.com");
 });
