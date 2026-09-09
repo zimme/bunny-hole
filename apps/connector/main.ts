@@ -435,9 +435,12 @@ async function connect(flags: Flags): Promise<void> {
   try {
     while (!controller.signal.aborted) {
       const started = Date.now();
+      let stage = "session acquisition";
       try {
         const session = await client.session(credentials);
+        stage = "temporary-directory creation";
         const directory = await Deno.makeTempDir({ prefix: "bunny-hole-frpc-" });
+        stage = "FRP process";
         const code = await runFrpc({
           executable,
           session,
@@ -449,9 +452,18 @@ async function connect(flags: Flags): Promise<void> {
         if (!controller.signal.aborted) {
           console.error(`connector stopped with code ${code}; reconnecting`);
         }
-      } catch {
+      } catch (error) {
         if (!controller.signal.aborted) {
-          console.error("connector connection failed; reconnecting");
+          const category = error instanceof Deno.errors.PermissionDenied
+            ? "permission denied"
+            : error instanceof Deno.errors.NotFound
+            ? "missing dependency"
+            : error instanceof ValidationError
+            ? "invalid response"
+            : error instanceof Error
+            ? error.name
+            : "runtime error";
+          console.error(`connector ${stage} failed (${category}); reconnecting`);
         }
       }
       if (controller.signal.aborted) break;

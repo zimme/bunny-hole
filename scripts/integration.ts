@@ -132,6 +132,17 @@ try {
   );
   await run("docker", [
     ...compose,
+    "run",
+    "--rm",
+    "--no-deps",
+    "connector",
+    "check",
+    "--host",
+    "integration",
+    "--local-development",
+  ], { env: environment });
+  await run("docker", [
+    ...compose,
     "up",
     "--no-build",
     "--detach",

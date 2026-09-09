@@ -55,6 +55,8 @@ FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca
 COPY --from=builder --chown=nonroot:nonroot /out/bunny-hole /usr/local/bin/bunny-hole
 COPY --from=frp --chown=nonroot:nonroot /out/frpc /usr/local/bin/frpc
 ENV BUNNY_HOLE_FRPC_PATH=/usr/local/bin/frpc
+ENV HOME=/tmp
+WORKDIR /tmp
 USER nonroot
 ENTRYPOINT ["/usr/local/bin/bunny-hole"]
 CMD ["connect"]
