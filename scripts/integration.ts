@@ -21,6 +21,10 @@ const environment: Record<string, string> = {
   BUNNY_HOLE_OWNER_PUBLIC_KEY: owner.publicKey,
   BUNNY_HOLE_CONNECTOR_CONFIG_DIR: `${hostWorkspace}/${configRelativeDirectory}`,
 };
+if (
+  !(await output("docker", ["info", "--format", "{{.OperatingSystem}}"]))
+    .toLowerCase().includes("docker desktop")
+) environment.BUNNY_HOLE_CONNECTOR_USER = `${Deno.uid()}:${Deno.gid()}`;
 const compose = [
   "compose",
   "--profile",

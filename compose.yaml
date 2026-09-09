@@ -84,6 +84,7 @@ services:
   connector:
     profiles: [tunnel]
     image: "${BUNNY_HOLE_CONNECTOR_IMAGE:-bunny-hole-connector:local}"
+    user: "${BUNNY_HOLE_CONNECTOR_USER:-65532:65532}"
     build:
       context: .
       target: connector-runtime
