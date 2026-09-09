@@ -3,9 +3,10 @@ import { run } from "./process.ts";
 await run("deno", [
   "doc",
   "--json",
-  "packages/protocol/mod.ts",
-  "packages/protocol/auth.ts",
-  "packages/protocol/security.ts",
+  "apps/connector/mod.ts",
+  "packages/api/mod.ts",
+  "packages/api/auth.ts",
+  "packages/api/security.ts",
 ], { stdout: "null" });
 
 const markdown = await collect(".");
@@ -26,7 +27,7 @@ for (const file of markdown) {
 if (missing.length) {
   throw new Error(`broken documentation links:\n${missing.join("\n")}`);
 }
-console.log(`documentation check: ${markdown.length} Markdown files and protocol API`);
+console.log(`documentation check: ${markdown.length} Markdown files and public API`);
 
 async function collect(path: string): Promise<string[]> {
   const files: string[] = [];

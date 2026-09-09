@@ -1,31 +1,31 @@
 import { run } from "./process.ts";
 
 await Deno.mkdir("dist", { recursive: true });
-await run("deno", [
-  "compile",
-  "--frozen",
-  "--allow-env=BUNNY_HOLE_LOCAL_DEVELOPMENT,BUNNY_HOLE_ALLOW_PRIVATE_NETWORK,BUNNY_HOLE_RELAY_URL,BUNNY_HOLE_TUNNEL_ID,BUNNY_HOLE_TUNNEL_PRIVATE_KEY,BUNNY_HOLE_ORIGIN,BUNNY_HOLE_LOG_FORMAT",
+const permissions = [
+  "--allow-env",
   "--allow-net",
   "--allow-read",
+  "--allow-write",
+  "--allow-run",
+  "--allow-sys",
+];
+await run("deno", [
+  "compile",
+  "--config",
+  "deno.runtime.json",
+  "--frozen",
+  ...permissions,
   "--output",
   "dist/bunny-hole",
   "apps/connector/main.ts",
 ]);
 await run("deno", [
   "compile",
+  "--config",
+  "deno.runtime.json",
   "--frozen",
-  "--allow-env=HOST,PORT,BUNNY_HOLE_LOCAL_DEVELOPMENT,BUNNY_HOLE_LOG_FORMAT,BUNNY_HOLE_TUNNELS",
-  "--allow-net",
+  ...permissions,
   "--output",
-  "dist/bunny-hole-relay",
-  "apps/relay/main.ts",
-]);
-await run("deno", [
-  "bundle",
-  "--frozen",
-  "--external",
-  "@bunny.net/edgescript-sdk",
-  "apps/edge-relay/main.ts",
-  "-o",
-  "dist/bunny-hole-edge-relay.js",
+  "dist/bunny-hole-host",
+  "apps/host/main.ts",
 ]);

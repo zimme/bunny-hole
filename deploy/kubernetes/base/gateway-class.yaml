@@ -1,0 +1,6 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: bunny-hole
+spec:
+  controllerName: dev.bunny-hole/gateway-controller

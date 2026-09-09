@@ -4,6 +4,7 @@ const steps: [string, string[]][] = [
   ["deno", ["task", "agents:check"]],
   ["deno", ["task", "version:check"]],
   ["deno", ["ci"]],
+  ["deno", ["install", "--config", "deno.runtime.json", "--frozen"]],
   ["deno", ["task", "fmt:check"]],
   ["deno", ["task", "spellcheck"]],
   ["deno", ["task", "lint"]],

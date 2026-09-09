@@ -40,7 +40,7 @@ if (npmVersionExists) {
 await run("deno", ["publish"]);
 if (!npmVersionExists) {
   const artifact = await buildNpmPackage("dist/npm");
-  await run("npm", ["publish", artifact]);
+  await run("npm", ["publish", "--access", "public", "--provenance", artifact]);
 }
 
 async function versionExists(url: string): Promise<boolean> {

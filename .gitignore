@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .cspellcache
+.tmp/
 coverage/
 dist/
 node_modules/

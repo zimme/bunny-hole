@@ -2,9 +2,12 @@ name: bunny-hole
 
 networks:
   tunnel:
+    internal: true
     ipam:
-      config:
-        - subnet: 10.253.240.0/24
+      config: [{ subnet: 10.254.252.0/24 }]
+  public:
+    ipam:
+      config: [{ subnet: 10.254.253.0/24 }]
 
 services:
   development:
@@ -22,89 +25,82 @@ services:
         DOCKER_BUILDX_VERSION: "0.35.0-1~debian.13~trixie"
         DOCKER_COMPOSE_VERSION: "5.3.1-1~debian.13~trixie"
     init: true
-    # Docker Desktop presents the mounted socket as GID 0; Linux CI overrides this.
-    group_add:
-      - "${BUNNY_HOLE_DOCKER_GID:-0}"
     environment:
       BUNNY_HOLE_BIND_ADDRESS: "0.0.0.0"
       BUNNY_HOLE_TEST_HOST: host.docker.internal
+      # Lets nested Compose tests bind generated files through the host daemon.
+      BUNNY_HOLE_WORKSPACE_HOST_PATH: "${BUNNY_HOLE_WORKSPACE_HOST_PATH:-${PWD}}"
       DENO_DIR: /deno-dir
       DENO_NO_PROMPT: "1"
       DENO_NO_UPDATE_CHECK: "1"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - .:/workspaces/bunny-hole:cached
       - development-deno-cache:/deno-dir
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker-host.sock
     working_dir: /workspaces/bunny-hole
 
-  relay:
-    image: "${BUNNY_HOLE_RELAY_IMAGE:-bunny-hole-relay:local}"
+  host:
+    profiles: [tunnel]
+    image: "${BUNNY_HOLE_HOST_IMAGE:-bunny-hole-host:local}"
     build:
       context: .
-      target: relay-runtime
+      target: host-runtime
     environment:
       BUNNY_HOLE_LOCAL_DEVELOPMENT: "true"
-      BUNNY_HOLE_TUNNELS: >-
-        [{"id":"integration","publicKey":"${BUNNY_HOLE_TEST_PUBLIC_KEY:-}","hostnames":["tunnel.test","127.0.0.1","host.docker.internal"]}]
-    networks:
-      - tunnel
+      BUNNY_HOLE_PUBLIC_URL: http://host:8080
+      BUNNY_HOLE_CONNECTOR_HOST: host
+      BUNNY_HOLE_CONNECTOR_PORT: "7000"
+      BUNNY_HOLE_CONNECTOR_TRANSPORTS: tcp,quic
+      BUNNY_HOLE_REQUEST_TIMEOUT_MS: "1000"
+      BUNNY_HOLE_OWNER_PUBLIC_KEY: "${BUNNY_HOLE_OWNER_PUBLIC_KEY:-integration-harness-required}"
+    networks: [tunnel, public]
     ports:
       - "${BUNNY_HOLE_BIND_ADDRESS:-127.0.0.1}:18080:8080"
+      - "${BUNNY_HOLE_BIND_ADDRESS:-127.0.0.1}:17000:7000/tcp"
+      - "${BUNNY_HOLE_BIND_ADDRESS:-127.0.0.1}:17000:7000/udp"
     read_only: true
-    tmpfs:
-      - /tmp:size=16m,noexec,nosuid
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+    tmpfs: ["/tmp:size=16m,noexec,nosuid"]
+    volumes: ["host-state:/var/lib/bunny-hole"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     healthcheck:
-      test: ["CMD", "/usr/local/bin/relay", "--healthcheck"]
+      test: [CMD, /usr/local/bin/bunny-hole-host, --healthcheck]
       interval: 2s
       timeout: 2s
-      retries: 20
+      retries: 30
 
   origin:
+    profiles: [tunnel]
     image: bunny-hole-origin-fixture:local
     build:
       context: .
       target: fixture-runtime
-    networks:
-      - tunnel
+    networks: [tunnel]
     read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
 
   connector:
+    profiles: [tunnel]
     image: "${BUNNY_HOLE_CONNECTOR_IMAGE:-bunny-hole-connector:local}"
     build:
       context: .
       target: connector-runtime
     depends_on:
-      relay:
-        condition: service_started
-      origin:
-        condition: service_started
+      host: { condition: service_healthy }
+      origin: { condition: service_started }
+    command: [connect, --host, integration, --transport, tcp, --local-development]
     environment:
-      BUNNY_HOLE_ALLOW_PRIVATE_NETWORK: "true"
-      BUNNY_HOLE_LOCAL_DEVELOPMENT: "true"
-      BUNNY_HOLE_LOG_FORMAT: pretty
-      BUNNY_HOLE_ORIGIN: http://origin:3000
-      BUNNY_HOLE_RELAY_URL: ws://relay:8080
-      BUNNY_HOLE_TUNNEL_ID: integration
-      BUNNY_HOLE_TUNNEL_PRIVATE_KEY: ${BUNNY_HOLE_TEST_PRIVATE_KEY:-}
-    networks:
-      - tunnel
+      BUNNY_HOLE_CONFIG: /config/config.json
+    volumes:
+      - "${BUNNY_HOLE_CONNECTOR_CONFIG_DIR:-/tmp/bunny-hole-config-required}:/config:ro"
+    networks: [tunnel, public]
     read_only: true
-    tmpfs:
-      - /tmp:size=16m,noexec,nosuid
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+    tmpfs: ["/tmp:size=16m,noexec,nosuid"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
 
 volumes:
   development-deno-cache:
+  host-state:

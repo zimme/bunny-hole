@@ -13,6 +13,6 @@ mutable branch action. Never expose deployment secrets to pull requests or codin
 agents. Pause for human-only dashboard and private-terminal steps and resume only from
 non-sensitive IDs, hostnames, image digests, and health status.
 
-Do not enable multiple regions or relay replicas. Verify production containers are
+Do not enable multiple regions or host replicas. Verify production containers are
 non-root, health endpoints match probe roles, dynamic traffic is not cached, and the
 deployed image is one already tested and published by the release workflow.

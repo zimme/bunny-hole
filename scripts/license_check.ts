@@ -5,17 +5,21 @@ if (!license.includes("MIT License") || !license.includes("2026")) {
 const config = JSON.parse(await Deno.readTextFile("deno.json"));
 const imports = Object.values(config.imports ?? {}) as string[];
 if (
-  imports.length !== 1 || imports[0] !== "npm:cspell@9.2.1"
+  imports.sort().join("\n") !==
+    ["npm:@simplewebauthn/server@13.3.2", "npm:cspell@9.2.1"].sort().join(
+      "\n",
+    )
 ) {
   throw new Error("runtime dependency added without license review");
 }
-for (
-  const manifest of [
-    "apps/edge-relay/deno.json",
-    "apps/relay/deno.json",
-    "fixtures/origin/deno.json",
-  ]
+const runtimeConfig = JSON.parse(await Deno.readTextFile("deno.runtime.json"));
+if (
+  Object.values(runtimeConfig.imports ?? {}).join("\n") !==
+    "npm:@simplewebauthn/server@13.3.2"
 ) {
+  throw new Error("production dependency graph changed without license review");
+}
+for (const manifest of ["fixtures/origin/deno.json"]) {
   const workspaceConfig = JSON.parse(await Deno.readTextFile(manifest));
   if (workspaceConfig.imports !== undefined) {
     throw new Error(`${manifest} added dependencies without license review`);
@@ -31,13 +35,15 @@ for (const root of ["apps", "fixtures", "packages"]) {
         /\b(?:from\s*|import\s*(?:\(\s*)?)["']([^"']+)["']/g,
       )
     ) {
-      if (!match[1].startsWith(".")) externalImports.push(`${file}: ${match[1]}`);
+      if (!match[1].startsWith(".") && !match[1].startsWith("node:")) {
+        externalImports.push(`${file}: ${match[1]}`);
+      }
     }
   }
 }
 if (
   externalImports.join("\n") !==
-    "apps/edge-relay/main.ts: @bunny.net/edgescript-sdk"
+    "apps/host/passkeys.ts: @simplewebauthn/server"
 ) {
   throw new Error(
     `source dependency set changed without license review:\n${
@@ -45,8 +51,12 @@ if (
     }`,
   );
 }
+const frp = JSON.parse(await Deno.readTextFile("third_party/frp.json"));
+if (frp.version !== "0.70.1" || frp.license !== "Apache-2.0") {
+  throw new Error("embedded FRP version or license was not reviewed");
+}
 console.log(
-  "license check: MIT project; cspell is tooling and the Bunny SDK is runtime-provided",
+  "license check: MIT project; SimpleWebAuthn is MIT; cspell is tooling; embedded FRP is Apache-2.0",
 );
 
 async function typeScriptFiles(path: string): Promise<string[]> {

@@ -59,7 +59,7 @@ RUN set -eux; \
       "docker-buildx-plugin=${DOCKER_BUILDX_VERSION}" \
       "docker-ce-cli=${DOCKER_CLI_VERSION}" \
       "docker-compose-plugin=${DOCKER_COMPOSE_VERSION}" \
-      ripgrep shellcheck; \
+      ripgrep shellcheck socat unzip; \
     rm -rf /var/lib/apt/lists/* /tmp/*; \
     test "$(deno --version | head -n 1)" = "deno 2.9.5 (stable, release, $(uname -m)-unknown-linux-gnu)"; \
     test "$(node --version)" = "v${NODE_VERSION}"; \
@@ -75,10 +75,12 @@ RUN chmod 0755 /usr/local/bin/bunny-hole-development-entrypoint
 
 WORKDIR /tmp/bunny-hole
 COPY deno.json deno.lock ./
-COPY apps/edge-relay/deno.json apps/edge-relay/
-COPY apps/relay/deno.json apps/relay/
+COPY deno.runtime.json deno.runtime.lock ./
 COPY fixtures/origin/deno.json fixtures/origin/
-RUN deno ci && chown -R vscode:vscode /deno-dir && rm -rf /tmp/bunny-hole
+RUN deno ci \
+    && deno install --config deno.runtime.json --frozen \
+    && chown -R vscode:vscode /deno-dir \
+    && rm -rf /tmp/bunny-hole
 
 WORKDIR /workspaces/bunny-hole
 ENTRYPOINT ["/usr/local/bin/bunny-hole-development-entrypoint"]

@@ -11,6 +11,8 @@ on:
       - ".tool-versions"
       - "deno.json"
       - "deno.lock"
+      - "deno.runtime.json"
+      - "deno.runtime.lock"
       - "apps/**/deno.json"
       - "packages/**/deno.json"
       - "fixtures/**/deno.json"

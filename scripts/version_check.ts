@@ -1,11 +1,7 @@
 import { parseComVer } from "./comver.ts";
 
 export async function readProductVersion(): Promise<string> {
-  const paths = [
-    "apps/connector/main.ts",
-    "apps/connector/mod.ts",
-    "apps/relay/main.ts",
-  ];
+  const paths = ["packages/api/mod.ts"];
   const versions = new Map<string, string>();
 
   for (const path of paths) {
@@ -15,10 +11,13 @@ export async function readProductVersion(): Promise<string> {
     versions.set(path, match[1]);
   }
 
-  const unique = new Set(versions.values());
   const manifest = JSON.parse(await Deno.readTextFile("deno.json"));
   versions.set("deno.json", manifest.version);
-  unique.add(manifest.version);
+  const openApi = await Deno.readTextFile("docs/openapi.yaml");
+  const openApiVersion = openApi.match(/^[ ]{2}version: ([^\s]+)$/m)?.[1];
+  if (!openApiVersion) throw new Error("OpenAPI product version is missing");
+  versions.set("docs/openapi.yaml", openApiVersion);
+  const unique = new Set(versions.values());
   if (unique.size !== 1) {
     throw new Error(
       `product versions differ: ${

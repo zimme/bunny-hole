@@ -1,129 +1,185 @@
-# Tunnel protocol v1
+# Bunny Hole protocol profile
 
-The WebSocket subprotocol is `bunny-hole.v1`. Public deployments require WSS. Each
-WebSocket message is exactly one binary frame:
+Protocol version 1 is a bounded HTTPS control API plus a constrained FRP 0.70.1 data
+plane. Request bodies are carried as binary HTTP stream bytes by FRP; Bunny Hole does
+not base64-encode them or invent a second multiplexing wire format.
 
-```text
-byte 0       protocol version (1)
-byte 1       frame type
-byte 2       correlation ID byte length (0 or 16–43)
-next N       ASCII base64url correlation ID
-remainder    bounded control JSON or raw body bytes
-```
+The normative endpoint shapes are in [`openapi.yaml`](openapi.yaml). This document also
+defines validation and state-machine behavior that OpenAPI cannot express.
 
-Text messages, unknown types, wrong versions, malformed UTF-8/JSON, invalid IDs, and
-frames over 65,536 payload bytes close the connection. Control JSON is limited to 16,384
-bytes and parsed into explicitly validated fields; it is not accepted as an
-unconstrained object graph. Body chunks are raw binary, never base64 JSON.
-Connection-level frames use an empty correlation ID; request-level frames require one.
-Request/response end and cancellation frames have no payload. These shape rules are
-enforced by both encoders and decoders.
+## Discovery and compatibility
 
-## Authentication
+`GET /.well-known/bunny-hole` on the management hostname returns:
 
-1. Relay sends `challenge` with a fresh 192-bit nonce and version.
-2. Connector signs the domain-separated version, tunnel ID, and nonce with its Ed25519
-   private key, then sends `authenticate` with the version and signature.
-3. Relay verifies the signature with the configured public key and sends
-   `authenticated`.
+- `apiVersion: 1`;
+- the management origin and persistent host Ed25519 public key;
+- the connector hostname, port, and allowed transports; and
+- supported route protocols (`http` and `https`).
 
-The signed bytes are UTF-8 `bunny-hole\0connector-auth\0VERSION\0TUNNEL\0NONCE`. The
-nonce prevents reuse of an observed signature on a new connection, while the tunnel ID
-and version prevent cross-tunnel or cross-version reuse. Authentication must finish
-within 5 seconds. Errors are generic and never include the ID, key, signature, or
-configured hostnames. A syntactically valid but unknown tunnel ID receives the same
-upgrade, challenge, random decoy-key work, and signature-verification path, then fails
-generically; the initial HTTP status therefore does not enumerate configured IDs.
+Clients reject unknown versions, malformed or unbounded fields, a management-origin
+mismatch, and a changed pinned host identity. Released source/API compatibility follows
+[ComVer](versioning.md). The FRP version is coupled to each host/connector release and
+is not negotiated independently.
 
-## Request state machine
+Control requests use `application/json`, UTF-8, and at most 128 KiB. Collections, names,
+IDs, keys, tokens, challenges, and timestamps are independently bounded before use. IDs
+have a validated ASCII prefix and 144 random bits. Control errors identify invalid input
+but never echo keys, signatures, admission tokens, routes, or destinations.
+
+`/api/*` and `/.well-known/*` are reserved on every public hostname. Only the configured
+management hostname serves the documented control API; those paths never fall through to
+a tunneled origin.
+
+## Enrollment state machine
 
 ```text
-request_start → request_body* → request_end
-response_start → response_body* → response_end
-                 ↘ cancel ↙
+new public key → pending (15 minutes) → active → revoked
+                         expiry ────────┘
 ```
 
-Correlation IDs bind every frame to one in-memory request. Duplicate starts/ends,
-body-before-start, body-after-end, unknown IDs, crossed tunnel ownership, and unexpected
-directions are protocol errors. `cancel` aborts the peer's fetch or stream. A connector
-disconnect completes pending public requests with a generic 502; replacement completes
-them with 503.
+1. A device or cluster generates an Ed25519 pair locally.
+2. `POST /api/v1/enrollments` sends its name, kind, and public key.
+3. The host returns an enrollment ID and a five-word verification phrase. Creation is
+   globally rate-limited to 30 attempts per minute and capped at 1,024 non-revoked
+   enrollments.
+4. The owner verifies the phrase and approves an explicit grant with a passkey or the
+   offline owner key.
 
-Cancellation races are explicitly bounded. Each peer retains up to 128 short-lived
-correlation-ID tombstones so request or response frames already in flight and a late
-cancellation of a just-completed origin request cannot be mistaken for traffic belonging
-to an unknown request. Tombstones validate the expected tail of the original stream;
-other frame types, duplicate ends, oversized bodies, and unknown IDs remain protocol
-errors.
+An `EnrollmentGrant` has exact hostnames, label-aware hostname suffixes, allowed
+`http`/`https` local-origin protocols, and a maximum route count. A suffix of
+`dev.example.com` permits `x.dev.example.com`, never `dev.example.com.attacker.test`.
 
-One newly authenticated connector deterministically replaces the previous connector for
-its tunnel (close code 4101). The replacement never inherits in-flight requests. The
-WebSocket API only permits callers to send close code 1000 or codes in the 3000–4999
-application range. Bunny Hole therefore translates standard error intent 1001–1999 into
-the corresponding private code 4001–4999; for example, policy violation 1008 is sent
-as 4008.
+Offline owner proofs sign this unambiguous message:
 
-## Limits and flow control
+```text
+bunny-hole\0PURPOSE\0HOST-PUBLIC-KEY\0FIELD-1\0...\0ONE-USE-CHALLENGE
+```
 
-| Limit                                     |                                    Value |
-| ----------------------------------------- | ---------------------------------------: |
-| Concurrent requests per tunnel            |                                       64 |
-| Simultaneous authentication handshakes    |                                      128 |
-| Recent cancellation tombstones            |                                      128 |
-| Request or response body                  |                                   10 MiB |
-| Frame payload                             |                                   64 KiB |
-| Control payload                           |                                   16 KiB |
-| Header block/count                        |                32 KiB UTF-8 / 100 fields |
-| Correlation ID                            | 18 random bytes, 24 base64url characters |
-| Authentication                            |                                      5 s |
-| Public request                            |                                     30 s |
-| Origin request                            |                                     35 s |
-| Heartbeat send/dead                       |                              20 s / 45 s |
-| WebSocket buffered amount high-water mark |                                    1 MiB |
-| Queued inbound WebSocket messages         |                                    2 MiB |
-| Backpressure wait                         |                                      5 s |
+The approval proof includes host identity, enrollment ID, device public key, canonical
+sorted grant, and a host-issued 60-second challenge consumed before signature checking.
+Approval is valid only while pending; revocation is terminal. Passkey ceremonies use
+short-lived random flow tokens in URL fragments plus one-use WebAuthn challenges.
+Registration flows require an owner signature. Approval flows bind one pending
+enrollment and its canonical grant before authentication.
 
-Request and response start messages must satisfy both the decoded header-block limit and
-the smaller encoded control-payload limit; JSON escaping and the request path count
-toward the latter. Header-block size is the UTF-8 byte length of names and values plus
-four framing bytes per field, not JavaScript string length. The relay returns 431
-instead of forwarding an oversized public control message.
+## Session authentication
 
-Senders pause while `bufferedAmount` exceeds the high-water mark, but fail the send if
-pressure does not fall within five seconds. This bound also applies to authentication
-and heartbeat control frames. Receivers serialize message handling and close a peer
-whose queued messages exceed the connection-level limit. Per-request body limits bound
-each stream. A stream chunk larger than the frame-payload limit is split into
-consecutive body frames without changing its bytes. Limits are hard failures, not
-advisory configuration. The connector's origin timeout is deliberately longer than the
-relay's public request timeout, so the relay owns the normal 504 response and its
-cancellation stops the origin; the connector timeout remains a fail-safe if that
-cancellation is lost.
+1. `POST /api/v1/session/challenge` requests a challenge for an active enrollment.
+2. The host stores a random 192-bit challenge for 60 seconds.
+3. The connector signs enrollment ID, challenge ID, and challenge under the `session`
+   purpose.
+4. The challenge is atomically consumed; duplicate, expired, wrong-enrollment, or
+   malformed exchanges fail uniformly.
+5. The host returns current routes, a validated descriptor, and a five-minute signed FRP
+   admission token.
 
-## HTTP behavior
+The token includes enrollment ID, 144-bit session ID, issue time, and expiry. Its body
+and signature are bounded. It can authorize `Login` only before expiry; it is not a
+general API bearer token and is never logged.
 
-- Methods must be uppercase tokens. Fetch-forbidden `CONNECT`, `TRACE`, and `TRACK` are
-  rejected. Paths must begin with one `/`; scheme-relative targets, backslashes, control
-  characters, and targets over 8 KiB are rejected.
-- GET and HEAD requests with bodies are rejected at the relay instead of risking an
-  out-of-order stream at the connector. Origin response statuses must be final HTTP
-  statuses from 200 through 599.
-- Header names and values use platform parsing plus explicit token/injection validation.
-  Deno combines duplicate request headers according to Fetch semantics; separate
-  `Set-Cookie` response fields remain separate. No trailers are forwarded.
-- `HEAD` responses and statuses 204, 205, and 304 never carry protocol body frames.
-- Hop-by-hop headers (including the non-standard `Proxy-Connection`) and headers named
-  by `Connection` are removed both ways. Internal `x-bunny-hole-*` fields and spoofed
-  forwarding fields are removed.
-- `X-Forwarded-Host`, `X-Forwarded-Proto`, and the relay socket peer address are set by
-  the relay. Normal viewer `Authorization` and `Cookie` headers are application data and
-  reach only the selected origin; they never reach control handlers.
-- Redirects are returned to the public client (`redirect: manual`); the connector does
-  not follow them.
-- Every public relay response overrides `Cache-Control` with `no-store`; the Pull Zone
-  must also have caching disabled for all tunnel paths.
-- WebSocket upgrades, arbitrary TCP/UDP, HTTP trailers, and end-to-end HTTP/2 are
-  unsupported.
-- `/healthz`, `/readyz`, and `/_bunny/connect` are reserved relay control paths and are
-  never forwarded to an origin. The experimental Edge Script additionally reserves
-  `/_bunny/edge/diagnostics`.
+## FRP profile and connector replacement
+
+The connector writes a mode-`0600` ephemeral TOML file and starts the release-matched
+`frpc`. Production permits only `wss` through the dedicated Bunny CDN connector
+endpoint. FRP transport TLS is also enabled. TCP, QUIC, or unencrypted WebSocket may be
+selected only with explicit local-development mode.
+
+The control connection uses TCP multiplexing, a 20-second heartbeat and keepalive, and a
+45-second dead-session timeout. `frps` limits connection pools and proxies, disables
+detailed client errors, keeps its HTTP virtual-host port on the container network, and
+calls the host's loopback-only authorization plugin for `Login`, `NewProxy`,
+`CloseProxy`, `Ping`, `NewWorkConn`, and `NewUserConn`.
+
+The plugin records the newest admitted token digest for each enrollment. A newer login
+deterministically wins. Operations from the old connector receive `session replaced`, so
+it disconnects no later than the dead-session window. Existing requests are not
+transferred and can fail with the normal generic tunnel error.
+
+For each route, the generated local proxy name is `bh-ROUTE_ID`; FRP presents the plugin
+with the user-qualified name `bh-ENROLLMENT_ID.bh-ROUTE_ID`. The plugin accepts only:
+
+- an active enrollment and latest admitted session;
+- FRP proxy type `http`;
+- exactly the persisted proxy name; and
+- exactly one persisted custom hostname.
+
+Unknown operations, names, types, domains, metadata, sessions, and revoked enrollments
+are rejected. The fixed built-in FRP token is intentionally not a secret or security
+boundary; host-signed admission, the plugin, and WSS provide that boundary.
+
+## Route model
+
+`POST /api/v1/routes` requires an enrollment session token and validates:
+
+- a random route ID and bounded unique name;
+- protocol `http` or `https` (the latter means an HTTPS local origin);
+- one normalized exact public hostname not equal to the management hostname;
+- one syntactically valid target host and port; and
+- explicit `allowPrivateNetwork: true` for any non-loopback target.
+
+The route must fit the enrollment's signed grant and cannot conflict with another exact
+hostname. Viewers do not send route IDs. Deleting a route requires the owning
+enrollment; no enrollment can list or delete another enrollment's routes.
+
+## Public HTTP behavior
+
+- Exact normalized `Host` selects the sole destination. Missing, malformed, unknown,
+  management, or conflicting hostnames fail closed.
+- Methods must be uppercase tokens of at most 20 characters. `CONNECT` and `TRACE` are
+  rejected. GET/HEAD bodies, paths beyond 8 KiB, and malformed or greater-than-1-GiB
+  declared bodies fail before forwarding.
+- At most 64 public requests are active. Additional work receives a generic 503.
+- Header count and serialized size are capped at 100 and 32 KiB. Deno's HTTP parser owns
+  duplicate/framing validation before application code. Hop-by-hop headers,
+  `Connection`-named fields, all `x-bunny-hole-*` fields, and viewer-supplied forwarding
+  fields are removed. Trusted `X-Forwarded-Host`, `X-Forwarded-Proto`, and
+  `X-Forwarded-For` values replace them.
+- Viewer `Authorization`, cookies, and duplicate application headers are application
+  data and reach only a selected origin. They never reach a control handler. Response
+  `Set-Cookie` values remain separate; internal and hop-by-hop response headers are
+  stripped.
+- Bodies stream in both directions with backpressure and a 1 GiB ceiling per direction.
+  The default end-to-end request timeout is 30 seconds and is configurable from 1 to 120
+  seconds. Public disconnect, timeout, or host shutdown destroys the upstream request
+  and releases concurrency state.
+- Redirects are returned without following. Trailers are not forwarded. Partial origin
+  responses are terminated rather than retried. Every public response sets
+  `Cache-Control: no-store`; the Bunny CDN endpoint must independently disable caching.
+- Public WebSocket upgrades receive 501. Raw TCP/UDP and arbitrary destinations have no
+  route representation.
+
+Bunny may use HTTP/2 with a viewer and an HTTPS origin may use its own protocol, but the
+host/FRP profile exposes HTTP/1.1 behavior. End-to-end HTTP/2 stream identity, trailers,
+server push, and protocol-specific semantics are not promised.
+
+Viewer authentication is deliberately separate. Use the tunneled application's own
+authentication or Bunny CDN access controls. Connector enrollment and session tokens are
+never accepted as viewer credentials.
+
+## Passkey browser ceremonies
+
+WebAuthn requires the page origin to match the relying-party hostname. The CLI therefore
+never hosts a localhost WebAuthn proxy. It asks the host to create a bounded one-use
+flow and prints an HTTPS management URL whose random token is in the fragment, so the
+token is not sent in the initial HTTP request or normal access log.
+
+The static management-origin page removes the fragment from browser history immediately,
+sends it only in same-origin JSON requests, and receives WebAuthn options for the host
+RP ID. Registration consumes a five-minute owner-authorized flow. Enrollment approval
+displays the pending enrollment and exact grant, requires user verification, and
+consumes a two-minute flow before changing state. Failed final verification also
+consumes the flow. Pages use no third-party resources and set CSP, no-referrer,
+no-store, and nosniff headers.
+
+## Declarative reconciliation
+
+Compose labels and Kubernetes Gateway API objects compile into the same exact route
+model. Reconciliation creates missing routes, replaces changed managed routes, and
+deletes only stale routes carrying that adapter's prefix (`compose-` or `k8s-`). Manual
+routes are preserved.
+
+Compose defaults targets to `127.0.0.1`, requiring services to publish only a loopback
+host port. A non-loopback `target-host` label needs explicit private-network consent.
+Kubernetes resolves only `Service` backends; cross-namespace backends need a matching
+`ReferenceGrant`. Neither adapter accepts a viewer-selected URL, raw Service discovery,
+nor arbitrary Docker-socket inspection.

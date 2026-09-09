@@ -11,6 +11,8 @@ on:
       - "compose.yaml"
       - "deno.json"
       - "deno.lock"
+      - "deno.runtime.json"
+      - "deno.runtime.lock"
   pull_request:
     paths:
       - ".github/workflows/copilot-setup-steps.yml"
@@ -19,6 +21,8 @@ on:
       - "compose.yaml"
       - "deno.json"
       - "deno.lock"
+      - "deno.runtime.json"
+      - "deno.runtime.lock"
 
 jobs:
   copilot-setup-steps:
@@ -29,8 +33,6 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
-      - name: Configure Docker socket access
-        run: echo "BUNNY_HOLE_DOCKER_GID=$(stat --format=%g /var/run/docker.sock)" >> "$GITHUB_ENV"
       - name: Prepare the shared Dev Container
         uses: devcontainers/ci@v0.3
         with:

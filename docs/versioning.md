@@ -15,17 +15,15 @@ supported use cases. Bunny Hole's public API is:
   types);
 - connector CLI commands, flags, exit codes, environment variables, and configuration
   file behavior documented in [Configuration](configuration.md);
-- relay and connector OCI entrypoints, environment variables, health endpoints, and
+- host and connector OCI entrypoints, environment variables, health endpoints, and
   documented deployment behavior;
-- protocol v1 framing, authentication, limits, HTTP behavior, and connector replacement
-  semantics documented in [Tunnel protocol](protocol.md); and
+- protocol v1 control API, pinned FRP profile, authentication, limits, HTTP behavior,
+  and connector replacement semantics documented in [Tunnel protocol](protocol.md); and
 - published artifact names and the security guarantees documented in
   [Security policy](../SECURITY.md) and the [Threat model](threat-model.md).
 
 Files not reachable through a package export, repository scripts, tests, fixtures, and
-unexported implementation details are not public API. In particular, the in-tree Edge
-Script affinity experiment is deliberately not a published package API or supported
-deployment contract.
+unexported implementation details are not public API.
 
 Compatibility determines the release line:
 
@@ -50,7 +48,7 @@ fix!: reject previously accepted ambiguous request targets
 or include a footer:
 
 ```text
-BREAKING CHANGE: connectors must be upgraded with the relay
+BREAKING CHANGE: connectors must be upgraded with the host
 ```
 
 The release workflow compares commits since the latest ComVer tag. If any breaking
@@ -67,7 +65,7 @@ first ComVer release may already exist when its tag runs; later existing npm ver
 fail closed. If any released artifact is wrong, publish the next compatible minor or
 breaking major version; never replace the existing version.
 
-Before creating a tag, update the connector CLI, connector library, relay, and root
+Before creating a tag, update the connector CLI, connector library, host, and root
 `deno.json` versions together and check the intended tag locally:
 
 ```sh

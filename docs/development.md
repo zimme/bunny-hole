@@ -1,12 +1,14 @@
 # Development
 
-Deno 2.9.5 is the only task runner. Node 24.13.1 and npm 11.8.0 are present inside the
-development container for GitHub Copilot CLI, Dev Container tooling, and isolated
-verification/publishing of the real npm connector artifact. There is no repository
-`package.json` and no npm task wrapper.
+Deno 2.9.5 is the only task runner and is also the compiler, dependency manager,
+formatter, linter, test runner, coverage tool, build tool, and task runner. Node 24.13.1
+and npm 11.8.0 exist in the development image only for GitHub Copilot CLI, Dev Container
+tooling, and validating the actual npm package. There are no npm task wrappers or
+repository `package.json`.
 
-The development environment is Docker Compose-native. Docker Compose builds the complete
-toolchain without the Dev Container CLI:
+## Compose-native toolchain
+
+The complete environment is an ordinary Compose service:
 
 ```sh
 docker compose up --build --detach development
@@ -15,7 +17,7 @@ docker compose exec --user vscode development deno task validate
 docker compose down
 ```
 
-The existing Deno aliases run the same operations:
+This works without a Dev Container CLI. The equivalent Deno shorthands are:
 
 ```sh
 deno task devcontainer:up
@@ -23,74 +25,76 @@ deno task devcontainer:exec -- deno task validate
 deno task devcontainer:down
 ```
 
-The first command may also be run attached as `docker compose up development`. The
-`development` profile prevents this long-running workspace service from joining an
-ordinary integration-topology startup.
+`.devcontainer/devcontainer.json` is only an editor adapter pointing at that same
+service. It has no Features, lifecycle tool installation, or separate toolchain, so
+there is no Dev Container Feature lockfile to drift. The development service includes
+the Docker CLI and Compose plugin and mounts the Docker socket so validation can build
+and exercise the sibling production-image topology.
 
-The service workload runs as `vscode`; use `--user vscode` for plain Compose execs
-because Compose otherwise defaults exec sessions to the image's root bootstrap user. The
-bootstrap process only prepares cache ownership and maps the Docker socket group, then
-immediately drops privileges for the long-running command.
+Inside the service, run `deno task setup` once and then focused tasks such as `fmt`,
+`lint`, `check`, `test`, `coverage`, `integration`, `build`, `package:check`, `audit`,
+or `container:smoke`. `deno task validate` is authoritative and executes, in order:
 
-Inside the development container:
+- agent, version, generated-file, and license policy checks;
+- frozen dependency resolution, formatting, spelling, Deno lint and type checking;
+- documentation checks, tests, and coverage threshold enforcement;
+- the production host/connector image integration topology;
+- native production builds plus container build and smoke checks; and
+- dependency audit, secret scan, and Conventional Commit validation.
 
-```sh
-deno task setup
-deno task validate
-deno task integration
-```
-
-Focused tasks include `fmt`, `lint`, `check`, `test`, `coverage`, `integration`,
-`build`, `edge:build`, `edge:probe`, `package:check`, `audit`, and `container:smoke`.
-`edge:build` emits the portable Bunny Edge Script bundle; `edge:probe` performs the
-credential-safe live affinity experiment described in
-[Edge Script experiment](edge-script-experiment.md). `package:check` performs a JSR
-publish dry run, creates the npm tarball with `deno pack`, installs it into an isolated
-Node consumer with lifecycle scripts disabled, opens a real authenticated tunnel from
-Node, and proxies a request through its public API. `deno task validate` is
-authoritative and is the exact command CI invokes with `CI=true`.
+`CI=true` changes output or interactivity only. GitHub Actions runs the same task inside
+the same development service.
 
 ## Cache design
 
-The development image copies `deno.json` and `deno.lock` before source and runs
-`deno ci`, so dependency changes invalidate that layer while source edits do not.
-`/deno-dir` is a named volume made writable for the non-root `vscode` user on startup.
-The repository and host Docker socket are mounted by Compose; the entrypoint maps the
-socket group before dropping privileges. This works with macOS Docker Desktop and Linux
-engines. Compose explicitly maps `host.docker.internal` to Docker's host gateway so
-tests inside the development service can reach sibling services through their published
-ports on both platforms. CI also passes the host socket's numeric group to Compose's
-`group_add`, because Dev Container remote-user execution cannot reliably inherit a group
-created by the running entrypoint.
+The development Dockerfile copies `deno.json`, `deno.lock`, and the smaller
+`deno.runtime.json`/`deno.runtime.lock` production graph before source. It freezes and
+prewarms both graphs, so dependency changes invalidate the layer while ordinary source
+changes do not. The split prevents repository-only tools such as cspell from being
+embedded by `deno compile`; `deno task validate` checks both lockfiles. `/deno-dir` is a
+persistent named local volume whose ownership is fixed for the non-root `vscode` user.
+The GHCR development prebuild is the primary CI toolchain/dependency cache, and BuildKit
+registry layers cache production images.
 
-The local `group_add` fallback is deliberately GID 0 because Docker Desktop presents its
-Linux VM socket as `root:root`; Linux CI supplies the actual socket GID instead. This
-applies only to the development service. Mounting the Docker socket already grants
-host-root-equivalent daemon control, so do not run untrusted code in that service.
+No GitHub Actions dependency cache is layered on top: local volumes do not transfer to
+hosted runners, and a second Deno cache would duplicate the image. npm caching is absent
+because npm has no dependency lockfile in this repository and is not the task runner.
 
-`.devcontainer/devcontainer.json` only supplies editor metadata and points at the same
-Compose service. It has no Features or lifecycle command, so opening the repository in a
-Dev Container cannot produce a different toolchain. Its `runServices` list starts only
-the long-running development service; integration topology services remain controlled by
-the authoritative Deno tasks. CI pulls the GHCR development image prebuild as its
-primary toolchain/dependency cache. The prebuild workflow never overwrites an existing
-commit-SHA image; its moving `cache` tag changes only when a new immutable commit image
-is published. Production BuildKit caching reuses compiler and source-independent layers.
+Docker Desktop presents its socket differently from Linux. The Compose entrypoint puts a
+private Unix-socket proxy in front of the mounted host socket before dropping
+privileges. This avoids host-specific group IDs while keeping development commands
+non-root. Mounting the Docker socket still grants daemon-equivalent host control, so
+never run untrusted code in the development service or Compose adapter.
 
-There is no GitHub Actions dependency cache: local Docker volumes cannot be shared with
-hosted runners, and an additional cache would duplicate image layers. npm caching is
-absent because npm is used only to validate and publish a dependency-free generated
-artifact, not to manage repository dependencies.
+## Production topology tests
 
-## Release artifacts
+`deno task integration` creates an isolated Compose project with random project and
+credential material, builds the exact `host-runtime` and `connector-runtime` Dockerfile
+targets, enrolls a connector, approves its grant, starts FRP, and exercises public HTTP
+through the host to the deterministic origin. It covers concurrent isolation, streaming
+and binary bodies, header stripping, oversized requests, timeouts, route confusion,
+replacement/revocation behavior, health, readiness, and secret-free logs. Cleanup uses
+only that generated Compose project.
 
-`deno task release:artifacts` cross-compiles the connector for Linux x86-64/ARM64, macOS
-x86-64/ARM64, and Windows x86-64 and writes SHA-256 checksums. It is intentionally a
-release task rather than part of every validation because Deno must download a separate
-runtime for each target. `deno task package:build` creates the npm tarball. The tag-only
-release workflow publishes both OCI images, native binaries, JSR source, and the npm
-library at one matching ComVer version. After publishing, it reruns the Compose topology
-with the exact relay and connector image digests before creating the GitHub release. The
-library contains only the supported connector API. The experimental Edge Script adapter
-remains source-only in this repository, and its generated bundle is a validation
-artifact rather than a package export or separately versioned package.
+`deno task container:smoke` verifies the production process user and health behavior.
+The final images are distroless and contain only the compiled application plus `frps` or
+`frpc`; Deno and source files remain in build stages.
+
+## Package and release artifacts
+
+`deno task package:check` performs a JSR dry run, builds the dependency-free npm
+tarball, installs it into an isolated Node consumer with lifecycle scripts disabled, and
+exercises the exported control library. `deno task release:artifacts` is intentionally
+tag-workflow work because it downloads a Deno runtime and checksum-verified FRP archive
+for every Linux, macOS, and Windows target.
+
+Every release surface uses one immutable ComVer version: host OCI, connector OCI, native
+bundle, JSR module, and npm package. Releases occur only from increasing `MAJOR.MINOR.0`
+tags. See [versioning](versioning.md).
+
+## Contribution workflow
+
+Install the Conventional Commit hook with `deno task hooks:install`. Add behavior tests
+at the nearest boundary, run focused checks while iterating, then run the complete
+Compose-native validation. Review the final diff for credentials, generated artifacts,
+stale names, unsupported transport claims, and dependency/license changes.

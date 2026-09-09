@@ -22,21 +22,20 @@ Container and agent tooling; never add npm task wrappers.
 ## Invariants
 
 - Keep the public product name **Bunny Hole**.
-- Preserve one region, one relay instance, and one active connector per tunnel.
+- Preserve one region, one host instance, and one active connector per enrollment.
 - Do not claim public WebSocket, TCP, UDP, multi-region, multi-replica, or end-to-end
   HTTP/2 support.
 - Public traffic routes only by exact configured hostname. A viewer never selects a
   tunnel or destination.
 - Connector origins remain loopback-only unless explicitly opted into a private network.
-- Preserve Ed25519 challenge-response authentication, cryptographic signature checks,
-  bounded binary framing, strict state transitions, backpressure, cancellation, and
+- Preserve Ed25519 challenge-response authentication, host-signed admission, the strict
+  pinned FRP profile, state transitions, streaming backpressure, cancellation, and
   timeouts.
 - Strip internal, hop-by-hop, and spoofable forwarding headers. Never log secrets.
 - Never request credentials in an agent-controlled conversation or command. Pause while
   a human uses the dashboard or a private interactive terminal.
-- Keep Edge Scripting explicitly experimental until the affinity experiment proves that
-  public requests consistently reach the isolate holding the connector. Do not use Bunny
-  Database or mutable action references.
+- Do not add Edge Scripting or Bunny Database: neither supplies documented affinity for
+  the process holding the live FRP connection. Do not use mutable action references.
 - Do not create releases, tags, Bunny resources, or deployments without explicit
   authorization.
 - Add behavior tests for protocol/security changes and run the production-image Compose

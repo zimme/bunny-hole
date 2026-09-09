@@ -1,117 +1,188 @@
-import { generateTunnelKeyPair } from "../packages/protocol/auth.ts";
+import { generateKeyPair, sign } from "../packages/api/auth.ts";
+import { canonicalGrant, validateGrant } from "../packages/api/mod.ts";
+import { BunnyHoleClient } from "../apps/connector/client.ts";
 import { output, run } from "./process.ts";
+import { request as httpRequest } from "node:http";
+import { once } from "node:events";
+import { Readable } from "node:stream";
 
 const project = `bunny-hole-test-${crypto.randomUUID().slice(0, 8)}`;
-const { publicKey, privateKey } = await generateTunnelKeyPair();
+const owner = await generateKeyPair();
+const device = await generateKeyPair();
+const configRelativeDirectory = `.tmp/${project}`;
+const configDirectory = `${Deno.cwd()}/${configRelativeDirectory}`;
+await Deno.mkdir(configDirectory, { recursive: true, mode: 0o700 });
 const testHost = Deno.env.get("BUNNY_HOLE_TEST_HOST") ?? "127.0.0.1";
-const relayUrl = `http://${testHost}:18080`;
+const hostUrl = `http://${testHost}:18080`;
+const hostWorkspace = Deno.env.get("BUNNY_HOLE_WORKSPACE_HOST_PATH") ??
+  Deno.cwd();
 const environment: Record<string, string> = {
   ...Deno.env.toObject(),
-  BUNNY_HOLE_TEST_PUBLIC_KEY: publicKey,
-  BUNNY_HOLE_TEST_PRIVATE_KEY: privateKey,
+  BUNNY_HOLE_OWNER_PUBLIC_KEY: owner.publicKey,
+  BUNNY_HOLE_CONNECTOR_CONFIG_DIR: `${hostWorkspace}/${configRelativeDirectory}`,
 };
-const compose = ["compose", "-p", project, "-f", "compose.yaml"];
+const compose = [
+  "compose",
+  "--profile",
+  "tunnel",
+  "-p",
+  project,
+  "-f",
+  "compose.yaml",
+];
 const publishedImages = Boolean(
-  environment.BUNNY_HOLE_RELAY_IMAGE && environment.BUNNY_HOLE_CONNECTOR_IMAGE,
+  environment.BUNNY_HOLE_HOST_IMAGE && environment.BUNNY_HOLE_CONNECTOR_IMAGE,
 );
 
 try {
-  try {
-    if (publishedImages) {
-      await run("docker", [...compose, "build", "origin"], { env: environment });
-    }
-    await run(
-      "docker",
-      [
-        ...compose,
-        "up",
-        publishedImages ? "--no-build" : "--build",
-        "--detach",
-        "--wait",
-      ],
-      { env: environment },
-    );
-  } catch (error) {
-    console.error(
-      await output("docker", [...compose, "logs", "--no-color"], {
-        env: environment,
-      }).catch(() => "compose logs unavailable"),
-    );
-    throw error;
+  if (publishedImages) {
+    await run("docker", [...compose, "build", "origin"], { env: environment });
   }
+  await run("docker", [
+    ...compose,
+    "up",
+    publishedImages ? "--no-build" : "--build",
+    "--detach",
+    "--wait",
+    "host",
+    "origin",
+  ], { env: environment });
+
+  const client = new BunnyHoleClient(hostUrl, fetch, true);
+  const descriptor = await client.descriptor();
+  const enrollment = await client.enroll("integration", "device", device.publicKey);
+  const grant = validateGrant({
+    exactHostnames: ["tunnel.test"],
+    hostnameSuffixes: [],
+    protocols: ["http"],
+    maxRoutes: 2,
+  });
+  const ownerChallengeResponse = await fetch(
+    `${hostUrl}/api/v1/admin/owner/challenge`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "approve-enrollment" }),
+    },
+  );
+  if (!ownerChallengeResponse.ok) throw new Error("owner challenge failed");
+  const { challenge: ownerChallenge } = await ownerChallengeResponse.json();
+  const approval = await fetch(
+    `${hostUrl}/api/v1/enrollments/${enrollment.id}/approve`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-bunny-hole-owner-challenge": ownerChallenge,
+        "x-bunny-hole-owner-signature": await sign(
+          owner.privateKey,
+          "approve-enrollment",
+          [
+            descriptor.identityPublicKey,
+            enrollment.id,
+            device.publicKey,
+            canonicalGrant(grant),
+            ownerChallenge,
+          ],
+        ),
+      },
+      body: JSON.stringify({ grants: grant }),
+    },
+  );
+  if (!approval.ok) throw new Error(`approval failed: ${approval.status}`);
+  const externalCredentials = {
+    url: hostUrl,
+    identityPublicKey: descriptor.identityPublicKey,
+    enrollmentId: enrollment.id,
+    ...device,
+  };
+  const session = await client.session(externalCredentials);
+  await client.createRoute(session, {
+    name: "origin",
+    protocol: "http",
+    hostname: "tunnel.test",
+    targetHost: "origin",
+    targetPort: 3000,
+    allowPrivateNetwork: true,
+  });
+  await Deno.writeTextFile(
+    `${configDirectory}/config.json`,
+    `${
+      JSON.stringify(
+        {
+          version: 1,
+          defaultHost: "integration",
+          hosts: {
+            integration: { ...externalCredentials, url: "http://host:8080" },
+          },
+        },
+        null,
+        2,
+      )
+    }\n`,
+    { mode: 0o600 },
+  );
+  await run("docker", [
+    ...compose,
+    "up",
+    publishedImages ? "--no-build" : "--build",
+    "--detach",
+    "connector",
+  ], { env: environment });
+
   await waitFor(async () => {
-    const response = await fetch(`${relayUrl}/readyz`);
+    const response = await publicRequest("/");
+    await response.body?.cancel();
     return response.ok;
   }, 30_000);
 
-  const getBodyStatus = await rawHttpStatus(
-    "GET /body HTTP/1.1\r\n" +
-      "Host: tunnel.test\r\n" +
-      "Content-Length: 4\r\n" +
-      "Connection: close\r\n\r\nbody",
-  );
-  if (getBodyStatus !== 400) {
-    throw new Error(`GET body was not rejected: ${getBodyStatus}`);
-  }
-  await waitFor(async () => {
-    const response = await fetch(`${relayUrl}/`, {
-      headers: { host: "tunnel.test" },
-    });
-    return response.status !== 503;
-  }, 30_000);
-
-  const echo = await fetch(`${relayUrl}/hello?case=echo`, {
+  const echo = await publicRequest("/hello?case=echo", {
     method: "POST",
     headers: {
-      host: "tunnel.test",
       "content-type": "text/plain",
-      "x-bunny-hole-private-key": privateKey,
+      "x-bunny-hole-private-key": device.privateKey,
       "x-forwarded-for": "attacker",
       "x-test": "safe",
     },
     body: "streamed request",
   });
-  if (!echo.ok) throw new Error(`echo failed: ${echo.status}`);
-  if (echo.headers.get("cache-control") !== "no-store") {
-    throw new Error("public tunnel response was cacheable");
+  if (!echo.ok || echo.headers.get("cache-control") !== "no-store") {
+    throw new Error(`echo failed securely: ${echo.status}`);
   }
   const echoed = await echo.json();
   if (
-    echoed.body !== "streamed request" ||
-    echoed.path !== "/hello?case=echo" ||
+    echoed.body !== "streamed request" || echoed.path !== "/hello?case=echo" ||
     echoed.headers["x-test"] !== "safe" ||
     echoed.headers["x-bunny-hole-private-key"] !== undefined ||
     echoed.headers["x-forwarded-for"] === "attacker"
   ) throw new Error("header or body isolation check failed");
 
   const binary = crypto.getRandomValues(new Uint8Array(32_768));
-  const binaryResponse = await fetch(`${relayUrl}/binary`, {
+  const binaryResponse = await publicRequest("/binary", {
     method: "POST",
-    headers: { host: "tunnel.test" },
     body: binary,
   });
   const binaryResult = new Uint8Array(await binaryResponse.arrayBuffer());
   if (
     binary.length !== binaryResult.length ||
     !binary.every((byte, index) => byte === binaryResult[index])
-  ) throw new Error("binary body was corrupted");
+  ) {
+    throw new Error("binary body was corrupted");
+  }
 
-  const filtered = await fetch(`${relayUrl}/response-headers`, {
-    headers: { host: "tunnel.test" },
+  const streamed = await publicRequest("/stream", {
+    method: "POST",
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const value of ["alpha", "-", "omega"]) {
+          controller.enqueue(new TextEncoder().encode(value));
+        }
+        controller.close();
+      },
+    }),
   });
-  if (
-    await filtered.text() !== "filtered" ||
-    filtered.headers.get("x-bunny-hole-future-control") !== null ||
-    filtered.headers.get("x-safe-response") !== "allowed"
-  ) throw new Error("origin response header isolation check failed");
-
-  await disconnectDuringResponse();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const afterDisconnect = await fetch(`${relayUrl}/after-disconnect`, {
-    headers: { host: "tunnel.test" },
-  });
-  if (!afterDisconnect.ok) {
-    throw new Error("viewer disconnect disrupted the connector session");
+  if (await streamed.text() !== "first:alpha-omega:last") {
+    throw new Error("fragmented stream was not preserved");
   }
 
   const bodies = Array.from(
@@ -119,15 +190,27 @@ try {
     (_, index) => `request-${index}-${"x".repeat(2_000 + index)}`,
   );
   const results = await Promise.all(bodies.map(async (body, index) => {
-    const response = await fetch(`${relayUrl}/multiplex?id=${index}`, {
+    const response = await publicRequest(`/multiplex?id=${index}`, {
       method: "POST",
-      headers: { host: "tunnel.test" },
       body,
     });
     return (await response.json()).body;
   }));
   if (JSON.stringify(results) !== JSON.stringify(bodies)) {
-    throw new Error("multiplexed requests crossed response bodies");
+    throw new Error("concurrent request bodies crossed");
+  }
+
+  const filtered = await publicRequest("/response-headers");
+  if (
+    filtered.headers.get("x-bunny-hole-future-control") !== null ||
+    filtered.headers.get("x-safe-response") !== "allowed"
+  ) throw new Error("response header filtering failed");
+  await filtered.body?.cancel();
+
+  const started = Date.now();
+  const timedOut = await publicRequest("/slow");
+  if (timedOut.status !== 502 || Date.now() - started > 5_000) {
+    throw new Error("origin timeout was not enforced");
   }
 
   if (
@@ -137,37 +220,38 @@ try {
   ) {
     throw new Error("unknown hostname was routed");
   }
-
-  const relayLogs = await output("docker", [...compose, "logs", "relay"], {
-    env: environment,
-  });
-  if (relayLogs.includes(privateKey)) {
-    throw new Error("private key leaked into relay logs");
-  }
-  const connectorLogs = await output("docker", [...compose, "logs", "connector"], {
-    env: environment,
-  });
   if (
-    relayLogs.includes("protocol_error") || connectorLogs.includes("protocol_error")
-  ) {
-    throw new Error("cancellation race caused a protocol error");
+    await rawHttpStatus(
+      `POST / HTTP/1.1\r\nHost: tunnel.test\r\nContent-Length: 1073741825\r\nConnection: close\r\n\r\n`,
+    ) !== 413
+  ) throw new Error("oversized declared body was accepted");
+  const logs = await output("docker", [...compose, "logs", "--no-color"], {
+    env: environment,
+  });
+  if (logs.includes(device.privateKey) || logs.includes(owner.privateKey)) {
+    throw new Error("a private key leaked into logs");
   }
   console.log(
     `integration: ${
       publishedImages ? "published" : "locally built"
-    } production images passed streaming, binary, routing, and multiplexing checks`,
+    } host and connector images passed enrollment, routing, streaming, binary, and isolation checks`,
   );
 } catch (error) {
   console.error(
-    await output("docker", [...compose, "logs", "--no-color"], {
-      env: environment,
-    }).catch(() => "compose logs unavailable"),
+    await output("docker", [...compose, "logs", "--no-color"], { env: environment })
+      .catch(() => "compose logs unavailable"),
   );
   throw error;
 } finally {
-  await run("docker", [...compose, "down", "--volumes", "--remove-orphans"], {
-    env: environment,
-  }).catch(() => {});
+  try {
+    await run("docker", [...compose, "down", "--volumes", "--remove-orphans"], {
+      env: environment,
+    });
+  } catch (error) {
+    console.error(`integration cleanup failed: ${String(error)}`);
+    Deno.exitCode = 1;
+  }
+  await Deno.remove(configDirectory, { recursive: true }).catch(() => {});
 }
 
 async function waitFor(
@@ -179,7 +263,7 @@ async function waitFor(
     try {
       if (await predicate()) return;
     } catch {
-      // Services are still starting.
+      // Services are still converging.
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
@@ -192,26 +276,63 @@ async function rawHttpStatus(request: string): Promise<number> {
     await connection.write(new TextEncoder().encode(request));
     const bytes = new Uint8Array(512);
     const count = await connection.read(bytes);
-    const line =
-      new TextDecoder().decode(bytes.subarray(0, count ?? 0)).split("\r\n")[0];
-    const status = Number(line.split(" ")[1]);
-    if (!Number.isInteger(status)) throw new Error("invalid raw HTTP response");
-    return status;
+    return Number(
+      new TextDecoder().decode(bytes.subarray(0, count ?? 0)).split("\r\n")[0].split(
+        " ",
+      )[1],
+    );
   } finally {
     connection.close();
   }
 }
 
-async function disconnectDuringResponse(): Promise<void> {
-  const connection = await Deno.connect({ hostname: testHost, port: 18080 });
-  await connection.write(
-    new TextEncoder().encode(
-      "GET /disconnect-stream HTTP/1.1\r\n" +
-        "Host: tunnel.test\r\n" +
-        "Connection: close\r\n\r\n",
-    ),
-  );
-  const bytes = new Uint8Array(512);
-  await connection.read(bytes);
-  connection.close();
+function publicRequest(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const headers = new Headers(init.headers);
+    headers.set("host", "tunnel.test");
+    const client = httpRequest({
+      hostname: testHost,
+      port: 18080,
+      path,
+      method: init.method ?? "GET",
+      headers: Object.fromEntries(headers),
+    }, (response) => {
+      const responseHeaders = new Headers();
+      for (const [name, values] of Object.entries(response.headersDistinct)) {
+        for (const value of values ?? []) responseHeaders.append(name, value);
+      }
+      resolve(
+        new Response(
+          Readable.toWeb(response) as ReadableStream<Uint8Array>,
+          {
+            status: response.statusCode ?? 502,
+            statusText: response.statusMessage,
+            headers: responseHeaders,
+          },
+        ),
+      );
+    });
+    client.on("error", reject);
+    if (init.body === undefined || init.body === null) {
+      client.end();
+    } else if (typeof init.body === "string" || init.body instanceof Uint8Array) {
+      client.end(init.body);
+    } else if (init.body instanceof ReadableStream) {
+      (async () => {
+        for await (const chunk of init.body as ReadableStream<Uint8Array>) {
+          if (!client.write(chunk)) await once(client, "drain");
+        }
+        client.end();
+      })().catch((error) => {
+        client.destroy(error instanceof Error ? error : undefined);
+        reject(error);
+      });
+    } else {
+      reject(new Error("unsupported integration request body"));
+      client.destroy();
+    }
+  });
 }

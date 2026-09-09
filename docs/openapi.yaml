@@ -1,0 +1,317 @@
+openapi: 3.1.0
+info:
+  title: Bunny Hole control API
+  version: 0.1.0
+  description: Version 1 enrollment, administration, session, and HTTP route API.
+servers:
+  - url: https://manage.hole.example
+paths:
+  /.well-known/bunny-hole:
+    get:
+      operationId: discoverHost
+      responses:
+        "200":
+          description: Persistent host descriptor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostDescriptor" }
+  /api/v1/enrollments:
+    post:
+      operationId: createEnrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, kind, publicKey]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 128 }
+                kind: { enum: [device, cluster] }
+                publicKey: { $ref: "#/components/schemas/PublicKey" }
+      responses:
+        "201":
+          description: Pending enrollment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicEnrollment" }
+        "200":
+          description: Existing enrollment for the same public key
+  /api/v1/enrollments/{enrollmentId}:
+    parameters:
+      - $ref: "#/components/parameters/EnrollmentId"
+    get:
+      operationId: getEnrollment
+      responses:
+        "200":
+          description: Public enrollment status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicEnrollment" }
+        "404": { description: Unknown enrollment }
+  /api/v1/enrollments/{enrollmentId}/approve:
+    parameters:
+      - $ref: "#/components/parameters/EnrollmentId"
+    post:
+      operationId: approveEnrollmentWithOwnerKey
+      description: Requires one-use-challenge Ed25519 owner-proof headers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [grants]
+              properties:
+                grants: { $ref: "#/components/schemas/Grant" }
+      responses:
+        "200": { description: Approved }
+        "403": { description: Invalid owner proof }
+  /api/v1/enrollments/{enrollmentId}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/EnrollmentId"
+    post:
+      operationId: revokeEnrollment
+      description: Requires one-use-challenge Ed25519 owner-proof headers.
+      responses:
+        "200": { description: Revoked }
+        "403": { description: Invalid owner proof }
+  /api/v1/session/challenge:
+    post:
+      operationId: createSessionChallenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enrollmentId]
+              properties:
+                enrollmentId: { $ref: "#/components/schemas/EnrollmentId" }
+      responses:
+        "200":
+          description: One-use 60-second challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challengeId, challenge, expiresAt]
+                properties:
+                  challengeId: { type: string }
+                  challenge: { type: string }
+                  expiresAt: { type: string, format: date-time }
+  /api/v1/session:
+    post:
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enrollmentId, challengeId, signature]
+              properties:
+                enrollmentId: { $ref: "#/components/schemas/EnrollmentId" }
+                challengeId: { type: string }
+                signature: { type: string }
+      responses:
+        "200":
+          description: Short-lived FRP admission and current routes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken, expiresAt, descriptor, routes]
+                properties:
+                  accessToken: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  descriptor: { $ref: "#/components/schemas/HostDescriptor" }
+                  routes:
+                    type: array
+                    maxItems: 256
+                    items: { $ref: "#/components/schemas/Route" }
+        "401": { description: Authentication failed }
+  /api/v1/routes:
+    get:
+      operationId: listRoutes
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Routes owned by this enrollment
+    post:
+      operationId: createRoute
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RouteInput" }
+      responses:
+        "201":
+          description: Created route
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Route" }
+  /api/v1/routes/{routeId}:
+    delete:
+      operationId: deleteRoute
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: routeId
+          required: true
+          schema: { type: string, pattern: "^rte_[A-Za-z0-9_-]{24}$" }
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Unknown or not owned by this enrollment }
+  /api/v1/admin/passkeys/registration/flows:
+    post:
+      operationId: createPasskeyRegistrationFlow
+      description: Requires one-use-challenge Ed25519 owner-proof headers.
+      responses:
+        "200": { description: Management-origin URL containing a fragment flow token }
+        "403": { description: Invalid owner proof }
+  /api/v1/admin/owner/challenge:
+    post:
+      operationId: createOwnerChallenge
+      responses:
+        "200": { description: One-use 60-second challenge for an allowed owner purpose }
+  /api/v1/admin/passkeys/registration/options:
+    post:
+      operationId: passkeyRegistrationOptions
+      responses:
+        "200": { description: WebAuthn creation options for an active flow }
+  /api/v1/admin/passkeys/registration:
+    post:
+      operationId: registerPasskey
+      responses:
+        "200": { description: Registered and flow consumed }
+  /api/v1/admin/enrollment-approvals:
+    post:
+      operationId: createPasskeyApprovalFlow
+      responses:
+        "200": { description: Management-origin URL containing a fragment flow token }
+  /api/v1/admin/enrollment-approvals/options:
+    post:
+      operationId: passkeyApprovalOptions
+      responses:
+        "200": { description: Enrollment, grant, and WebAuthn request options }
+  /api/v1/admin/enrollment-approvals/complete:
+    post:
+      operationId: completePasskeyApproval
+      responses:
+        "200": { description: Passkey verified, enrollment approved, flow consumed }
+components:
+  parameters:
+    EnrollmentId:
+      in: path
+      name: enrollmentId
+      required: true
+      schema: { $ref: "#/components/schemas/EnrollmentId" }
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    EnrollmentId:
+      type: string
+      pattern: "^enr_[A-Za-z0-9_-]{24}$"
+    PublicKey:
+      type: string
+      pattern: "^[A-Za-z0-9_-]{43}$"
+    HostDescriptor:
+      type: object
+      additionalProperties: false
+      required: [
+        apiVersion,
+        name,
+        managementUrl,
+        connectorHost,
+        connectorPort,
+        connectorTransports,
+        identityPublicKey,
+        capabilities,
+      ]
+      properties:
+        apiVersion: { const: 1 }
+        name: { type: string }
+        managementUrl: { type: string, format: uri }
+        connectorHost: { type: string }
+        connectorPort: { type: integer, minimum: 1, maximum: 65535 }
+        connectorTransports:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { enum: [wss, quic, tcp] }
+        identityPublicKey: { $ref: "#/components/schemas/PublicKey" }
+        capabilities:
+          type: array
+          items: { enum: [http, https] }
+    Grant:
+      type: object
+      additionalProperties: false
+      required: [exactHostnames, hostnameSuffixes, protocols, maxRoutes]
+      properties:
+        exactHostnames:
+          type: array
+          maxItems: 256
+          uniqueItems: true
+          items: { type: string }
+        hostnameSuffixes:
+          type: array
+          maxItems: 256
+          uniqueItems: true
+          items: { type: string }
+        protocols:
+          type: array
+          uniqueItems: true
+          items: { enum: [http, https] }
+        maxRoutes: { type: integer, minimum: 1, maximum: 256 }
+    PublicEnrollment:
+      type: object
+      required: [
+        id,
+        name,
+        kind,
+        publicKey,
+        verificationPhrase,
+        state,
+        createdAt,
+        expiresAt,
+      ]
+      properties:
+        id: { $ref: "#/components/schemas/EnrollmentId" }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        kind: { enum: [device, cluster] }
+        publicKey: { $ref: "#/components/schemas/PublicKey" }
+        verificationPhrase: { type: string }
+        state: { enum: [pending, active, revoked] }
+        createdAt: { type: string, format: date-time }
+        expiresAt:
+          oneOf:
+            - { type: string, format: date-time }
+            - { type: "null" }
+    RouteInput:
+      type: object
+      additionalProperties: false
+      required: [name, protocol, hostname, targetHost, targetPort, allowPrivateNetwork]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        protocol: { enum: [http, https] }
+        hostname: { type: string }
+        targetHost: { type: string }
+        targetPort: { type: integer, minimum: 1, maximum: 65535 }
+        allowPrivateNetwork: { type: boolean }
+    Route:
+      allOf:
+        - { $ref: "#/components/schemas/RouteInput" }
+        - type: object
+          required: [id, enrollmentId, active]
+          properties:
+            id: { type: string, pattern: "^rte_[A-Za-z0-9_-]{24}$" }
+            enrollmentId: { $ref: "#/components/schemas/EnrollmentId" }
+            active: { type: boolean }

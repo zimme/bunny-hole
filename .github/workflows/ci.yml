@@ -21,8 +21,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Configure Docker socket access
-        run: echo "BUNNY_HOLE_DOCKER_GID=$(stat --format=%g /var/run/docker.sock)" >> "$GITHUB_ENV"
       - name: Log in to GHCR for prebuild cache
         uses: docker/login-action@v3
         with:
