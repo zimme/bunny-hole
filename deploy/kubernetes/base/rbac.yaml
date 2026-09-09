@@ -20,9 +20,6 @@ rules:
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gateways, httproutes, referencegrants]
     verbs: [get, list, watch]
-  - apiGroups: [""]
-    resources: [secrets]
-    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -32,6 +29,30 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: bunny-hole-controller
+subjects:
+  - kind: ServiceAccount
+    name: bunny-hole-controller
+    namespace: bunny-hole-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bunny-hole-controller-credentials
+  namespace: bunny-hole-system
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bunny-hole-controller-credentials
+  namespace: bunny-hole-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bunny-hole-controller-credentials
 subjects:
   - kind: ServiceAccount
     name: bunny-hole-controller

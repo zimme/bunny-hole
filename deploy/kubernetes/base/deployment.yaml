@@ -24,6 +24,11 @@ spec:
           image: ghcr.io/zimme/bunny-hole-connector:0.1.0
           imagePullPolicy: IfNotPresent
           args: [operator]
+          env:
+            - name: BUNNY_HOLE_CREDENTIALS_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

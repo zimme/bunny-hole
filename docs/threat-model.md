@@ -21,8 +21,9 @@ application data, route policy, live traffic, and released artifacts. Trust cros
 Bunny is trusted to terminate public TLS, route each endpoint to the configured
 container port, and isolate the application. A host operator or compromised host can
 observe and alter tunneled HTTP. An application embedding the TypeScript library shares
-its process and key boundary. A Kubernetes controller can read only referenced Secrets
-by RBAC, but a compromised cluster administrator can read every cluster credential.
+its process and key boundary. Kubernetes RBAC limits the controller to Secrets in its
+own namespace, but a compromised cluster administrator can read every cluster
+credential.
 
 ## Threats and controls
 

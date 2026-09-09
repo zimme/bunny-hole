@@ -2,7 +2,7 @@ apiVersion: bunny-hole.dev/v1alpha1
 kind: BunnyHoleHost
 metadata:
   name: home
-  namespace: home
+  namespace: bunny-hole-system
 spec:
   url: https://hole.example.com
   transport: wss
@@ -15,11 +15,11 @@ metadata:
   name: public
   namespace: home
   annotations:
-    bunny-hole.dev/host: home
+    bunny-hole.dev/host: bunny-hole-system/home
 spec:
   gatewayClassName: bunny-hole
   listeners:
-    - name: https
+    - name: http
       protocol: HTTP
       port: 80
       hostname: home.example.com

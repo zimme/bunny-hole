@@ -169,6 +169,10 @@ bunny-hole cluster prepare --url https://manage.hole.example \
   > ./home-cluster-enrollment.yaml
 ```
 
+The namespace must match the controller deployment namespace. Its ClusterRole can
+discover public routing resources, while a separate namespaced Role limits credential
+Secret reads to that namespace.
+
 The command refuses to print the Secret to a terminal. Its stderr contains only the
 enrollment ID and human verification phrase. Approve that ID with an exact/suffix grant,
 then deliver the generated Secret through SOPS, Sealed Secrets, External Secrets, or

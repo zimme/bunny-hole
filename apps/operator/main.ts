@@ -15,13 +15,17 @@ interface HostResource {
   reference: string;
   url: string;
   secretName: string;
-  namespace: string;
   transport: "quic" | "tcp" | "websocket" | "wss";
 }
 
 export async function runOperator(signal: AbortSignal): Promise<void> {
   const logger = createLogger("json");
   const kube = await KubernetesClient.create();
+  const credentialsNamespace = Deno.env.get("BUNNY_HOLE_CREDENTIALS_NAMESPACE") ??
+    "bunny-hole-system";
+  if (!/^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/.test(credentialsNamespace)) {
+    throw new ValidationError("invalid credentials namespace");
+  }
   const supervisors = new Map<
     string,
     { fingerprint: string; controller: AbortController }
@@ -33,7 +37,10 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
       const hosts = hostResources(resources);
       for (const host of hosts) {
         try {
-          const credentials = await kube.credentials(host.namespace, host.secretName);
+          const credentials = await kube.credentials(
+            credentialsNamespace,
+            host.secretName,
+          );
           const desired = routes.filter((route) => route.hostRef === host.reference);
           const session = await reconcileHost(host, credentials, desired);
           const fingerprint = JSON.stringify({
@@ -150,7 +157,6 @@ function hostResources(resources: unknown[]): HostResource[] {
     if (transport !== "wss") continue;
     output.push({
       reference: `${namespace}/${value.metadata.name}`,
-      namespace,
       url: value.spec.url,
       secretName: value.spec.credentialsSecretRef.name,
       transport: transport as HostResource["transport"],
