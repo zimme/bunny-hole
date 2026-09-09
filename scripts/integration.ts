@@ -37,11 +37,15 @@ const publishedImages = Boolean(
 try {
   if (publishedImages) {
     await run("docker", [...compose, "build", "origin"], { env: environment });
+  } else {
+    await run("docker", [...compose, "build", "host", "origin", "connector"], {
+      env: environment,
+    });
   }
   await run("docker", [
     ...compose,
     "up",
-    publishedImages ? "--no-build" : "--build",
+    "--no-build",
     "--detach",
     "--wait",
     "host",
@@ -125,7 +129,7 @@ try {
   await run("docker", [
     ...compose,
     "up",
-    publishedImages ? "--no-build" : "--build",
+    "--no-build",
     "--detach",
     "connector",
   ], { env: environment });
