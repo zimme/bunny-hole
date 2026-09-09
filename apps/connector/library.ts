@@ -57,7 +57,13 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
             flag: "wx",
           });
           if (runController.signal.aborted || signal?.aborted) return 0;
-          const abort = () => child?.kill("SIGTERM");
+          const abort = () => {
+            try {
+              child?.kill("SIGTERM");
+            } catch {
+              // The process may already have exited.
+            }
+          };
           runController.signal.addEventListener("abort", abort, { once: true });
           signal?.addEventListener("abort", abort, { once: true });
           try {

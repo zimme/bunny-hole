@@ -52,9 +52,6 @@ export async function runCompose(
       executable: Deno.env.get("BUNNY_HOLE_FRPC_PATH") ?? "frpc",
       session,
       transport: session.descriptor.connectorTransports[0] ?? "wss",
-      workDirectory: await Deno.makeTempDir({
-        prefix: `bunny-hole-compose-${hostName}-`,
-      }),
       signal,
       allowInsecureTransport: Deno.env.get("BUNNY_HOLE_LOCAL_DEVELOPMENT") === "true",
     });

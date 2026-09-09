@@ -45,16 +45,12 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
             current?.controller.abort();
             const controller = new AbortController();
             const supervisor = { fingerprint, controller };
-            const workDirectory = await Deno.makeTempDir({
-              prefix: `bunny-hole-${safeName(host.reference)}-`,
-            });
             supervisors.set(host.reference, supervisor);
             runFrpc({
               executable: Deno.env.get("BUNNY_HOLE_FRPC_PATH") ??
                 "/usr/local/bin/frpc",
               session,
               transport: host.transport,
-              workDirectory,
               signal: controller.signal,
             }).then((code) => {
               if (supervisors.get(host.reference) === supervisor) {
@@ -239,9 +235,6 @@ class KubernetesClient {
   }
 }
 
-function safeName(value: string): string {
-  return value.replaceAll(/[^a-zA-Z0-9-]/g, "-").slice(0, 80);
-}
 function formatHost(host: string): string {
   return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }

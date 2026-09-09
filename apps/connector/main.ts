@@ -438,14 +438,11 @@ async function connect(flags: Flags): Promise<void> {
       let stage = "session acquisition";
       try {
         const session = await client.session(credentials);
-        stage = "temporary-directory creation";
-        const directory = await Deno.makeTempDir({ prefix: "bunny-hole-frpc-" });
         stage = "FRP process";
         const code = await runFrpc({
           executable,
           session,
           transport,
-          workDirectory: directory,
           signal: controller.signal,
           allowInsecureTransport: flags["local-development"] === true,
         });

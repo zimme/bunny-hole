@@ -80,6 +80,7 @@ export function createId(prefix: string): string {
 
 export function parseId(value: unknown, prefix: string): string {
   if (
+    !/^[a-z][a-z0-9]{1,15}$/.test(prefix) ||
     typeof value !== "string" ||
     !new RegExp(`^${prefix}_[A-Za-z0-9_-]{24}$`).test(value)
   ) throw new ValidationError("invalid identifier");

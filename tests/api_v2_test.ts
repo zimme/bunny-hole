@@ -3,6 +3,7 @@ import { generateKeyPair, sign, verify } from "../packages/api/auth.ts";
 import {
   grantAllowsRoute,
   normalizeHostname,
+  parseId,
   validateGrant,
 } from "../packages/api/mod.ts";
 import { secureRequestHeaders, validateOrigin } from "../packages/api/security.ts";
@@ -16,6 +17,13 @@ Deno.test("Ed25519 signatures are context separated", async () => {
     false,
   );
   assertEquals(await verify(keys.publicKey, "session", ["a", "c"], signature), false);
+});
+
+Deno.test("identifier prefixes cannot alter validation syntax", () => {
+  assertThrows(
+    () => parseId("enr_AAAAAAAAAAAAAAAAAAAAAAAA", "enr|.*"),
+    /invalid identifier/,
+  );
 });
 
 Deno.test("grants match only explicit hostnames, suffixes, and protocols", () => {
