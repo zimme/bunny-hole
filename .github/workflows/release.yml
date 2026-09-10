@@ -19,7 +19,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Validate ComVer tag shape
@@ -30,7 +30,7 @@ jobs:
             echo "ComVer tags must use MAJOR.MINOR.0" >&2
             exit 1
           }
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
