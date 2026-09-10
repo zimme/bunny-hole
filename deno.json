@@ -21,7 +21,7 @@
   },
   "imports": {
     "@simplewebauthn/server": "npm:@simplewebauthn/server@13.3.2",
-    "cspell": "npm:cspell@9.2.1"
+    "cspell": "npm:cspell@10.3.0"
   },
   "tasks": {
     "setup": "deno ci && deno install --config deno.runtime.json --frozen && deno task hooks:install",
@@ -34,7 +34,7 @@
     "release:publish-package": "deno run --allow-env=RELEASE_TAG --allow-net=jsr.io,registry.npmjs.org --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=deno,git,npm,tar scripts/publish_package.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
-    "spellcheck": "deno run --allow-env --allow-sys=homedir --allow-read cspell lint --config cspell.json --gitignore --dot --no-progress .",
+    "spellcheck": "deno run --allow-env --allow-sys=homedir,uid --allow-read cspell lint --config cspell.json --gitignore --dot --no-progress .",
     "lint": "deno lint",
     "check": "deno check apps/host/main.ts apps/connector/main.ts apps/connector/mod.ts fixtures/origin/main.ts scripts/*.ts tests/*.ts",
     "docs:check": "deno run --allow-read=. --allow-run=deno scripts/docs_check.ts",

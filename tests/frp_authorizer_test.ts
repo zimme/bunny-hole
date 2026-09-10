@@ -43,7 +43,7 @@ Deno.test("FRP plugin rejects malformed, unknown, and replaced sessions", async 
   const first = await issueSessionToken(identity.privateKey, enrollment.id);
   const second = await issueSessionToken(identity.privateKey, enrollment.id);
   assertEquals(
-    (await authorizer.authorize(plugin("Login", first.token))).reject,
+    (await authorizer.authorize(plugin("Login", first.token, {}, ""))).reject,
     false,
   );
   assertEquals(
@@ -51,25 +51,78 @@ Deno.test("FRP plugin rejects malformed, unknown, and replaced sessions", async 
       proxy_name: "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA.bh-rte_AAAAAAAAAAAAAAAAAAAAAAAA",
       proxy_type: "http",
       custom_domains: ["attacker.test"],
-    }))).reject,
+    }, "poison-run"))).reject,
+    true,
+  );
+  const proxyName = "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA.bh-rte_AAAAAAAAAAAAAAAAAAAAAAAA";
+  assertEquals(
+    (await authorizer.authorize(plugin("NewProxy", first.token, {
+      proxy_name: proxyName,
+      proxy_type: "http",
+      custom_domains: ["home.example.com"],
+    }, "run-1"))).reject,
+    false,
+  );
+  assertEquals(
+    (await authorizer.authorize(plugin("CloseProxy", first.token, {
+      proxy_name: "bh-enr_BBBBBBBBBBBBBBBBBBBBBBBB.bh-rte_AAAAAAAAAAAAAAAAAAAAAAAA",
+    }, "run-1"))).reject,
     true,
   );
   assertEquals(
-    (await authorizer.authorize(plugin("Login", second.token))).reject,
+    (await authorizer.authorize(
+      plugin("NewWorkConn", first.token, {}, "run-1", "wrong-run"),
+    )).reject,
+    true,
+  );
+  assertEquals(
+    (await authorizer.authorize(plugin("Login", second.token, {}, ""))).reject,
     false,
   );
-  assertEquals((await authorizer.authorize(plugin("Ping", first.token))).reject, true);
   assertEquals(
-    (await authorizer.authorize(plugin("Ping", second.token))).reject,
+    (await authorizer.authorize(plugin("Ping", first.token, {}, "run-1"))).reject,
+    true,
+  );
+  assertEquals(
+    (await authorizer.authorize(plugin("Ping", second.token, {}, "run-2"))).reject,
     false,
   );
   store.revokeEnrollment(enrollment.id);
   assertEquals(
-    (await authorizer.authorize(plugin("Ping", second.token))).reject,
+    (await authorizer.authorize(plugin("Ping", second.token, {}, "run-2"))).reject,
     true,
   );
 });
 
-function plugin(op: string, token: string, content: Record<string, unknown> = {}) {
-  return { op, content: { ...content, metas: { bunny_hole_token: token } } };
+function plugin(
+  op: string,
+  token: string,
+  content: Record<string, unknown> = {},
+  runId = "run-1",
+  workConnectionRunId = runId,
+) {
+  const metas = { bunny_hole_token: token };
+  if (op === "Login") {
+    return {
+      op,
+      content: {
+        ...content,
+        user: "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA",
+        run_id: runId,
+        metas,
+      },
+    };
+  }
+  return {
+    op,
+    content: {
+      ...content,
+      user: {
+        user: "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA",
+        run_id: runId,
+        metas,
+      },
+      ...(op === "NewWorkConn" ? { run_id: workConnectionRunId } : {}),
+    },
+  };
 }

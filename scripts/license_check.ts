@@ -6,7 +6,7 @@ const config = JSON.parse(await Deno.readTextFile("deno.json"));
 const imports = Object.values(config.imports ?? {}) as string[];
 if (
   imports.sort().join("\n") !==
-    ["npm:@simplewebauthn/server@13.3.2", "npm:cspell@9.2.1"].sort().join(
+    ["npm:@simplewebauthn/server@13.3.2", "npm:cspell@10.3.0"].sort().join(
       "\n",
     )
 ) {

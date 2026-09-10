@@ -1,5 +1,7 @@
 import { LIMITS, normalizeHostname, ValidationError } from "./mod.ts";
 
+const encoder = new TextEncoder();
+
 const hopByHop = new Set([
   "connection",
   "keep-alive",
@@ -112,8 +114,7 @@ function enforceHeaders(headers: Headers): void {
   let bytes = 0;
   headers.forEach((value, name) => {
     count++;
-    bytes += new TextEncoder().encode(name).length +
-      new TextEncoder().encode(value).length + 4;
+    bytes += encoder.encode(name).length + encoder.encode(value).length + 4;
   });
   if (count > LIMITS.maxHeaders || bytes > LIMITS.maxHeaderBytes) {
     throw new ValidationError("headers exceed limit");

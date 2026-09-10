@@ -29,7 +29,10 @@ ops = ["Login", "NewProxy", "CloseProxy", "Ping", "NewWorkConn", "NewUserConn"]
 }
 
 export class FrpAuthorizer {
-  #active = new Map<string, { jti: string; tokenDigest: string }>();
+  #active = new Map<
+    string,
+    { runId?: string; tokenDigest: string }
+  >();
 
   constructor(
     private store: HostStore,
@@ -49,8 +52,10 @@ export class FrpAuthorizer {
       if (!enrollment || enrollment.state !== "active") {
         return reject("authentication failed");
       }
+      if (value.content.user !== `bh-${enrollment.id}`) {
+        return reject("authentication failed");
+      }
       this.#active.set(enrollment.id, {
-        jti: claims.jti,
         tokenDigest: await tokenDigest(token),
       });
       return accept(value.content);
@@ -60,25 +65,58 @@ export class FrpAuthorizer {
       session.tokenDigest === digest
     );
     if (!active) return reject("session replaced");
-    const [enrollmentId] = active;
+    const [enrollmentId, activeSession] = active;
     const enrollment = this.store.getEnrollment(enrollmentId);
     if (!enrollment || enrollment.state !== "active") {
       return reject("authentication failed");
     }
+    const user = isRecord(value.content.user) ? value.content.user : undefined;
+    const runId = boundedString(user?.run_id);
+    if (user?.user !== `bh-${enrollment.id}` || !runId) {
+      return reject("proxy is not authorized");
+    }
+    if (activeSession.runId && activeSession.runId !== runId) {
+      return reject("proxy is not authorized");
+    }
+    const routes = this.store.listRoutes(enrollment.id);
     if (value.op === "NewProxy") {
       const route = routeForProxy(
         enrollment.id,
-        this.store.listRoutes(enrollment.id),
+        routes,
         value.content,
       );
       if (!route) return reject("proxy is not authorized");
+    } else if (value.op === "CloseProxy" || value.op === "NewUserConn") {
+      if (!ownedProxy(enrollment.id, routes, value.content.proxy_name)) {
+        return reject("proxy is not authorized");
+      }
+    } else if (value.op === "NewWorkConn") {
+      if (value.content.run_id !== runId) {
+        return reject("proxy is not authorized");
+      }
     } else if (
-      !["CloseProxy", "Ping", "NewWorkConn", "NewUserConn"].includes(value.op)
+      value.op !== "Ping"
     ) {
       return reject("unsupported operation");
     }
+    activeSession.runId ??= runId;
     return accept(value.content);
   }
+}
+
+function boundedString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 && value.length <= 128
+    ? value
+    : undefined;
+}
+
+function ownedProxy(
+  enrollmentId: string,
+  routes: Route[],
+  name: unknown,
+): boolean {
+  return typeof name === "string" &&
+    routes.some((route) => `bh-${enrollmentId}.bh-${route.id}` === name);
 }
 
 function metadataToken(content: Record<string, unknown>): string | undefined {
