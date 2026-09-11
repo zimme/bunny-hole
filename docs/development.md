@@ -34,6 +34,11 @@ Compose plugin. It connects to the pinned rootless Docker-in-Docker service in
 `compose.yaml`, so validation can build and exercise the sibling production-image
 topology without exposing the host Docker socket.
 
+The startup entrypoint leaves repository sources host-owned and makes only the ignored
+`.tmp`, `coverage`, and `dist` directories writable by the fixed development user.
+Per-run connector configuration is still created beneath `.tmp` with mode `0700`, so
+private keys are not made readable merely to bridge the two containers.
+
 Inside the service, run `deno task setup` once and then focused tasks such as `fmt`,
 `lint`, `check`, `test`, `coverage`, `integration`, `build`, `package:check`, `audit`,
 or `container:smoke`. `deno task validate` is authoritative and executes, in order:
