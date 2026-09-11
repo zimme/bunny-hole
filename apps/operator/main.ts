@@ -28,7 +28,7 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
   }
   const supervisors = new Map<
     string,
-    { fingerprint: string; controller: AbortController }
+    { fingerprint: string; renewAt: number; controller: AbortController }
   >();
   while (!signal.aborted) {
     try {
@@ -48,10 +48,17 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
             routes: session.routes.map((route) => route.id).sort(),
           });
           const current = supervisors.get(host.reference);
-          if (current?.fingerprint !== fingerprint) {
+          if (
+            current?.fingerprint !== fingerprint ||
+            Date.now() >= (current?.renewAt ?? 0)
+          ) {
             current?.controller.abort();
             const controller = new AbortController();
-            const supervisor = { fingerprint, controller };
+            const supervisor = {
+              fingerprint,
+              renewAt: Date.parse(session.expiresAt) - 60_000,
+              controller,
+            };
             supervisors.set(host.reference, supervisor);
             runFrpc({
               executable: Deno.env.get("BUNNY_HOLE_FRPC_PATH") ??
@@ -245,12 +252,16 @@ function formatHost(host: string): string {
   return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 async function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
   await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => {
+    const finish = () => {
       clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
       resolve();
-    }, { once: true });
+    };
+    const timer = setTimeout(finish, milliseconds);
+    signal.addEventListener("abort", finish, { once: true });
+    if (signal.aborted) finish();
   });
 }
 

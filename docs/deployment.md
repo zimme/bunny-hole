@@ -179,6 +179,8 @@ then deliver the generated Secret through SOPS, Sealed Secrets, External Secrets
 another secret manager. Apply the public CRD/controller/Gateway resources with your
 normal GitOps reconciler. One host can enroll many clusters; one cluster can declare
 many `BunnyHoleHost` resources, each with a separate key pair and revocation boundary.
+Pin the controller manifest to the published connector digest by replacing
+`REPLACE_WITH_RELEASE_DIGEST`; do not deploy a mutable tag.
 
 ## Compose and container use
 

@@ -104,6 +104,7 @@ try {
       join(directory, "README.txt"),
       `Bunny Hole ${version}\n\nKeep bunny-hole and frpc in the same directory. Run bunny-hole --help.\n`,
     );
+    await Deno.copyFile("third_party/frp.LICENSE", join(directory, "FRP-LICENSE.txt"));
     await run("tar", [
       "-czf",
       join(outputDirectory, `${basename(directory)}.tar.gz`),

@@ -58,6 +58,14 @@ Deno.test("public proxy preserves bodies and strips untrusted headers", async ()
       )).status,
       421,
     );
+    assertEquals(
+      (await context.host.handle(
+        new Request(`http://relay.test/?${"x".repeat(LIMITS.maxPathBytes)}`, {
+          headers: { host: "home.example.com" },
+        }),
+      )).status,
+      414,
+    );
   } finally {
     context.store[Symbol.dispose]();
     await fixture.stop();

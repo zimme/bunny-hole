@@ -19,9 +19,10 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Validate ComVer tag shape
         env:
           TAG: ${{ github.ref_name }}
@@ -30,13 +31,13 @@ jobs:
             echo "ComVer tags must use MAJOR.MINOR.0" >&2
             exit 1
           }
-      - uses: docker/login-action@v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run the authoritative validation
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           configFile: .devcontainer/devcontainer.json
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
@@ -45,8 +46,8 @@ jobs:
             CI=true deno task validate &&
             deno task release:check ${{ github.ref_name }} &&
             deno task release:artifacts
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Refuse to overwrite released OCI versions
         env:
           VERSION: ${{ github.ref_name }}
@@ -69,7 +70,7 @@ jobs:
           done
       - name: Build and publish host
         id: host
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           target: host-runtime
@@ -84,7 +85,7 @@ jobs:
           provenance: mode=max
       - name: Build and publish connector
         id: connector
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           target: connector-runtime
@@ -109,7 +110,7 @@ jobs:
           done
           docker run --rm "$CONNECTOR_IMAGE" --version
       - name: Exercise the exact published images end to end
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           configFile: .devcontainer/devcontainer.json
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
@@ -119,49 +120,49 @@ jobs:
             BUNNY_HOLE_CONNECTOR_IMAGE=ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
             CI=true deno task integration
       - name: Generate host SPDX SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ghcr.io/${{ github.repository }}-host@${{ steps.host.outputs.digest }}
           format: spdx-json
           output-file: bunny-hole-host-${{ github.ref_name }}.spdx.json
       - name: Generate connector SPDX SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
           format: spdx-json
           output-file: bunny-hole-connector-${{ github.ref_name }}.spdx.json
       - name: Attest host image provenance
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ghcr.io/${{ github.repository }}-host
           subject-digest: ${{ steps.host.outputs.digest }}
           push-to-registry: true
       - name: Attest connector image provenance
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ghcr.io/${{ github.repository }}-connector
           subject-digest: ${{ steps.connector.outputs.digest }}
           push-to-registry: true
       - name: Attest host SBOM
-        uses: actions/attest-sbom@v3
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3
         with:
           subject-name: ghcr.io/${{ github.repository }}-host
           subject-digest: ${{ steps.host.outputs.digest }}
           sbom-path: bunny-hole-host-${{ github.ref_name }}.spdx.json
           push-to-registry: true
       - name: Attest connector SBOM
-        uses: actions/attest-sbom@v3
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3
         with:
           subject-name: ghcr.io/${{ github.repository }}-connector
           subject-digest: ${{ steps.connector.outputs.digest }}
           sbom-path: bunny-hole-connector-${{ github.ref_name }}.spdx.json
           push-to-registry: true
       - name: Attest native connector binaries
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: dist/release/*
       - name: Publish the connector library to JSR and npm
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           configFile: .devcontainer/devcontainer.json
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache

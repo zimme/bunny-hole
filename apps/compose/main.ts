@@ -13,7 +13,16 @@ export async function runCompose(
 ): Promise<void> {
   const executable = Deno.env.get("BUNNY_HOLE_COMPOSE_COMMAND") ?? "docker";
   const prefix = executable === "docker" ? ["compose"] : [];
-  if (command === "up") await run(executable, [...prefix, "up", "--detach"]);
+  if (command === "up") {
+    await run(executable, [
+      ...prefix,
+      "up",
+      "--detach",
+      "--wait",
+      "--wait-timeout",
+      "120",
+    ]);
+  }
   const output = await capture(executable, [...prefix, "config", "--format", "json"]);
   const desired = routesFromCompose(JSON.parse(output));
   if (command === "plan") {
@@ -21,8 +30,13 @@ export async function runCompose(
     return;
   }
   const state = await loadState(configPath);
+  for (const hostName of new Set(desired.map((route) => route.host))) {
+    if (!state.hosts[hostName]) {
+      throw new ValidationError(`host ${hostName} is not configured`);
+    }
+  }
   const sessions = [];
-  for (const hostName of [...new Set(desired.map((route) => route.host))]) {
+  for (const hostName of Object.keys(state.hosts)) {
     const [, credentials] = selectHost(state, hostName);
     const client = new BunnyHoleClient(
       credentials.url,
@@ -43,8 +57,10 @@ export async function runCompose(
       if (existing) await client.deleteRoute(session, existing.id);
       await client.createRoute(session, route);
     }
-    session = await client.session(credentials);
-    sessions.push({ hostName, session });
+    if (hostRoutes.length > 0) {
+      session = await client.session(credentials);
+      sessions.push({ hostName, session });
+    }
   }
   if (command === "sync") return;
   await Promise.all(sessions.map(async ({ hostName, session }) => {

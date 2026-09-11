@@ -151,14 +151,14 @@ async function wizard(): Promise<void> {
   console.log("Welcome to Bunny Hole. This creates a device key for one host.\n");
   const url = prompt("Bunny Hole host URL (https://…):")?.trim();
   if (!url) throw new UsageError("host URL is required");
-  const suggested = new URL(url).hostname.replaceAll(".", "-");
+  const suggested = hostAlias(url);
   const name = prompt(`Local name for this host (${suggested}):`)?.trim() || suggested;
   await addHost({ url, name });
 }
 
 async function addHost(flags: Flags): Promise<void> {
   const url = required(flags, "url");
-  const alias = typeof flags.name === "string" ? flags.name : new URL(url).hostname;
+  const alias = typeof flags.name === "string" ? flags.name : hostAlias(url);
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(alias)) {
     throw new UsageError("invalid host name");
   }
@@ -423,7 +423,8 @@ async function connect(flags: Flags): Promise<void> {
   if (!["quic", "tcp", "websocket", "wss"].includes(transport)) {
     throw new UsageError("invalid transport");
   }
-  if (transport !== "wss" && flags["local-development"] !== true) {
+  const development = localDevelopment(flags);
+  if (transport !== "wss" && !development) {
     throw new UsageError("production connectors require the wss transport");
   }
   const executable = Deno.env.get("BUNNY_HOLE_FRPC_PATH") ?? siblingExecutable("frpc");
@@ -444,7 +445,7 @@ async function connect(flags: Flags): Promise<void> {
           session,
           transport,
           signal: controller.signal,
-          allowInsecureTransport: flags["local-development"] === true,
+          allowInsecureTransport: development,
         });
         if (!controller.signal.aborted) {
           console.error(`connector stopped with code ${code}; reconnecting`);
@@ -655,6 +656,11 @@ function localDevelopment(flags: Flags): boolean {
     Deno.env.get("BUNNY_HOLE_LOCAL_DEVELOPMENT") === "true";
 }
 
+function hostAlias(url: string): string {
+  return new URL(url).hostname.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "").slice(0, 63);
+}
+
 function clientFor(credentials: HostCredentials, flags: Flags): BunnyHoleClient {
   return new BunnyHoleClient(credentials.url, fetch, localDevelopment(flags));
 }
@@ -703,12 +709,16 @@ function standardBase64(value: string): string {
 }
 
 async function abortableDelay(delay: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
   await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, delay);
-    signal.addEventListener("abort", () => {
+    const finish = () => {
       clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
       resolve();
-    }, { once: true });
+    };
+    const timer = setTimeout(finish, delay);
+    signal.addEventListener("abort", finish, { once: true });
+    if (signal.aborted) finish();
   });
 }
 

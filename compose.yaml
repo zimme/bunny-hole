@@ -10,6 +10,23 @@ networks:
       config: [{ subnet: 10.254.253.0/24 }]
 
 services:
+  docker-engine:
+    profiles: [development]
+    image: docker:29.6.2-dind-rootless@sha256:212a9e782c7119fd6a212beaab6b7665a29b663d894d0f6201710c89575ad0ae
+    privileged: true
+    environment:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      DOCKER_TLS_CERTDIR: ""
+    command: [--host=tcp://0.0.0.0:2375, --tls=false]
+    volumes:
+      - .:/workspaces/bunny-hole:cached
+      - development-docker-data:/home/rootless/.local/share/docker
+    healthcheck:
+      test: [CMD, docker, info]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
   development:
     profiles: [development]
     build:
@@ -25,19 +42,20 @@ services:
         DOCKER_BUILDX_VERSION: "0.35.0-1~debian.13~trixie"
         DOCKER_COMPOSE_VERSION: "5.3.1-1~debian.13~trixie"
     init: true
+    depends_on:
+      docker-engine: { condition: service_healthy }
     environment:
       BUNNY_HOLE_BIND_ADDRESS: "0.0.0.0"
-      BUNNY_HOLE_TEST_HOST: host.docker.internal
-      # Lets nested Compose tests bind generated files through the host daemon.
-      BUNNY_HOLE_WORKSPACE_HOST_PATH: "${BUNNY_HOLE_WORKSPACE_HOST_PATH:-${PWD}}"
+      BUNNY_HOLE_TEST_HOST: docker-engine
+      # The isolated daemon sees the same bind mount at this stable path.
+      BUNNY_HOLE_WORKSPACE_HOST_PATH: /workspaces/bunny-hole
       DENO_DIR: /deno-dir
       DENO_NO_PROMPT: "1"
       DENO_NO_UPDATE_CHECK: "1"
-    extra_hosts: ["host.docker.internal:host-gateway"]
+      DOCKER_HOST: tcp://docker-engine:2375
     volumes:
       - .:/workspaces/bunny-hole:cached
       - development-deno-cache:/deno-dir
-      - /var/run/docker.sock:/var/run/docker-host.sock
     working_dir: /workspaces/bunny-hole
 
   host:
@@ -104,4 +122,5 @@ services:
 
 volumes:
   development-deno-cache:
+  development-docker-data:
   host-state:

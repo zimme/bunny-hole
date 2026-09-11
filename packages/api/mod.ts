@@ -10,6 +10,7 @@ export const LIMITS = Object.freeze({
   maxRoutesPerEnrollment: 256,
   maxEnrollments: 1_024,
   maxEnrollmentAttemptsPerMinute: 30,
+  maxOutstandingChallengesPerEnrollment: 8,
   maxNameBytes: 128,
   maxPathBytes: 8_192,
   enrollmentLifetimeMs: 15 * 60_000,

@@ -55,8 +55,12 @@ const frp = JSON.parse(await Deno.readTextFile("third_party/frp.json"));
 if (frp.version !== "0.70.1" || frp.license !== "Apache-2.0") {
   throw new Error("embedded FRP version or license was not reviewed");
 }
+const frpLicense = await Deno.readTextFile("third_party/frp.LICENSE");
+if (!frpLicense.includes("Apache License") || !frpLicense.includes("Version 2.0")) {
+  throw new Error("embedded FRP license text is missing");
+}
 console.log(
-  "license check: MIT project; SimpleWebAuthn is MIT; cspell is tooling; embedded FRP is Apache-2.0",
+  "license check: MIT project; SimpleWebAuthn and yaml are MIT; cspell is tooling; embedded FRP is Apache-2.0",
 );
 
 async function typeScriptFiles(path: string): Promise<string[]> {

@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { LIMITS } from "../../packages/api/mod.ts";
 import type {
   Enrollment,
   EnrollmentGrant,
@@ -47,6 +48,7 @@ export class HostStore implements Disposable {
         expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0
       ) STRICT;
       CREATE INDEX IF NOT EXISTS routes_hostname ON routes(hostname);
+      CREATE UNIQUE INDEX IF NOT EXISTS routes_hostname_unique ON routes(hostname);
       CREATE INDEX IF NOT EXISTS challenges_expiry ON challenges(expires_at);
     `);
   }
@@ -106,11 +108,22 @@ export class HostStore implements Disposable {
   }
 
   revokeEnrollment(id: string): boolean {
-    const result = this.#db.prepare(
-      "UPDATE enrollments SET status='revoked' WHERE id=? AND status!='revoked'",
-    ).run(id);
-    if (result.changes) this.audit("owner", "enrollment.revoked", id, {});
-    return result.changes === 1;
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.#db.prepare(
+        "UPDATE enrollments SET status='revoked' WHERE id=? AND status!='revoked'",
+      ).run(id);
+      if (result.changes) {
+        this.#db.prepare("DELETE FROM routes WHERE enrollment_id=?").run(id);
+        this.#db.prepare("DELETE FROM challenges WHERE enrollment_id=?").run(id);
+        this.audit("owner", "enrollment.revoked", id, {});
+      }
+      this.#db.exec("COMMIT");
+      return result.changes === 1;
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   saveChallenge(
@@ -118,13 +131,27 @@ export class HostStore implements Disposable {
     enrollmentId: string,
     value: string,
     expiresAt: number,
-  ): void {
-    this.#db.prepare("DELETE FROM challenges WHERE expires_at<? OR used=1").run(
-      Date.now(),
-    );
-    this.#db.prepare(
-      "INSERT INTO challenges (id,enrollment_id,value,expires_at,used) VALUES (?,?,?,?,0)",
-    ).run(id, enrollmentId, value, expiresAt);
+  ): boolean {
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const now = Date.now();
+      this.#db.prepare("DELETE FROM challenges WHERE expires_at<? OR used=1").run(now);
+      const count = this.#db.prepare(
+        "SELECT COUNT(*) AS count FROM challenges WHERE enrollment_id=? AND used=0 AND expires_at>=?",
+      ).get(enrollmentId, now) as Record<string, unknown>;
+      if (Number(count.count) >= LIMITS.maxOutstandingChallengesPerEnrollment) {
+        this.#db.exec("ROLLBACK");
+        return false;
+      }
+      this.#db.prepare(
+        "INSERT INTO challenges (id,enrollment_id,value,expires_at,used) VALUES (?,?,?,?,0)",
+      ).run(id, enrollmentId, value, expiresAt);
+      this.#db.exec("COMMIT");
+      return true;
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   consumeChallenge(id: string, enrollmentId: string, now: number): string | undefined {
@@ -146,25 +173,59 @@ export class HostStore implements Disposable {
     }
   }
 
-  createRoute(route: Route): void {
-    this.#db.prepare(`INSERT INTO routes
-      (id,enrollment_id,name,protocol,hostname,target_host,target_port,
-       allow_private,active)
-      VALUES (?,?,?,?,?,?,?,?,?)`).run(
-      route.id,
-      route.enrollmentId,
-      route.name,
-      route.protocol,
-      route.hostname ?? null,
-      route.targetHost,
-      route.targetPort,
-      route.allowPrivateNetwork ? 1 : 0,
-      route.active ? 1 : 0,
-    );
-    this.audit(route.enrollmentId, "route.created", route.id, {
-      protocol: route.protocol,
-      hostname: route.hostname,
-    });
+  createRoute(
+    route: Route,
+    maximum: number = LIMITS.maxRoutesPerEnrollment,
+  ): "created" | "limit" | "name-conflict" | "hostname-conflict" {
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const count = this.#db.prepare(
+        "SELECT COUNT(*) AS count FROM routes WHERE enrollment_id=?",
+      ).get(route.enrollmentId) as Record<string, unknown>;
+      if (Number(count.count) >= maximum) {
+        this.#db.exec("ROLLBACK");
+        return "limit";
+      }
+      if (
+        this.#db.prepare(
+          "SELECT 1 FROM routes WHERE enrollment_id=? AND name=? LIMIT 1",
+        ).get(route.enrollmentId, route.name)
+      ) {
+        this.#db.exec("ROLLBACK");
+        return "name-conflict";
+      }
+      if (
+        this.#db.prepare(
+          "SELECT 1 FROM routes WHERE hostname=? LIMIT 1",
+        ).get(route.hostname)
+      ) {
+        this.#db.exec("ROLLBACK");
+        return "hostname-conflict";
+      }
+      this.#db.prepare(`INSERT INTO routes
+        (id,enrollment_id,name,protocol,hostname,target_host,target_port,
+         allow_private,active)
+        VALUES (?,?,?,?,?,?,?,?,?)`).run(
+        route.id,
+        route.enrollmentId,
+        route.name,
+        route.protocol,
+        route.hostname,
+        route.targetHost,
+        route.targetPort,
+        route.allowPrivateNetwork ? 1 : 0,
+        route.active ? 1 : 0,
+      );
+      this.audit(route.enrollmentId, "route.created", route.id, {
+        protocol: route.protocol,
+        hostname: route.hostname,
+      });
+      this.#db.exec("COMMIT");
+      return "created";
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   listRoutes(enrollmentId?: string): Route[] {
@@ -186,17 +247,12 @@ export class HostStore implements Disposable {
 
   getRouteByHostname(hostname: string): Route | undefined {
     const row = this.#db.prepare(
-      "SELECT * FROM routes WHERE hostname=? AND protocol IN ('http','https')",
+      `SELECT routes.* FROM routes
+       JOIN enrollments ON enrollments.id=routes.enrollment_id
+       WHERE routes.hostname=? AND routes.active=1
+         AND routes.protocol IN ('http','https') AND enrollments.status='active'`,
     ).get(hostname);
     return row ? routeFromRow(row) : undefined;
-  }
-
-  routeConflicts(route: Route): boolean {
-    return Boolean(
-      this.#db.prepare(
-        "SELECT 1 FROM routes WHERE hostname=? LIMIT 1",
-      ).get(route.hostname),
-    );
   }
 
   audit(actor: string, action: string, subject: string, details: unknown): void {

@@ -45,7 +45,7 @@ export function loadHostConfig(env = Deno.env.toObject()): HostConfig {
     publicUrl.search ||
     publicUrl.hash || publicUrl.pathname !== "/"
   ) throw new ValidationError("public URL must contain only an origin");
-  if (!localDevelopment) normalizeHostname(publicUrl.hostname);
+  if (!localDevelopment) publicUrl.hostname = normalizeHostname(publicUrl.hostname);
 
   const ownerPublicKey = env.BUNNY_HOLE_OWNER_PUBLIC_KEY;
   if (!ownerPublicKey) {

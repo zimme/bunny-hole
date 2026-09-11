@@ -10,7 +10,8 @@ export function frpsConfig(config: HostConfig): string {
     : "";
   return `bindAddr = "0.0.0.0"
 bindPort = ${config.frpBindPort}
-${quic}vhostHTTPPort = ${config.frpHttpPort}
+${quic}proxyBindAddr = "127.0.0.1"
+vhostHTTPPort = ${config.frpHttpPort}
 transport.maxPoolCount = 16
 transport.tcpMux = true
 transport.tcpMuxKeepaliveInterval = ${LIMITS.heartbeatIntervalMs / 1_000}

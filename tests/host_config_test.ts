@@ -11,6 +11,11 @@ const base = {
 
 Deno.test("host configuration permits only secure production transports", () => {
   assertEquals(loadHostConfig(base).connectorTransports, ["wss"]);
+  assertEquals(
+    loadHostConfig({ ...base, BUNNY_HOLE_PUBLIC_URL: "https://hole.example.com." })
+      .publicUrl.hostname,
+    "hole.example.com",
+  );
   assertThrows(
     () => loadHostConfig({ ...base, BUNNY_HOLE_PUBLIC_URL: "http://hole.example.com" }),
     /HTTPS/,
@@ -57,6 +62,7 @@ Deno.test("local development explicitly permits direct transports", () => {
   assertEquals(config.localDevelopment, true);
   assertEquals(config.connectorTransports, ["tcp", "quic"]);
   assertEquals(frpsConfig(config).includes("quicBindPort = 7000"), true);
+  assertEquals(frpsConfig(config).includes('proxyBindAddr = "127.0.0.1"'), true);
   assertEquals(
     frpsConfig(loadHostConfig(base)).includes("quicBindPort"),
     false,

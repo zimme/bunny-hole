@@ -2,7 +2,8 @@
   "version": "5",
   "specifiers": {
     "npm:@simplewebauthn/server@13.3.2": "13.3.2",
-    "npm:cspell@10.3.0": "10.3.0"
+    "npm:cspell@10.3.0": "10.3.0",
+    "npm:yaml@2.9.0": "2.9.0"
   },
   "npm": {
     "@cspell/cspell-bundled-dicts@10.3.0": {

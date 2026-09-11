@@ -396,7 +396,9 @@ export class Host {
     const id = createId("chl");
     const challenge = createChallenge();
     const expiresAt = Date.now() + 60_000;
-    this.store.saveChallenge(id, enrollment.id, challenge, expiresAt);
+    if (!this.store.saveChallenge(id, enrollment.id, challenge, expiresAt)) {
+      return json({ error: "too many outstanding challenges" }, 429);
+    }
     return json({
       challengeId: id,
       challenge,
@@ -551,17 +553,16 @@ export class Host {
       }:${route.targetPort}`,
       route.allowPrivateNetwork,
     );
-    const routes = this.store.listRoutes(enrollment.id);
-    if (
-      routes.length >= enrollment.grants.maxRoutes ||
-      !grantAllowsRoute(enrollment.grants, route)
-    ) {
+    if (!grantAllowsRoute(enrollment.grants, route)) {
       throw new ValidationError("route is outside enrollment grant");
     }
-    if (this.store.routeConflicts(route)) {
+    const created = this.store.createRoute(route, enrollment.grants.maxRoutes);
+    if (created === "limit") {
+      throw new ValidationError("route is outside enrollment grant");
+    }
+    if (created !== "created") {
       throw new ValidationError("public route is already assigned");
     }
-    this.store.createRoute(route);
     return json(route, 201);
   }
 
@@ -583,8 +584,9 @@ export class Host {
       !/^[A-Z]{1,20}$/.test(request.method) ||
       ["CONNECT", "TRACE"].includes(request.method)
     ) return publicError(405);
+    const url = new URL(request.url);
     if (
-      new TextEncoder().encode(new URL(request.url).pathname).length >
+      new TextEncoder().encode(`${url.pathname}${url.search}`).length >
         LIMITS.maxPathBytes
     ) {
       return publicError(414);
@@ -636,8 +638,9 @@ export class Host {
         info?.completed,
         finish,
       );
-    } catch {
+    } catch (error) {
       finish();
+      if (error instanceof BodyLimitError) return publicError(413);
       return publicError(502);
     }
   }
@@ -763,6 +766,8 @@ function isReservedPath(path: string): boolean {
   );
 }
 
+class BodyLimitError extends Error {}
+
 function limitedBody(
   body: ReadableStream<Uint8Array>,
   maximum: number,
@@ -772,7 +777,7 @@ function limitedBody(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         total += chunk.byteLength;
-        if (total > maximum) throw new ValidationError("body exceeds limit");
+        if (total > maximum) throw new BodyLimitError();
         controller.enqueue(chunk);
       },
     }),
@@ -848,7 +853,7 @@ async function proxyHttp(
           if (done) break;
           size += value.byteLength;
           if (size > LIMITS.maxBodyBytes) {
-            throw new ValidationError("body exceeds limit");
+            throw new BodyLimitError();
           }
           if (!upstream.write(value)) await once(upstream, "drain");
         }

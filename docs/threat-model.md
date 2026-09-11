@@ -107,6 +107,8 @@ credential.
   credentials.
 - A Docker socket grants daemon/host-root-equivalent control. The Compose adapter must
   run only in a trusted developer context or through a restricted socket proxy.
+- Repository validation uses a separate pinned rootless Docker-in-Docker daemon and
+  never mounts the host Docker socket into pull-request code.
 - Bunny Hole does not weaken Home Assistant, Plex, dashboards, or other application
   auth. Operators must not expose an unauthenticated administrative service merely
   because the transport is encrypted.

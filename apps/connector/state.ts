@@ -18,7 +18,16 @@ export function defaultStatePath(env = Deno.env.toObject()): string {
 }
 
 export async function loadState(path = defaultStatePath()): Promise<ConnectorState> {
-  const info = await Deno.stat(path);
+  let info: Deno.FileInfo;
+  try {
+    info = await Deno.stat(path);
+  } catch (error) {
+    if (Deno.build.os !== "windows" || !(error instanceof Deno.errors.NotFound)) {
+      throw error;
+    }
+    await Deno.rename(`${path}.previous`, path);
+    info = await Deno.stat(path);
+  }
   if (Deno.build.os !== "windows" && (info.mode ?? 0) & 0o077) {
     throw new ValidationError(
       "connector config must not be accessible by group or others",
@@ -73,13 +82,29 @@ export async function saveState(
       mode: 0o600,
     });
     if (Deno.build.os === "windows") {
+      const previous = `${path}.previous`;
+      let preserved = false;
       try {
-        await Deno.remove(path);
+        await Deno.remove(previous);
       } catch (error) {
         if (!(error instanceof Deno.errors.NotFound)) throw error;
       }
+      try {
+        await Deno.rename(path, previous);
+        preserved = true;
+      } catch (error) {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+      }
+      try {
+        await Deno.rename(temporary, path);
+      } catch (error) {
+        if (preserved) await Deno.rename(previous, path).catch(() => {});
+        throw error;
+      }
+      if (preserved) await Deno.remove(previous);
+    } else {
+      await Deno.rename(temporary, path);
     }
-    await Deno.rename(temporary, path);
   } finally {
     await Deno.remove(temporary).catch(() => {});
   }

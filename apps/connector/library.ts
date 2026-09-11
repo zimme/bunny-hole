@@ -67,10 +67,12 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
           runController.signal.addEventListener("abort", abort, { once: true });
           signal?.addEventListener("abort", abort, { once: true });
           try {
+            if (runController.signal.aborted || signal?.aborted) return 0;
             child = spawn(options.frpcPath, ["-c", path], {
               stdio: ["ignore", "inherit", options.stderr ?? "inherit"],
               windowsHide: true,
             });
+            if (runController.signal.aborted || signal?.aborted) abort();
             return await new Promise<number>((resolve, reject) => {
               child!.once("error", reject);
               child!.once("exit", (code, exitSignal) => {

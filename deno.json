@@ -26,6 +26,7 @@
   "tasks": {
     "setup": "deno ci && deno install --config deno.runtime.json --frozen && deno task hooks:install",
     "agents:check": "deno run --allow-read=. scripts/verify_agents.ts",
+    "workflows:check": "deno run --allow-env=LOG_STREAM,LOG_TOKENS --allow-read=. scripts/workflows_check.ts",
     "version:check": "deno run --allow-read=. scripts/version_check.ts",
     "package:check": "deno run --allow-env --allow-net=127.0.0.1 --allow-read=.,/tmp --allow-run=deno,npm,node,tar --allow-write=/tmp scripts/verify_package.ts",
     "package:build": "deno run --allow-read=.,/tmp --allow-run=deno,npm,tar --allow-write=dist,/tmp scripts/build_npm_package.ts",

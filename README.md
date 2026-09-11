@@ -127,7 +127,8 @@ the secret through SOPS, Sealed Secrets, External Secrets, or another GitOps sec
 workflow and install [`deploy/kubernetes/base`](deploy/kubernetes/base). A
 `BunnyHoleHost` chooses the host; `Gateway` and `HTTPRoute` choose explicitly granted
 hostnames and Kubernetes Services. Helm and imperative enrollment inside the cluster are
-not required.
+not required. Before committing the deployment overlay, replace
+`REPLACE_WITH_RELEASE_DIGEST` with the connector digest recorded by the release.
 
 ## Distribution
 

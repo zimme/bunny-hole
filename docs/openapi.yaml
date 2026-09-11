@@ -172,37 +172,89 @@ paths:
     post:
       operationId: createPasskeyRegistrationFlow
       description: Requires one-use-challenge Ed25519 owner-proof headers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 128 }
       responses:
         "200": { description: Management-origin URL containing a fragment flow token }
         "403": { description: Invalid owner proof }
   /api/v1/admin/owner/challenge:
     post:
       operationId: createOwnerChallenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose]
+              properties:
+                purpose:
+                  enum: [approve-enrollment, revoke-enrollment, create-passkey-flow]
       responses:
         "200": { description: One-use 60-second challenge for an allowed owner purpose }
   /api/v1/admin/passkeys/registration/options:
     post:
       operationId: passkeyRegistrationOptions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FlowRequest" }
       responses:
         "200": { description: WebAuthn creation options for an active flow }
   /api/v1/admin/passkeys/registration:
     post:
       operationId: registerPasskey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CeremonyResponse" }
       responses:
         "200": { description: Registered and flow consumed }
   /api/v1/admin/enrollment-approvals:
     post:
       operationId: createPasskeyApprovalFlow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enrollmentId, grants]
+              properties:
+                enrollmentId: { $ref: "#/components/schemas/EnrollmentId" }
+                grants: { $ref: "#/components/schemas/Grant" }
       responses:
         "200": { description: Management-origin URL containing a fragment flow token }
   /api/v1/admin/enrollment-approvals/options:
     post:
       operationId: passkeyApprovalOptions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FlowRequest" }
       responses:
         "200": { description: Enrollment, grant, and WebAuthn request options }
   /api/v1/admin/enrollment-approvals/complete:
     post:
       operationId: completePasskeyApproval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CeremonyResponse" }
       responses:
         "200": { description: Passkey verified, enrollment approved, flow consumed }
 components:
@@ -217,6 +269,19 @@ components:
       type: http
       scheme: bearer
   schemas:
+    FlowRequest:
+      type: object
+      additionalProperties: false
+      required: [flowToken]
+      properties:
+        flowToken: { type: string, pattern: "^flow_[A-Za-z0-9_-]{24}$" }
+    CeremonyResponse:
+      type: object
+      additionalProperties: false
+      required: [flowToken, response]
+      properties:
+        flowToken: { type: string, pattern: "^flow_[A-Za-z0-9_-]{24}$" }
+        response: { type: object }
     EnrollmentId:
       type: string
       pattern: "^enr_[A-Za-z0-9_-]{24}$"

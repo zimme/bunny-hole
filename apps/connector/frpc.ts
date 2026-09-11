@@ -25,22 +25,24 @@ export async function runFrpc(options: FrpcOptions): Promise<number> {
       ),
       { mode: 0o600, createNew: true },
     );
-    if (options.signal?.aborted) return 0;
-    const child = new Deno.Command(options.executable, {
-      args: ["-c", configPath],
-      stdin: "null",
-      stdout: "inherit",
-      stderr: "inherit",
-    }).spawn();
+    let child: Deno.ChildProcess | undefined;
     const stop = () => {
       try {
-        child.kill("SIGTERM");
+        child?.kill("SIGTERM");
       } catch {
         // Already stopped.
       }
     };
     options.signal?.addEventListener("abort", stop, { once: true });
     try {
+      if (options.signal?.aborted) return 0;
+      child = new Deno.Command(options.executable, {
+        args: ["-c", configPath],
+        stdin: "null",
+        stdout: "inherit",
+        stderr: "inherit",
+      }).spawn();
+      if (options.signal?.aborted) stop();
       return (await child.status).code;
     } finally {
       options.signal?.removeEventListener("abort", stop);

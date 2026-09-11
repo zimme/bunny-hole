@@ -113,3 +113,34 @@ Deno.test("Gateway adapter refuses semantics it cannot preserve", () => {
   assert(route.name.startsWith("k8s-"));
   assert(route.name.length <= 128);
 });
+
+Deno.test("Gateway listener honors allowed route kinds", () => {
+  const gateway = {
+    kind: "Gateway",
+    metadata: {
+      name: "public",
+      namespace: "apps",
+      annotations: { "bunny-hole.dev/host": "production" },
+    },
+    spec: {
+      gatewayClassName: "bunny-hole",
+      listeners: [{
+        name: "http",
+        protocol: "HTTP",
+        allowedRoutes: {
+          kinds: [{ group: "gateway.networking.k8s.io", kind: "GRPCRoute" }],
+        },
+      }],
+    },
+  };
+  const route = {
+    kind: "HTTPRoute",
+    metadata: { name: "home", namespace: "apps" },
+    spec: {
+      parentRefs: [{ name: "public" }],
+      hostnames: ["home.example.com"],
+      rules: [{ backendRefs: [{ name: "home", port: 8080 }] }],
+    },
+  };
+  assertEquals(desiredRoutes([gateway, route]), []);
+});

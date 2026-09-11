@@ -114,12 +114,18 @@ function gatewayBindings(resources: Record<string, unknown>[]): GatewayBinding[]
       : {};
     const host = annotations["bunny-hole.dev/host"];
     if (typeof host !== "string") continue;
-    const listeners = Array.isArray(resource.spec.listeners)
-      ? resource.spec.listeners.flatMap(parseListener)
+    const declaredListeners = Array.isArray(resource.spec.listeners)
+      ? resource.spec.listeners
       : [];
-    if (listeners.length === 0) {
+    if (
+      !declaredListeners.some((listener) =>
+        isRecord(listener) && listener.protocol === "HTTP"
+      )
+    ) {
       throw new ValidationError("Bunny Hole Gateway requires an HTTP listener");
     }
+    const listeners = declaredListeners.flatMap(parseListener);
+    if (listeners.length === 0) continue;
     output.push({
       hostRef: qualify(namespace, host),
       namespace,
@@ -135,11 +141,29 @@ function parseListener(value: unknown): Listener[] {
     return [];
   }
   let namespaces: Listener["namespaces"] = "same";
-  if (isRecord(value.allowedRoutes) && isRecord(value.allowedRoutes.namespaces)) {
-    const from = value.allowedRoutes.namespaces.from ?? "Same";
-    if (from === "All") namespaces = "all";
-    else if (from !== "Same") {
-      throw new ValidationError("Gateway namespace selectors are unsupported");
+  if (isRecord(value.allowedRoutes)) {
+    if (value.allowedRoutes.kinds !== undefined) {
+      if (!Array.isArray(value.allowedRoutes.kinds)) {
+        throw new ValidationError("Gateway allowed route kinds are invalid");
+      }
+      const kinds = value.allowedRoutes.kinds;
+      if (kinds.some((kind) => !isRecord(kind) || typeof kind.kind !== "string")) {
+        throw new ValidationError("Gateway allowed route kinds are invalid");
+      }
+      if (
+        kinds.length > 0 &&
+        !kinds.some((kind) =>
+          isRecord(kind) && kind.kind === "HTTPRoute" &&
+          (kind.group === undefined || kind.group === "gateway.networking.k8s.io")
+        )
+      ) return [];
+    }
+    if (isRecord(value.allowedRoutes.namespaces)) {
+      const from = value.allowedRoutes.namespaces.from ?? "Same";
+      if (from === "All") namespaces = "all";
+      else if (from !== "Same") {
+        throw new ValidationError("Gateway namespace selectors are unsupported");
+      }
     }
   }
   return [{

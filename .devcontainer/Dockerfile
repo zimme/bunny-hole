@@ -59,7 +59,7 @@ RUN set -eux; \
       "docker-buildx-plugin=${DOCKER_BUILDX_VERSION}" \
       "docker-ce-cli=${DOCKER_CLI_VERSION}" \
       "docker-compose-plugin=${DOCKER_COMPOSE_VERSION}" \
-      ripgrep shellcheck socat unzip; \
+      ripgrep shellcheck unzip; \
     rm -rf /var/lib/apt/lists/* /tmp/*; \
     test "$(deno --version | head -n 1)" = "deno 2.9.5 (stable, release, $(uname -m)-unknown-linux-gnu)"; \
     test "$(node --version)" = "v${NODE_VERSION}"; \

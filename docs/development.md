@@ -28,14 +28,15 @@ deno task devcontainer:down
 `.devcontainer/devcontainer.json` is only an editor adapter pointing at that same
 service. It has no Features, lifecycle tool installation, or separate toolchain, so
 there is no Dev Container Feature lockfile to drift. The development service includes
-the Docker CLI and Compose plugin and mounts the Docker socket so validation can build
-and exercise the sibling production-image topology.
+the Docker CLI and Compose plugin. It connects to the pinned rootless Docker-in-Docker
+service in `compose.yaml`, so validation can build and exercise the sibling
+production-image topology without exposing the host Docker socket.
 
 Inside the service, run `deno task setup` once and then focused tasks such as `fmt`,
 `lint`, `check`, `test`, `coverage`, `integration`, `build`, `package:check`, `audit`,
 or `container:smoke`. `deno task validate` is authoritative and executes, in order:
 
-- agent, version, generated-file, and license policy checks;
+- agent, workflow, version, generated-file, and license policy checks;
 - frozen dependency resolution, formatting, spelling, Deno lint and type checking;
 - documentation checks, tests, and coverage threshold enforcement;
 - the production host/connector image integration topology;
@@ -60,11 +61,12 @@ No GitHub Actions dependency cache is layered on top: local volumes do not trans
 hosted runners, and a second Deno cache would duplicate the image. npm caching is absent
 because npm has no dependency lockfile in this repository and is not the task runner.
 
-Docker Desktop presents its socket differently from Linux. The Compose entrypoint puts a
-private Unix-socket proxy in front of the mounted host socket before dropping
-privileges. This avoids host-specific group IDs while keeping development commands
-non-root. Mounting the Docker socket still grants daemon-equivalent host control, so
-never run untrusted code in the development service or Compose adapter.
+The isolated daemon and development container share the repository at the stable
+`/workspaces/bunny-hole` path so nested integration bind mounts work identically on
+Docker Desktop and Linux. Its data lives in the `development-docker-data` named volume.
+The rootless daemon needs a privileged outer container to initialize its user namespace,
+but its API is reachable only on the private Compose network and controls only the
+nested daemon—not the host daemon. This is the boundary used by pull-request CI.
 
 ## Production topology tests
 

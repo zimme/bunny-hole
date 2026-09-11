@@ -42,6 +42,7 @@ RUN deno compile --config deno.runtime.json --frozen \
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS host-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/bunny-hole-host /usr/local/bin/bunny-hole-host
 COPY --from=frp --chown=nonroot:nonroot /out/frps /usr/local/bin/frps
+COPY --chown=nonroot:nonroot third_party/frp.LICENSE /usr/share/licenses/frp/LICENSE
 COPY --from=builder --chown=nonroot:nonroot /out/state /var/lib/bunny-hole
 ENV HOST=0.0.0.0 PORT=8080 BUNNY_HOLE_LOG_FORMAT=json \
     BUNNY_HOLE_STATE_PATH=/var/lib/bunny-hole/state.sqlite \
@@ -55,6 +56,7 @@ ENTRYPOINT ["/usr/local/bin/bunny-hole-host"]
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS connector-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/bunny-hole /usr/local/bin/bunny-hole
 COPY --from=frp --chown=nonroot:nonroot /out/frpc /usr/local/bin/frpc
+COPY --chown=nonroot:nonroot third_party/frp.LICENSE /usr/share/licenses/frp/LICENSE
 ENV BUNNY_HOLE_FRPC_PATH=/usr/local/bin/frpc
 ENV HOME=/tmp
 WORKDIR /tmp

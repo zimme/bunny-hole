@@ -35,10 +35,6 @@ if (import.meta.main) {
       stdout: "inherit",
       stderr: "inherit",
     }).spawn();
-    frps.status.then((status) => {
-      host.setFrpReady(false);
-      logger.error("frps_stopped", { code: status.code, success: status.success });
-    });
     await waitForPort(config.frpBindPort, frps);
     host.setFrpReady(true);
     logger.info("host_starting", {
@@ -57,6 +53,7 @@ if (import.meta.main) {
       (request, info) => host.handle(request, info),
     );
     let stopping = false;
+    let unexpectedFrpExit = false;
     const shutdown = () => {
       if (stopping) return;
       stopping = true;
@@ -68,6 +65,15 @@ if (import.meta.main) {
       }
       setTimeout(() => controller.abort(), 1_000);
     };
+    frps.status.then((status) => {
+      host.setFrpReady(false);
+      logger.error("frps_stopped", { code: status.code, success: status.success });
+      if (!stopping) {
+        unexpectedFrpExit = true;
+        host.shutdown();
+        controller.abort();
+      }
+    });
     Deno.addSignalListener("SIGTERM", shutdown);
     Deno.addSignalListener("SIGINT", shutdown);
     try {
@@ -78,6 +84,7 @@ if (import.meta.main) {
       shutdown();
       await frps.status;
     }
+    if (unexpectedFrpExit) throw new Error("frps stopped unexpectedly");
   } catch (error) {
     console.error(JSON.stringify({
       level: "error",
