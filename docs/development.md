@@ -27,8 +27,10 @@ deno task devcontainer:down
 
 `.devcontainer/devcontainer.json` is only an editor adapter pointing at that same
 service. It has no Features, lifecycle tool installation, or separate toolchain, so
-there is no Dev Container Feature lockfile to drift. The development service includes
-the Docker CLI and Compose plugin. It connects to the pinned Docker-in-Docker service in
+there is no Dev Container Feature lockfile to drift. It explicitly disables Dev
+Container UID rewriting so the editor path retains the same `vscode` UID as plain
+Compose and the rootless engine. The development service includes the Docker CLI and
+Compose plugin. It connects to the pinned rootless Docker-in-Docker service in
 `compose.yaml`, so validation can build and exercise the sibling production-image
 topology without exposing the host Docker socket.
 
@@ -64,9 +66,9 @@ because npm has no dependency lockfile in this repository and is not the task ru
 The isolated daemon and development container share the repository at the stable
 `/workspaces/bunny-hole` path so nested integration bind mounts work identically on
 Docker Desktop and Linux. Its data lives in the `development-docker-data` named volume.
-The daemon runs in a privileged outer container, but its API is reachable only on the
-private Compose network and controls only the nested daemon—not the host daemon. This is
-the boundary used by pull-request CI.
+The rootless daemon needs a privileged outer container to initialize its user namespace,
+but its API is reachable only on the private Compose network and controls only the
+nested daemon—not the host daemon. This is the boundary used by pull-request CI.
 
 Ubuntu 24.04 and newer restrict unprivileged user namespaces through AppArmor. GitHub
 workflows load the narrowly scoped profile recommended by RootlessKit before starting

@@ -11,14 +11,19 @@ if (!skills.includes(".agents/skills/")) throw new Error("SKILLS.md is incomplet
 
 const devcontainer = JSON.parse(
   await Deno.readTextFile(".devcontainer/devcontainer.json"),
-) as { service?: unknown; runServices?: unknown };
+) as {
+  service?: unknown;
+  runServices?: unknown;
+  updateRemoteUserUID?: unknown;
+};
 if (
   devcontainer.service !== "development" ||
   !Array.isArray(devcontainer.runServices) ||
   devcontainer.runServices.length !== 1 ||
-  devcontainer.runServices[0] !== "development"
+  devcontainer.runServices[0] !== "development" ||
+  devcontainer.updateRemoteUserUID !== false
 ) {
   throw new Error(
-    "Dev Container tools must start only the Compose development service",
+    "Dev Container tools must preserve the Compose development service and UID",
   );
 }

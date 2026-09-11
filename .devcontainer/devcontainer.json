@@ -6,6 +6,7 @@
   "workspaceFolder": "/workspaces/bunny-hole",
   "shutdownAction": "stopCompose",
   "remoteUser": "vscode",
+  "updateRemoteUserUID": false,
   "hostRequirements": {
     "cpus": 2,
     "memory": "4gb",
