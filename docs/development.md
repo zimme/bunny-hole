@@ -68,6 +68,12 @@ The rootless daemon needs a privileged outer container to initialize its user na
 but its API is reachable only on the private Compose network and controls only the
 nested daemon—not the host daemon. This is the boundary used by pull-request CI.
 
+Ubuntu 24.04 and newer restrict unprivileged user namespaces through AppArmor. GitHub
+workflows load the narrowly scoped profile recommended by RootlessKit before starting
+the same Compose topology; Docker Desktop does not require that host compatibility step.
+The profile permits user-namespace creation only for the RootlessKit binary in the
+pinned sidecar image.
+
 ## Production topology tests
 
 `deno task integration` creates an isolated Compose project with random project and
