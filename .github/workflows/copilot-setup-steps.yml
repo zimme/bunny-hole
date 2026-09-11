@@ -42,3 +42,8 @@ jobs:
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
           push: never
           runCmd: deno ci
+      - name: Diagnose Dev Container startup
+        if: failure()
+        run: |
+          docker compose --profile development ps --all
+          docker compose --profile development logs --no-color docker-engine
