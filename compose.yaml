@@ -12,7 +12,7 @@ networks:
 services:
   docker-engine:
     profiles: [development]
-    image: docker:29.6.2-dind-rootless@sha256:212a9e782c7119fd6a212beaab6b7665a29b663d894d0f6201710c89575ad0ae
+    image: docker:29.6.2-dind@sha256:bfec1f5159c63a81ca6fdedbd81404d2c0e16378ed0feec3bb3fbf3998847659
     privileged: true
     environment:
       DOCKER_HOST: tcp://127.0.0.1:2375
@@ -20,7 +20,8 @@ services:
     command: [--host=tcp://0.0.0.0:2375, --tls=false]
     volumes:
       - .:/workspaces/bunny-hole:cached
-      - development-docker-data:/home/rootless/.local/share/docker
+      - /run/systemd/resolve/resolv.conf:/etc/resolv.conf:ro
+      - development-docker-data:/var/lib/docker
     healthcheck:
       test: [CMD, docker, info]
       interval: 2s
