@@ -11,20 +11,30 @@ const owner = await generateKeyPair();
 const device = await generateKeyPair();
 const configRelativeDirectory = `.tmp/${project}`;
 const configDirectory = `${Deno.cwd()}/${configRelativeDirectory}`;
+const configVolume = `${project}-connector-config`;
 await Deno.mkdir(configDirectory, { recursive: true, mode: 0o700 });
+await Deno.writeTextFile(
+  `${configDirectory}/compose.override.yaml`,
+  `services:
+  connector:
+    volumes:
+      - type: volume
+        source: connector-config
+        target: /config
+        read_only: true
+volumes:
+  connector-config:
+    external: true
+    name: ${configVolume}
+`,
+  { mode: 0o600 },
+);
 const testHost = Deno.env.get("BUNNY_HOLE_TEST_HOST") ?? "127.0.0.1";
 const hostUrl = `http://${testHost}:18080`;
-const hostWorkspace = Deno.env.get("BUNNY_HOLE_WORKSPACE_HOST_PATH") ??
-  Deno.cwd();
 const environment: Record<string, string> = {
   ...Deno.env.toObject(),
   BUNNY_HOLE_OWNER_PUBLIC_KEY: owner.publicKey,
-  BUNNY_HOLE_CONNECTOR_CONFIG_DIR: `${hostWorkspace}/${configRelativeDirectory}`,
 };
-if (
-  !(await output("docker", ["info", "--format", "{{.OperatingSystem}}"]))
-    .toLowerCase().includes("docker desktop")
-) environment.BUNNY_HOLE_CONNECTOR_USER = `${Deno.uid()}:${Deno.gid()}`;
 const compose = [
   "compose",
   "--profile",
@@ -33,12 +43,15 @@ const compose = [
   project,
   "-f",
   "compose.yaml",
+  "-f",
+  `${configDirectory}/compose.override.yaml`,
 ];
 const publishedImages = Boolean(
   environment.BUNNY_HOLE_HOST_IMAGE && environment.BUNNY_HOLE_CONNECTOR_IMAGE,
 );
 
 try {
+  await run("docker", ["volume", "create", configVolume], { env: environment });
   if (publishedImages) {
     await run("docker", [...compose, "build", "origin"], { env: environment });
   } else {
@@ -113,23 +126,41 @@ try {
     targetPort: 3000,
     allowPrivateNetwork: true,
   });
-  await Deno.writeTextFile(
-    `${configDirectory}/config.json`,
-    `${
-      JSON.stringify(
-        {
-          version: 1,
-          defaultHost: "integration",
-          hosts: {
-            integration: { ...externalCredentials, url: "http://host:8080" },
-          },
-        },
-        null,
-        2,
-      )
-    }\n`,
-    { mode: 0o600 },
-  );
+  const connectorConfig = JSON.stringify(
+    {
+      version: 1,
+      defaultHost: "integration",
+      hosts: {
+        integration: { ...externalCredentials, url: "http://host:8080" },
+      },
+    },
+    null,
+    2,
+  ) + "\n";
+  const stage = new Deno.Command("docker", {
+    args: [
+      "run",
+      "--rm",
+      "--interactive",
+      "--user",
+      "0:0",
+      "--volume",
+      `${configVolume}:/config`,
+      "denoland/deno:2.9.5@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463",
+      "deno",
+      "eval",
+      'const data=await new Response(Deno.stdin.readable).bytes(); await Deno.writeFile("/config/config.json",data,{mode:0o600}); await Deno.chown("/config/config.json",65532,65532)',
+    ],
+    env: environment,
+    stdin: "piped",
+    stdout: "inherit",
+    stderr: "inherit",
+  }).spawn();
+  const input = stage.stdin.getWriter();
+  await input.write(new TextEncoder().encode(connectorConfig));
+  await input.close();
+  const stageStatus = await stage.status;
+  if (!stageStatus.success) throw new Error("connector config staging failed");
   await run("docker", [
     ...compose,
     "run",
@@ -270,6 +301,12 @@ try {
     console.error(`integration cleanup failed: ${String(error)}`);
     Deno.exitCode = 1;
   }
+  await run("docker", ["volume", "rm", "--force", configVolume], {
+    env: environment,
+  }).catch((error) => {
+    console.error(`integration config cleanup failed: ${String(error)}`);
+    Deno.exitCode = 1;
+  });
   await Deno.remove(configDirectory, { recursive: true }).catch(() => {});
 }
 

@@ -36,8 +36,11 @@ topology without exposing the host Docker socket.
 
 The startup entrypoint leaves repository sources host-owned and makes only the ignored
 `.tmp`, `coverage`, and `dist` directories writable by the fixed development user.
-Per-run connector configuration is still created beneath `.tmp` with mode `0700`, so
-private keys are not made readable merely to bridge the two containers.
+Integration writes only a secret-free Compose override beneath `.tmp`. It streams the
+ephemeral connector configuration over standard input into a per-run Docker volume,
+where the file is owned by the production connector user with mode `0600`. Private keys
+therefore never enter command arguments, environment variables, host bind mounts, or the
+repository workspace.
 
 Inside the service, run `deno task setup` once and then focused tasks such as `fmt`,
 `lint`, `check`, `test`, `coverage`, `integration`, `build`, `package:check`, `audit`,
@@ -83,13 +86,14 @@ pinned sidecar image.
 
 ## Production topology tests
 
-`deno task integration` creates an isolated Compose project with random project and
-credential material, builds the exact `host-runtime` and `connector-runtime` Dockerfile
-targets, enrolls a connector, approves its grant, starts FRP, and exercises public HTTP
-through the host to the deterministic origin. It covers concurrent isolation, streaming
-and binary bodies, header stripping, oversized requests, timeouts, route confusion,
-replacement/revocation behavior, health, readiness, and secret-free logs. Cleanup uses
-only that generated Compose project.
+`deno task integration` creates an isolated Compose project, a per-run configuration
+volume, and random credential material. It builds the exact `host-runtime` and
+`connector-runtime` Dockerfile targets, enrolls a connector, approves its grant, starts
+FRP, and exercises public HTTP through the host to the deterministic origin. It covers
+concurrent isolation, streaming and binary bodies, header stripping, oversized requests,
+timeouts, route confusion, replacement/revocation behavior, health, readiness, and
+secret-free logs. Cleanup targets only the generated Compose project and its exact
+configuration volume.
 
 `deno task container:smoke` verifies the production process user and health behavior.
 The final images are distroless and contain only the compiled application plus `frps` or

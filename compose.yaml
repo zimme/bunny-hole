@@ -47,8 +47,6 @@ services:
     environment:
       BUNNY_HOLE_BIND_ADDRESS: "0.0.0.0"
       BUNNY_HOLE_TEST_HOST: docker-engine
-      # The isolated daemon sees the same bind mount at this stable path.
-      BUNNY_HOLE_WORKSPACE_HOST_PATH: /workspaces/bunny-hole
       DENO_DIR: /deno-dir
       DENO_NO_PROMPT: "1"
       DENO_NO_UPDATE_CHECK: "1"
