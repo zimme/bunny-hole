@@ -1,0 +1,19 @@
+name: Permit RootlessKit user namespaces
+description: Allow the pinned rootless Docker sidecar to start on Ubuntu 24.04+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        if [[ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null || true)" != "Y" ]]; then
+          exit 0
+        fi
+        sudo tee /etc/apparmor.d/bunny-hole-rootlesskit >/dev/null <<'EOF'
+        abi <abi/4.0>,
+        include <tunables/global>
+
+        /usr/local/bin/rootlesskit flags=(unconfined) {
+          userns,
+        }
+        EOF
+        sudo apparmor_parser --replace /etc/apparmor.d/bunny-hole-rootlesskit

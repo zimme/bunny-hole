@@ -1,0 +1,50 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/copilot-setup-steps.yml"
+      - ".devcontainer/**"
+      - ".dockerignore"
+      - "compose.yaml"
+      - "deno.json"
+      - "deno.lock"
+      - "deno.runtime.json"
+      - "deno.runtime.lock"
+  pull_request:
+    paths:
+      - ".github/workflows/copilot-setup-steps.yml"
+      - ".devcontainer/**"
+      - ".dockerignore"
+      - "compose.yaml"
+      - "deno.json"
+      - "deno.lock"
+      - "deno.runtime.json"
+      - "deno.runtime.lock"
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rootlesskit-apparmor
+      - name: Prepare the shared Dev Container
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
+        with:
+          configFile: .devcontainer/devcontainer.json
+          cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
+          push: never
+          runCmd: deno ci
+      - name: Diagnose Dev Container startup
+        if: failure()
+        run: |
+          docker compose --profile development ps --all
+          docker compose --profile development logs --no-color docker-engine
