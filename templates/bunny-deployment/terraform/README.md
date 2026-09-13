@@ -41,12 +41,17 @@ chmod 600 terraform.tfvars
 Edit `terraform.tfvars` with public configuration only. `owner_public_key` is the public
 Ed25519 key printed by the private owner-generation command. Never put the owner private
 key, passkey response, connector state, registry token, or Bunny API key in a tfvars
-file. The JSON example is also public-only configuration and may be copied to
-`deployment.auto.tfvars.json`; keep the resulting file untracked if it contains local
-hostnames or release details.
+file. The JSON example is also public-only configuration and should be copied to and
+committed as `deployment.auto.tfvars.json`; the protected workflows require this file.
+Keep local overrides such as `terraform.tfvars` untracked.
 
-For HCP Terraform, authenticate the private shell with `terraform login` or configure
-the protected `TF_TOKEN_app_terraform_io` mechanism. State contains resource
+Before initialization, create/select the HCP Terraform workspace and verify in its
+Settings that **Execution mode is Local** (not Remote or Agent). This is a required
+prerequisite that must be verified: the protected workflows execute Terraform on the
+GitHub runner, write local plan files, and provide Bunny/HCP credentials through the
+runner environment; HCP still stores and locks the state. The `cloud` backend cannot
+encode that workspace setting. Authenticate the private shell with `terraform login` or
+configure the protected `TF_TOKEN_app_terraform_io` mechanism. State contains resource
 configuration and must be encrypted, access-controlled, locked, backed up, and kept out
 of pull requests. Other secure remote backends may be used only after adapting the
 backend example and the repository's protected workflow.
@@ -145,4 +150,5 @@ release/topology values.
 
 This template provisions infrastructure only. Enrollment, passkey ceremonies, route
 grants, connector state, and private DNS/provider credentials remain human-controlled
-steps described in [`docs/deployment.md`](../../../docs/deployment.md).
+steps described in the upstream
+[Bunny Hole deployment guide](https://github.com/zimme/bunny-hole/blob/main/docs/deployment.md).

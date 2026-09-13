@@ -78,6 +78,13 @@ or a shell argument. The Bunny API key and backend credentials belong only in a
 pre-created protected environment or private terminal. Never run the credential-bearing
 workflow on a PR or a workflow checkout controlled by an untrusted contributor.
 
+When using the template workflows, dispatch `Plan deployment` with the intended
+`bootstrap` or `apply` operation first. Review the plan and record the public commit SHA
+and canonical plan SHA-256 from its summary. The separate protected apply accepts those
+values only when the commit is still the default-branch tip and the reproduced plan has
+the same digest. Any mismatch is a stop condition requiring a new review. Do not export
+or upload the saved plan or its normalized JSON.
+
 After apply, report only app/container/endpoint/pull-zone IDs, region, image digest,
 hostnames, and health status. Keep state and logs private.
 

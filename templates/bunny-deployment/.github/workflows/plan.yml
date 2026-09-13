@@ -2,6 +2,13 @@ name: Plan deployment
 
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Select bootstrap for the first host plan or apply for the full reviewed plan
+        required: true
+        default: apply
+        type: choice
+        options: [bootstrap, apply]
 
 concurrency:
   group: bunny-hole-terraform-production
@@ -41,18 +48,40 @@ jobs:
         run: terraform -chdir=terraform init -input=false -lockfile=readonly
       - name: Produce a reviewable plan
         shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
         run: |
           set -euo pipefail
-          if ! terraform -chdir=terraform state show bunnynet_compute_container_app.host >/dev/null 2>&1; then
+          plan_path=/tmp/bunny-hole-reviewed.tfplan
+          if [[ "$OPERATION" == "bootstrap" ]] && ! terraform -chdir=terraform state show bunnynet_compute_container_app.host >/dev/null 2>&1; then
             echo 'Initial bootstrap is required; this plan contains only the Magic Container app.' >&2
             terraform -chdir=terraform plan -no-color -lock-timeout=5m \
-              -target=bunnynet_compute_container_app.host
-            exit 0
-          fi
-          for zone in public connector; do
-            terraform -chdir=terraform state show "bunnynet_pullzone.${zone}" >/dev/null 2>&1 || {
-              echo "Pull Zone ${zone} is not adopted; run the protected bootstrap operation." >&2
+              -target=bunnynet_compute_container_app.host \
+              -out="$plan_path"
+          elif [[ "$OPERATION" == "bootstrap" ]]; then
+            echo 'The host exists; refresh-only bootstrap plan will be followed by Pull Zone adoption.' >&2
+            terraform -chdir=terraform plan -no-color -lock-timeout=5m \
+              -refresh-only -out="$plan_path"
+          else
+            if ! terraform -chdir=terraform state show bunnynet_compute_container_app.host >/dev/null 2>&1; then
+              echo 'Initial bootstrap is required; run Plan deployment with operation=bootstrap first.' >&2
               exit 1
-            }
-          done
-          terraform -chdir=terraform plan -no-color -lock-timeout=5m
+            fi
+            for zone in public connector; do
+              terraform -chdir=terraform state show "bunnynet_pullzone.${zone}" >/dev/null 2>&1 || {
+                echo "Pull Zone ${zone} is not adopted; run Plan deployment with operation=bootstrap first." >&2
+                exit 1
+              }
+            done
+            terraform -chdir=terraform plan -no-color -lock-timeout=5m \
+              -out="$plan_path"
+          fi
+          terraform -chdir=terraform show -json "$plan_path" |
+            jq -S 'del(.timestamp)' \
+              > /tmp/bunny-hole-reviewed-plan.json
+          reviewed_plan_sha256="$(sha256sum /tmp/bunny-hole-reviewed-plan.json | cut -d ' ' -f1)"
+          reviewed_commit="$(git rev-parse HEAD)"
+          {
+            echo "Reviewed commit: ${reviewed_commit}"
+            echo "Reviewed Terraform plan SHA-256: ${reviewed_plan_sha256}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

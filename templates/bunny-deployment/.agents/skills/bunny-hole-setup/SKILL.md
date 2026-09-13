@@ -14,12 +14,14 @@ or substitute an unpublished image.
 - **Scaffold or review:** fill only non-secret configuration, verify release provenance,
   run backend-free checks, and review topology, pins, replacement risk, and pending
   human steps. Do not contact Bunny or a state backend.
-- **Bootstrap:** after explicit authorization, instruct the human to dispatch the
-  protected bootstrap workflow. It creates the app if absent, imports the automatically
-  generated Pull Zones, and stops. Never import a resource until its ID and ownership
-  have been verified.
+- **Bootstrap:** after explicit authorization, instruct the human to run the protected
+  plan with `operation=bootstrap`, review it, and record its public commit and plan
+  digest. A separately approved bootstrap dispatch must reproduce both before it creates
+  the app, imports the automatically generated Pull Zones, and stops. Never import a
+  resource until its ID and ownership have been verified.
 - **Plan or apply:** require a separate explicit approval for each operation. Use only
-  the protected default-branch workflows. Review the plan before apply; never accept a
+  the protected default-branch workflows. Enter the reviewed commit and canonical plan
+  digest into apply; a mismatch requires a new plan and review. Never accept a
   PR-produced plan or upload a plan/state artifact.
 - **Dashboard fallback:** give the exact fields from `README.md` when a provider or
   account feature cannot express them. Record the item as pending until the human

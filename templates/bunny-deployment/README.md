@@ -56,11 +56,18 @@ cp terraform/deployment.auto.tfvars.json.example \
   terraform/deployment.auto.tfvars.json
 ```
 
-Replace every `REPLACE_WITH` marker. The example backend uses an HCP Terraform workspace
-in **Local execution mode** so GitHub Actions executes Terraform while HCP provides
-encrypted, locked remote state. Other secure remote backends are possible, but adapt the
-workflow credential mapping and retain encryption, locking, access control, and backup.
-Never use local state in shared automation or GitHub caches/artifacts for state.
+Replace every `REPLACE_WITH` marker, then commit `deployment.auto.tfvars.json`: it
+contains public configuration only and the protected workflows require this file to be
+present in the repository. Keep local overrides such as `terraform.tfvars` untracked.
+Before `terraform init`, create/select the HCP Terraform workspace and verify in its
+Settings that **Execution mode is Local** (not Remote or Agent). This is a required
+prerequisite because the workflows run Terraform locally with saved plan files and
+environment credentials while HCP provides encrypted, locked remote state. Saved-plan
+generation fails closed if the workspace is not configured for local execution. The
+`cloud` backend cannot encode that workspace setting. Other secure remote backends are
+possible, but adapt the workflow credential mapping and retain encryption, locking,
+access control, and backup. Never use local state in shared automation or GitHub
+caches/artifacts for state.
 
 The deployment variables contain only public configuration: region, hostnames, owner
 public key, release version/digest, connector WebSocket capacity, and optional existing
@@ -103,19 +110,26 @@ destruction before authorizing a live operation.
 
 ## 6. Bootstrap once, then plan and apply
 
-Magic Containers owns initial creation of the CDN Pull Zones, so first run **Apply
-deployment** manually with `operation=bootstrap` and confirmation `BOOTSTRAP`. After the
-protected-environment approval, the workflow:
+Magic Containers owns initial creation of the CDN Pull Zones. First run **Plan
+deployment** manually with `operation=bootstrap`. Review its target-only plan and record
+the exact commit and canonical plan SHA-256 printed in the job summary. Then run **Apply
+deployment** with `operation=bootstrap`, confirmation `BOOTSTRAP`, and those two
+reviewed values. After the protected-environment approval, the workflow verifies that
+the commit is still the default-branch tip, reproduces the reviewed plan digest, and
+only then:
 
 1. applies only `bunnynet_compute_container_app.host` when absent;
 2. reads the two generated Pull Zone IDs from safe Terraform outputs;
 3. imports them as `bunnynet_pullzone.public` and `bunnynet_pullzone.connector`; and
 4. stops without applying their policy changes.
 
-Then run **Plan deployment**, inspect the complete plan, and run **Apply deployment**
-with `operation=apply` and confirmation `APPLY`. Apply recomputes a fresh plan from the
-protected default branch and applies it in the same job. Plans and state are never
-uploaded as artifacts or posted to pull requests.
+Next run **Plan deployment** with `operation=apply` and inspect the complete imported
+state and edge-policy plan. Run **Apply deployment** with `operation=apply`,
+confirmation `APPLY`, and the new commit and plan digest. Apply again requires the
+reviewed commit to remain the default-branch tip and applies only a reproduced plan with
+the same canonical digest. If configuration or remote state changed, the digest differs
+and apply stops. Binary plans, normalized plan JSON, and state remain on ephemeral
+runners and are never uploaded as artifacts or posted to pull requests.
 
 Bootstrap is idempotent after partial failure. Never rename endpoint or container blocks
 casually: the Bunny provider models them as ordered lists and an endpoint rename may

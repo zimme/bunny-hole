@@ -2,9 +2,13 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.plan
 crash.log
 crash.*.log
+bunny-hole-owner.json
 *.pem
 *.key
 *credentials*
 *secret*
+*.tfvars.json
+!terraform/deployment.auto.tfvars.json

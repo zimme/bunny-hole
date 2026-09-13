@@ -29,20 +29,25 @@ origin retries disabled. Only the connector zone enables WebSockets. Exact hostn
 request Bunny-managed TLS. Optional `PullZone` records may be created only in an
 existing Bunny DNS zone; the template never creates a zone or changes nameservers.
 
-## Why bootstrap has two stages
+## Why bootstrap is a reviewed transaction
 
 A CDN endpoint nested in `bunnynet_compute_container_app` causes Magic Containers to
 create its Pull Zone. Terraform cannot declare the same zone independently before it
-exists without proposing a duplicate. The protected bootstrap operation therefore:
+exists without proposing a duplicate. The protected workflow therefore:
 
-1. target-applies only `bunnynet_compute_container_app.host`;
-2. refreshes and reads the generated Pull Zone IDs from the two endpoint outputs;
-3. imports them at `bunnynet_pullzone.public` and `bunnynet_pullzone.connector`; and
-4. stops without applying policy changes.
+1. produces a target-only bootstrap plan and reports the exact default-branch commit and
+   canonical plan digest;
+2. requires those reviewed values as explicit inputs to the separate bootstrap apply;
+3. reproduces the plan, verifies both bindings, and target-applies only
+   `bunnynet_compute_container_app.host`;
+4. refreshes and reads the generated Pull Zone IDs from the two endpoint outputs;
+5. imports them at `bunnynet_pullzone.public` and `bunnynet_pullzone.connector`; and
+6. stops without applying policy changes.
 
-The operator then runs the separate plan workflow, reviews the complete imported state
-and proposed edge policy, and explicitly authorizes a fresh apply. Bootstrap is
-idempotent after partial failure. Endpoint and container blocks are ordered provider
+The operator then runs the full plan mode, reviews the complete imported state and
+proposed edge policy, and explicitly authorizes apply with the newly reported commit and
+digest. Apply fails if the default branch or normalized plan content changed. Bootstrap
+is idempotent after partial failure. Endpoint and container blocks are ordered provider
 lists, so renaming or reordering them is a reviewed identity change, not routine
 cleanup.
 
@@ -61,10 +66,13 @@ Containers deployment credential. HCP Terraform is the example encrypted, locked
 remote-state service; another secure backend is valid when its authentication and
 workflow mapping are deliberately adapted.
 
-No workflow uploads state or a saved plan, comments a plan on a pull request, runs
-untrusted code with secrets, or accepts an arbitrary Git ref. Apply computes and uses a
-new plan in one protected job. The public GHCR image uses Bunny's anonymous GitHub
-registry connection, avoiding a registry token in Terraform state.
+No workflow uploads state or a saved plan, comments a plan on a pull request, or runs
+untrusted code with secrets. Plan and apply both use the protected default branch. Apply
+accepts only a full commit SHA that still equals that branch's tip, reproduces the
+selected plan, verifies its canonical SHA-256, and applies that saved plan. A code or
+state change therefore fails closed instead of silently applying a different plan. The
+public GHCR image uses Bunny's anonymous GitHub registry connection, avoiding a registry
+token in Terraform state.
 
 ## Use and validate
 

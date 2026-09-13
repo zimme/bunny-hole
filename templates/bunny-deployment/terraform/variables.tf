@@ -99,7 +99,7 @@ variable "image_tag" {
   type        = string
 
   validation {
-    condition     = can(regex("^[1-9][0-9]*\\.[0-9]+\\.0$", var.image_tag))
+    condition     = can(regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.0$", var.image_tag))
     error_message = "image_tag must be a released Compatible Version in MAJOR.MINOR.0 form; mutable tags such as latest are forbidden."
   }
 }
@@ -119,8 +119,12 @@ variable "owner_public_key" {
   type        = string
 
   validation {
-    condition     = can(regex("^[A-Za-z0-9_-]{40,100}$", var.owner_public_key)) && !strcontains(var.owner_public_key, "PRIVATE")
-    error_message = "owner_public_key must be the bounded encoded public key, not a private key or JSON credential file."
+    # Terraform has no binary string type, and base64decode interprets bytes as
+    # UTF-8. A canonical, unpadded base64url encoding of exactly 32 bytes is
+    # therefore checked structurally: 43 characters, with the final sextet's
+    # unused two bits set to zero (the 16 canonical base64url symbols).
+    condition     = can(regex("^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$", var.owner_public_key))
+    error_message = "owner_public_key must be a canonical unpadded base64url Ed25519 public key (exactly 43 characters encoding 32 bytes), not a private key or JSON credential file."
   }
 }
 

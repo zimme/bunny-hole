@@ -112,9 +112,11 @@ async function checkTemplateText(
 export function containsLikelySecret(text: string): boolean {
   return [
     /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i,
-    /\b(?:ghp|github_pat|glpat)-[A-Za-z0-9_\-]{16,}/,
+    /\b(?:gh[opsu]|github_pat)_[A-Za-z0-9_]{20,}/,
+    /\bglpat-[A-Za-z0-9_\-]{20,}/,
     /\bBUNNYNET_API_KEY\s*[:=]\s*(?:["'][^"'$]{12,}["']|[A-Za-z0-9_\-]{16,})/,
     /\b(?:AWS_SECRET_ACCESS_KEY|REGISTRY_PASSWORD|REGISTRY_TOKEN)\s*[:=]\s*(?:["'][^"'$]{12,}["']|[A-Za-z0-9_\-]{16,})/i,
+    /["']privateKey["']\s*:\s*["'][A-Za-z0-9_-]{43}["']/,
   ].some((pattern) => pattern.test(text));
 }
 
@@ -127,8 +129,11 @@ function checkForbiddenArtifacts(
     const segments = rel.split("/");
     const name = segments.at(-1) ?? "";
     const forbidden = segments.includes(".terraform") ||
-      /(?:^|\.)terraform\.tfstate(?:\.backup)?$/.test(name) ||
-      /\.tfplan$|\.plan$|^crash\.log$/.test(name) ||
+      /\.tfstate(?:\..*)?$/i.test(name) ||
+      /\.tfplan$|\.plan$|^crash(?:\..*)?\.log$/i.test(name) ||
+      (name === "bunny-hole-owner.json") ||
+      (/\.tfvars\.json$/i.test(name) &&
+        rel !== "terraform/deployment.auto.tfvars.json") ||
       (/(?:\.tfvars|\.auto\.tfvars)$/.test(name) &&
         name !== "terraform.tfvars.example") ||
       ["coverage", "dist"].some((part) => segments.includes(part));
@@ -160,19 +165,67 @@ async function checkWorkflows(
     inspectWorkflowActions(document.toJS(), `${TEMPLATE_ROOT}/${rel}`, failures);
     const workflow = document.toJS() as Record<string, unknown>;
     if (name === "check.yml") {
+      const trigger = workflow.on ?? workflow["true"];
+      const filteredTrigger = typeof trigger === "object" && trigger !== null &&
+        Object.values(trigger as Record<string, unknown>).some((value) =>
+          typeof value === "object" && value !== null &&
+          ("paths" in value || "paths-ignore" in value)
+        );
+      if (filteredTrigger) {
+        failures.push(
+          `${TEMPLATE_ROOT}/${rel}: required check workflow must not use path filters`,
+        );
+      }
+      if (!/privateKey[\s\S]*\{43\}/.test(source)) {
+        failures.push(
+          `${TEMPLATE_ROOT}/${rel}: secret scan must detect serialized privateKey values`,
+        );
+      }
       if (/\$\{\{\s*secrets\.|\$\{\{\s*vars\.|TF_VAR_/i.test(source)) {
         failures.push(
           `${TEMPLATE_ROOT}/${rel}: check workflow must not reference secrets`,
         );
       }
+      if (/':!\*\.md'|":!\*\.md"/.test(source)) {
+        failures.push(
+          `${TEMPLATE_ROOT}/${rel}: secret scan must include Markdown files`,
+        );
+      }
     }
     if (name === "plan.yml") {
       checkProtectedWorkflow(workflow, source, rel, failures);
+      checkPlanWorkflow(workflow, rel, failures);
     }
     if (name === "apply.yml") {
       checkProtectedWorkflow(workflow, source, rel, failures);
       checkApplyWorkflow(source, rel, failures);
     }
+  }
+}
+
+function checkPlanWorkflow(
+  workflow: Record<string, unknown>,
+  rel: string,
+  failures: string[],
+): void {
+  const path = `${TEMPLATE_ROOT}/${rel}`;
+  const jobs = workflow.jobs as Record<string, unknown> | undefined;
+  const plan = jobs?.plan as Record<string, unknown> | undefined;
+  const steps = Array.isArray(plan?.steps) ? plan.steps : [];
+  const producesPlan = steps.find((step) =>
+    typeof step === "object" && step !== null &&
+    (step as Record<string, unknown>).name === "Produce a reviewable plan"
+  ) as Record<string, unknown> | undefined;
+  const env = producesPlan?.env as Record<string, unknown> | undefined;
+  const run = producesPlan?.run;
+  if (
+    env?.OPERATION !== "${{ inputs.operation }}" || typeof run !== "string" ||
+    !run.includes('"$OPERATION"') || run.includes("${{ inputs.operation }}") ||
+    !run.includes("reviewed_plan_sha256") || !run.includes("git rev-parse HEAD")
+  ) {
+    failures.push(
+      `${path}: plan must safely bind its operation, commit, and canonical digest`,
+    );
   }
 }
 
@@ -219,6 +272,21 @@ function checkApplyWorkflow(
       failures.push(`${path}: bootstrap import must use ${output}`);
     }
   }
+  if (
+    !/reviewed_commit/.test(source) || !/reviewed_plan_sha256/.test(source) ||
+    !/ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/.test(
+      source,
+    ) ||
+    !/git\s+rev-parse\s+HEAD/.test(source) ||
+    !/sha256sum/.test(source) ||
+    !/terraform\s+-chdir=terraform\s+apply\s+-auto-approve\s+"\$plan_path"/.test(
+      source,
+    )
+  ) {
+    failures.push(
+      `${path}: apply must verify and use the reviewed immutable commit and plan digest`,
+    );
+  }
 }
 
 function checkProtectedWorkflow(
@@ -235,7 +303,14 @@ function checkProtectedWorkflow(
   if (!triggerKeys.includes("workflow_dispatch") || triggerKeys.length !== 1) {
     failures.push(`${path}: live workflow must be workflow_dispatch only`);
   }
-  if (!/environment\s*:\s*production\b/.test(source)) {
+  const jobs = workflow.jobs;
+  const jobsHaveProtectedEnvironment = typeof jobs === "object" && jobs !== null &&
+    Object.keys(jobs as Record<string, unknown>).length > 0 &&
+    Object.values(jobs as Record<string, unknown>).every((job) =>
+      typeof job === "object" && job !== null &&
+      isProductionEnvironment((job as Record<string, unknown>).environment)
+    );
+  if (!jobsHaveProtectedEnvironment) {
     failures.push(
       `${path}: live workflow must use the protected production environment`,
     );
@@ -249,6 +324,12 @@ function checkProtectedWorkflow(
   if (/pull_request_target/.test(source) || /^\s*push\s*:/m.test(source)) {
     failures.push(`${path}: live workflow contains an unsafe push/PR trigger`);
   }
+}
+
+function isProductionEnvironment(value: unknown): boolean {
+  if (value === "production") return true;
+  return typeof value === "object" && value !== null &&
+    (value as Record<string, unknown>).name === "production";
 }
 
 async function checkTerraform(

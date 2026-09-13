@@ -39,8 +39,9 @@ does not create those protections.
 3. **Resource checkpoint.** In a private terminal or Bunny dashboard, the operator
    creates or authorizes the app/backend and, if needed, enters registry credentials.
    Pause. Return only public resource IDs, selected region, image digest, and health
-   state. For Terraform, ask for a sanitized plan summary and then give a new explicit
-   approval before apply.
+   state. For Terraform, ask for a sanitized plan summary. The human records the public
+   reviewed commit and plan digest from the protected workflow, then gives a new
+   explicit approval before entering them into the apply dispatch.
 4. **Edge and identity checkpoint.** After the bootstrap has adopted the two
    Magic-Container-generated Pull Zones, review a separate full plan for CDN policy,
    exact hostnames, Bunny-managed TLS, and optional records in an existing Bunny DNS
@@ -60,8 +61,9 @@ The pinned provider can manage the application, the adopted Pull Zones, WebSocke
 cache policy, exact custom hostnames, managed TLS, and optional records in an existing
 Bunny DNS zone. It cannot atomically create and manage a Magic Container endpoint's
 side-effect Pull Zone: bootstrap therefore creates only the application, imports both
-generated zones, and stops. Review a new full plan before converging edge policy. Use
-the dashboard only for provider gaps and certificate/DNS validation, and never claim a
+generated zones, and stops. The protected apply must reproduce both the reviewed commit
+and canonical plan digest. Review a new full plan before converging edge policy. Use the
+dashboard only for provider gaps and certificate/DNS validation, and never claim a
 setting is verified without checking the deployed result. Endpoint renames require a
 separate review because they may recreate a Pull Zone.
 

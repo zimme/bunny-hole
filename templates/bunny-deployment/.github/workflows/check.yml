@@ -2,16 +2,8 @@ name: Check deployment
 
 on:
   pull_request:
-    paths:
-      - ".github/workflows/**"
-      - ".terraform-version"
-      - "terraform/**"
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/**"
-      - ".terraform-version"
-      - "terraform/**"
   workflow_dispatch:
 
 concurrency:
@@ -43,11 +35,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if find . -type f \( -name '*.tfstate*' -o -name '*.tfplan' -o -name 'crash.*.log' \) -print -quit | grep -q .; then
-            echo 'Terraform state, plans, and crash logs must not be committed.' >&2
+          if find . -type f \( -name '*.tfstate*' -o -name '*.tfplan' -o -name '*.plan' -o -name 'crash.log' -o -name 'crash.*.log' -o -name 'bunny-hole-owner.json' -o -name '*.tfvars.json' \) ! -path './terraform/deployment.auto.tfvars.json' -print -quit | grep -q .; then
+            echo 'Terraform state, plans, crash logs, owner files, and secret-bearing tfvars must not be committed.' >&2
             exit 1
           fi
-          if git grep -nE '(BEGIN (EC |OPENSSH |RSA )?PRIVATE KEY|gh[opsu]_[A-Za-z0-9]{20,}|BUNNYNET_API_KEY[[:space:]]*[:=][[:space:]]*[A-Za-z0-9_-]{16,})' -- ':!*.md'; then
+          if git grep -nE "(BEGIN (EC |OPENSSH |RSA )?PRIVATE KEY|(gh[opsu]|github_pat)_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|BUNNYNET_API_KEY[[:space:]]*[:=][[:space:]]*[A-Za-z0-9_-]{16,}|[\"']privateKey[\"'][[:space:]]*:[[:space:]]*[\"'][A-Za-z0-9_-]{43}[\"'])"; then
             echo 'Likely credential material is present.' >&2
             exit 1
           fi

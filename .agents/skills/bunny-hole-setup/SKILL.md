@@ -75,6 +75,12 @@ before a separately reviewed full plan. Record certificate/DNS validation, regis
 setup, and any provider gap as `pending-manual-items`. Review stable resource identity
 before changing endpoint names.
 
+For the GitHub template, plan bootstrap first and record its public commit SHA and
+canonical plan digest. Supply those exact values to the separately approved bootstrap
+dispatch. Repeat the plan-and-bound-apply sequence for the full convergence. A mismatch
+means code or state changed; stop and review a new plan. Never upload the saved binary
+plan or normalized plan JSON.
+
 ## Approval and pause rules
 
 Keep PR checks read-only and secret-free. Never run a secret-bearing workflow against a
