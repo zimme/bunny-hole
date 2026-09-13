@@ -1,0 +1,17 @@
+{
+  "application_name": "bunny-hole-production",
+  "region": "DE",
+  "management_hostname": "manage.hole.example",
+  "application_hostnames": ["home.example.com"],
+  "connector_hostname": "connect.hole.example",
+  "public_pullzone_name": "bunny-hole-production-public",
+  "connector_pullzone_name": "bunny-hole-production-connector",
+  "image_namespace": "zimme",
+  "image_name": "bunny-hole-host",
+  "image_tag": "REPLACE_WITH_RELEASE_COMVER",
+  "image_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_DIGEST",
+  "owner_public_key": "REPLACE_WITH_PUBLIC_OWNER_KEY",
+  "volume_size_gb": 2,
+  "request_timeout_ms": 30000,
+  "connector_websocket_limit": 500
+}

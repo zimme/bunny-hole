@@ -15,6 +15,11 @@ compatibility effect. Never include real tunnel records, credentials, customer
 hostnames, or logs containing viewer data. By contributing, you agree to the
 [Code of Conduct](CODE_OF_CONDUCT.md) and license your contribution under MIT.
 
+Changes under `templates/bunny-deployment` must also pass
+`deno task deployment-template:check`. Keep the copied template self-contained, pin
+Terraform/providers/actions, and review bootstrap imports, remote-state handling, and
+credential boundaries as supply-chain-sensitive code.
+
 ## Compatible Versioning
 
 Bunny Hole follows the canonical

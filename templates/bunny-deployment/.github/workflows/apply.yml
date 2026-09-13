@@ -1,0 +1,91 @@
+name: Apply deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Bootstrap adopts generated Pull Zones; apply converges reviewed infrastructure
+        required: true
+        type: choice
+        options: [bootstrap, apply]
+      confirmation:
+        description: Enter BOOTSTRAP or APPLY to match the selected operation
+        required: true
+        type: string
+
+concurrency:
+  group: bunny-hole-terraform-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    if: >-
+      github.ref_name == github.event.repository.default_branch &&
+      ((inputs.operation == 'bootstrap' && inputs.confirmation == 'BOOTSTRAP') ||
+       (inputs.operation == 'apply' && inputs.confirmation == 'APPLY'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      BUNNYNET_API_KEY: ${{ secrets.BUNNYNET_API_KEY }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.2
+          terraform_wrapper: false
+      - name: Verify private setup is complete
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f terraform/backend.tf
+          test -f terraform/deployment.auto.tfvars.json
+          ! grep -R "REPLACE_WITH" terraform/backend.tf terraform/deployment.auto.tfvars.json
+      - name: Initialize remote state
+        run: terraform -chdir=terraform init -input=false -lockfile=readonly
+      - name: Bootstrap application and adopt generated Pull Zones
+        if: inputs.operation == 'bootstrap'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! terraform -chdir=terraform state show bunnynet_compute_container_app.host >/dev/null 2>&1; then
+            terraform -chdir=terraform plan -lock-timeout=5m \
+              -target=bunnynet_compute_container_app.host \
+              -out=/tmp/bunny-hole-bootstrap.tfplan
+            terraform -chdir=terraform apply -auto-approve /tmp/bunny-hole-bootstrap.tfplan
+          fi
+          if ! terraform -chdir=terraform state show bunnynet_pullzone.public >/dev/null 2>&1; then
+            terraform -chdir=terraform import bunnynet_pullzone.public \
+              "$(terraform -chdir=terraform output -raw bootstrap_public_pullzone_id)"
+          fi
+          if ! terraform -chdir=terraform state show bunnynet_pullzone.connector >/dev/null 2>&1; then
+            terraform -chdir=terraform import bunnynet_pullzone.connector \
+              "$(terraform -chdir=terraform output -raw bootstrap_connector_pullzone_id)"
+          fi
+          echo 'Bootstrap complete. Run Plan deployment, review it, then run Apply deployment with operation=apply.'
+      - name: Apply a freshly computed plan
+        if: inputs.operation == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for resource in \
+            bunnynet_compute_container_app.host \
+            bunnynet_pullzone.public \
+            bunnynet_pullzone.connector; do
+            terraform -chdir=terraform state show "$resource" >/dev/null 2>&1 || {
+              echo "$resource is not bootstrapped. Run operation=bootstrap first." >&2
+              exit 1
+            }
+          done
+          terraform -chdir=terraform plan -lock-timeout=5m \
+            -out=/tmp/bunny-hole-apply.tfplan
+          terraform -chdir=terraform apply -auto-approve /tmp/bunny-hole-apply.tfplan

@@ -8,6 +8,7 @@ ARG NODE_VERSION=24.13.1
 ARG NPM_VERSION=11.8.0
 ARG GH_VERSION=2.96.0
 ARG COPILOT_VERSION=1.0.72
+ARG TERRAFORM_VERSION=1.16.2
 ARG DOCKER_CLI_VERSION=5:29.6.2-1~debian.13~trixie
 ARG DOCKER_BUILDX_VERSION=0.35.0-1~debian.13~trixie
 ARG DOCKER_COMPOSE_VERSION=5.3.1-1~debian.13~trixie
@@ -22,8 +23,8 @@ ENV DENO_DIR=/deno-dir \
 RUN set -eux; \
     target_arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     case "${target_arch}" in \
-      amd64) node_arch=x64; gh_arch=amd64 ;; \
-      arm64) node_arch=arm64; gh_arch=arm64 ;; \
+      amd64) node_arch=x64; gh_arch=amd64; terraform_sha256=0d17011f0c4664539b164b044903d04e296c86c13cb9f28040076c65cfb3985a ;; \
+      arm64) node_arch=arm64; gh_arch=arm64; terraform_sha256=c040bd1e3122b4290f70f74288d8c5a54ddd4254a3e52a29e7cc666653f50a0a ;; \
       *) echo "unsupported development image architecture: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     node_archive="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"; \
@@ -42,6 +43,13 @@ RUN set -eux; \
     grep "  ${gh_archive}\$" /tmp/gh-checksums | (cd /tmp && sha256sum --check -); \
     tar --extract --gzip --file "/tmp/${gh_archive}" --directory /tmp; \
     install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${gh_arch}/bin/gh" /usr/local/bin/gh; \
+    terraform_archive="terraform_${TERRAFORM_VERSION}_linux_${target_arch}.zip"; \
+    curl --fail --location --retry 3 --output "/tmp/${terraform_archive}" \
+      "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${terraform_archive}"; \
+    printf '%s  %s\n' "${terraform_sha256}" "/tmp/${terraform_archive}" \
+      | sha256sum --check -; \
+    unzip -q "/tmp/${terraform_archive}" -d /tmp/terraform-bin; \
+    install -m 0755 /tmp/terraform-bin/terraform /usr/local/bin/terraform; \
     npm_config_ignore_scripts=false npm install --global "@github/copilot@${COPILOT_VERSION}"; \
     npm cache clean --force
 
@@ -66,9 +74,12 @@ RUN set -eux; \
     test "$(npm --version)" = "${NPM_VERSION}"; \
     test "$(gh --version | head -n 1)" = "gh version ${GH_VERSION} (2026-07-02)"; \
     test "$(copilot --version | head -n 1)" = "GitHub Copilot CLI ${COPILOT_VERSION}."; \
+    test "$(terraform version | head -n 1)" = "Terraform v${TERRAFORM_VERSION}"; \
     docker --version; \
     docker buildx version; \
     docker compose version
+
+ENV TF_PLUGIN_CACHE_DIR=/terraform-plugin-cache
 
 COPY .devcontainer/entrypoint.sh /usr/local/bin/bunny-hole-development-entrypoint
 RUN chmod 0755 /usr/local/bin/bunny-hole-development-entrypoint
@@ -77,9 +88,13 @@ WORKDIR /tmp/bunny-hole
 COPY deno.json deno.lock ./
 COPY deno.runtime.json deno.runtime.lock ./
 COPY fixtures/origin/deno.json fixtures/origin/
+COPY templates/bunny-deployment/terraform/*.tf templates/bunny-deployment/terraform/.terraform.lock.hcl ./terraform-template/
 RUN deno ci \
     && deno install --config deno.runtime.json --frozen \
+    && install -d -o vscode -g vscode /terraform-plugin-cache \
+    && terraform -chdir=terraform-template init -backend=false -input=false -lockfile=readonly \
     && chown -R vscode:vscode /deno-dir \
+    && chown -R vscode:vscode /terraform-plugin-cache \
     && rm -rf /tmp/bunny-hole
 
 WORKDIR /workspaces/bunny-hole

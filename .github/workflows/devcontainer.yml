@@ -16,6 +16,8 @@ on:
       - "apps/**/deno.json"
       - "packages/**/deno.json"
       - "fixtures/**/deno.json"
+      - "templates/bunny-deployment/terraform/*.tf"
+      - "templates/bunny-deployment/terraform/.terraform.lock.hcl"
       - ".github/workflows/devcontainer.yml"
 
 concurrency:

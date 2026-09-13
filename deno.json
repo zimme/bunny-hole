@@ -27,6 +27,8 @@
     "setup": "deno ci && deno install --config deno.runtime.json --frozen && deno task hooks:install",
     "agents:check": "deno run --allow-read=. scripts/verify_agents.ts",
     "workflows:check": "deno run --allow-env=LOG_STREAM,LOG_TOKENS --allow-read=. scripts/workflows_check.ts",
+    "deployment-template:check": "deno run --allow-env=LOG_STREAM,LOG_TOKENS --allow-read=. scripts/deployment_template_check.ts",
+    "deployment-template:terraform": "deno run --allow-env --allow-net=registry.terraform.io,releases.hashicorp.com --allow-read=templates/bunny-deployment/terraform --allow-run=terraform --allow-write=/tmp scripts/terraform_template_validate.ts",
     "version:check": "deno run --allow-read=. scripts/version_check.ts",
     "package:check": "deno run --allow-env --allow-net=127.0.0.1 --allow-read=.,/tmp --allow-run=deno,npm,node,tar --allow-write=/tmp scripts/verify_package.ts",
     "package:build": "deno run --allow-read=.,/tmp --allow-run=deno,npm,tar --allow-write=dist,/tmp scripts/build_npm_package.ts",
@@ -51,7 +53,7 @@
     "generated:check": "deno run --allow-read=. --allow-run=git scripts/generated_check.ts",
     "commits:check": "deno run --allow-run=git scripts/commit_check.ts",
     "hooks:install": "deno run --allow-run=git scripts/install_hooks.ts",
-    "validate": "deno run --allow-env --allow-net --allow-read=. --allow-run=deno,docker,git --allow-write=coverage,dist,/tmp scripts/validate.ts",
+    "validate": "deno run --allow-env --allow-net --allow-read=. --allow-run=deno,docker,git,terraform --allow-write=coverage,dist,/tmp scripts/validate.ts",
     "devcontainer:up": "docker compose up --build --detach development",
     "devcontainer:exec": "deno run --allow-run=docker scripts/development_exec.ts",
     "devcontainer:down": "docker compose down"

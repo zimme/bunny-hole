@@ -1,0 +1,9 @@
+terraform {
+  cloud {
+    organization = "REPLACE_WITH_HCP_ORGANIZATION"
+
+    workspaces {
+      name = "bunny-hole-production"
+    }
+  }
+}

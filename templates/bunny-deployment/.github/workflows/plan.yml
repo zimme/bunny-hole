@@ -1,0 +1,58 @@
+name: Plan deployment
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: bunny-hole-terraform-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      BUNNYNET_API_KEY: ${{ secrets.BUNNYNET_API_KEY }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.2
+          terraform_wrapper: false
+      - name: Verify private setup is complete
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f terraform/backend.tf
+          test -f terraform/deployment.auto.tfvars.json
+          ! grep -R "REPLACE_WITH" terraform/backend.tf terraform/deployment.auto.tfvars.json
+      - name: Initialize remote state
+        run: terraform -chdir=terraform init -input=false -lockfile=readonly
+      - name: Produce a reviewable plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! terraform -chdir=terraform state show bunnynet_compute_container_app.host >/dev/null 2>&1; then
+            echo 'Initial bootstrap is required; this plan contains only the Magic Container app.' >&2
+            terraform -chdir=terraform plan -no-color -lock-timeout=5m \
+              -target=bunnynet_compute_container_app.host
+            exit 0
+          fi
+          for zone in public connector; do
+            terraform -chdir=terraform state show "bunnynet_pullzone.${zone}" >/dev/null 2>&1 || {
+              echo "Pull Zone ${zone} is not adopted; run the protected bootstrap operation." >&2
+              exit 1
+            }
+          done
+          terraform -chdir=terraform plan -no-color -lock-timeout=5m
