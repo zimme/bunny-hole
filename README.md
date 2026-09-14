@@ -177,6 +177,21 @@ filesystem plus a persistent state volume.
 Read [SECURITY.md](SECURITY.md), the [threat model](docs/threat-model.md), and the
 [protocol profile](docs/protocol.md) before exposing a sensitive service.
 
+## Deploy a self-hosted instance
+
+For a reviewable GitOps deployment, copy
+[`templates/bunny-deployment`](templates/bunny-deployment) into a dedicated consumer
+repository. Its pinned Terraform configuration provisions the fixed one-region,
+one-instance Magic Container topology, adopts the generated CDN Pull Zones, and then
+manages cache/WebSocket policy, exact hostnames, managed TLS, and optional existing
+Bunny DNS records through protected manual workflows. The template includes standalone
+agent instructions that keep credentials and private enrollment material human-only.
+
+Read the [deployment-template design](docs/deployment-template.md),
+[agent-assisted procedure](docs/agent-assisted-deployment.md), or the
+[manual Bunny console guide](docs/deployment.md). A live apply is never required to
+build or validate Bunny Hole itself.
+
 ## Repository map
 
 - `apps/host` — control plane, exact-host HTTP ingress, passkeys, and FRP plugin.
@@ -186,9 +201,10 @@ Read [SECURITY.md](SECURITY.md), the [threat model](docs/threat-model.md), and t
 - `deploy/kubernetes` — raw Kustomize-compatible controller manifests and examples.
 - `fixtures/origin`, `tests`, and `compose.yaml` — production-image integration path.
 
-See [deployment](docs/deployment.md), [configuration](docs/configuration.md),
-[development](docs/development.md), [architecture](docs/architecture.md), and
-[Compatible Versioning](docs/versioning.md).
+See [deployment](docs/deployment.md),
+[deployment template](docs/deployment-template.md),
+[configuration](docs/configuration.md), [development](docs/development.md),
+[architecture](docs/architecture.md), and [Compatible Versioning](docs/versioning.md).
 
 ## License
 

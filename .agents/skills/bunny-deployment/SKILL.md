@@ -16,3 +16,8 @@ non-sensitive IDs, hostnames, image digests, and health status.
 Do not enable multiple regions or host replicas. Verify production containers are
 non-root, health endpoints match probe roles, dynamic traffic is not cached, and the
 deployed image is one already tested and published by the release workflow.
+
+For a consumer deployment, use the `bunny-hole-setup` skill and the copyable template.
+When changing that template, verify the provider schema, the two-stage Pull Zone
+adoption boundary, protected default-branch workflows, remote-state handling, and the
+standalone instructions copied with it.

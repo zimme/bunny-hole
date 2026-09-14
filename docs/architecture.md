@@ -1,6 +1,6 @@
 # Architecture and research
 
-Research was refreshed on 2026-09-09 against official Bunny, Deno, GitHub, Dev
+Research was refreshed on 2026-09-12 against official Bunny, Deno, GitHub, Dev
 Container, Docker, Kubernetes, and upstream FRP documentation.
 
 ## Chosen architecture
@@ -124,6 +124,10 @@ an offline recovery copy.
   full-account access and documents no OIDC or scoped temporary deployment credential.
   Automated deployment is therefore optional, manual, environment-protected, and uses an
   immutable image plus a commit-pinned official action.
+- Bunny's [Terraform guide](https://docs.bunny.net/terraform) points to the official
+  [`BunnyWay/bunnynet` provider](https://github.com/BunnyWay/terraform-provider-bunnynet).
+  Provider 0.18.2 exposes Magic Container endpoint Pull Zone IDs plus the Pull Zone,
+  hostname, managed-TLS, and Bunny DNS resources used by the consumer template.
 - Bunny documents no Edge Script isolate-affinity or addressable live-socket primitive.
   An Edge Script request can execute away from the isolate holding a connector socket;
   Origin Shield is an origin/cache feature, not documented stateful session affinity.
@@ -155,8 +159,12 @@ untested switches would widen the attack surface without completing those produc
 
 High availability is also future work for the stateful-routing reasons above. Automatic
 Bunny hostname creation is kept out of the always-on host because it would require a
-full-account, long-lived Bunny API key. Use the dashboard or a separately reviewed
-Terraform workflow instead.
+full-account, long-lived Bunny API key. Use the dashboard or the separately reviewed
+consumer Terraform template instead. Provider 0.18.2 can manage the Magic Container
+application and, after importing the endpoint-generated Pull Zones, their cache/WSS
+policy, exact hostnames, managed TLS, and optional records in an existing Bunny DNS
+zone. This is an operator control-plane concern and never gives the running tunnel host
+the Bunny account key.
 
 ## Toolchain and supply chain
 

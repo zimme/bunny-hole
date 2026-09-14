@@ -1,10 +1,11 @@
 # Development
 
 Deno 2.9.5 is the only task runner and is also the compiler, dependency manager,
-formatter, linter, test runner, coverage tool, build tool, and task runner. Node 24.13.1
-and npm 11.8.0 exist in the development image only for GitHub Copilot CLI, Dev Container
-tooling, and validating the actual npm package. There are no npm task wrappers or
-repository `package.json`.
+formatter, linter, test runner, coverage tool, and build tool. Terraform 1.16.2 exists
+only to validate the copyable consumer deployment configuration against its pinned
+provider. Node 24.13.1 and npm 11.8.0 exist in the development image only for GitHub
+Copilot CLI, Dev Container tooling, and validating the actual npm package. There are no
+npm task wrappers or repository `package.json`.
 
 ## Compose-native toolchain
 
@@ -46,7 +47,8 @@ Inside the service, run `deno task setup` once and then focused tasks such as `f
 `lint`, `check`, `test`, `coverage`, `integration`, `build`, `package:check`, `audit`,
 or `container:smoke`. `deno task validate` is authoritative and executes, in order:
 
-- agent, workflow, version, generated-file, and license policy checks;
+- agent, workflow, version, deployment-template, generated-file, and license policy
+  checks, including real backend-free Terraform initialization and validation;
 - frozen dependency resolution, formatting, spelling, Deno lint and type checking;
 - documentation checks, tests, and coverage threshold enforcement;
 - the production host/connector image integration topology;
@@ -61,10 +63,11 @@ the same development service.
 The development Dockerfile copies `deno.json`, `deno.lock`, and the smaller
 `deno.runtime.json`/`deno.runtime.lock` production graph before source. It freezes and
 prewarms both graphs, so dependency changes invalidate the layer while ordinary source
-changes do not. The split prevents repository-only tools such as cspell from being
-embedded by `deno compile`; `deno task validate` checks both lockfiles. `/deno-dir` is a
-persistent named local volume whose ownership is fixed for the non-root `vscode` user.
-The GHCR development prebuild is the primary CI toolchain/dependency cache, and BuildKit
+changes do not. It also prewarms the provider graph from the consumer template's frozen
+Terraform lockfile. The split prevents repository-only tools such as cspell from being
+embedded by `deno compile`; `deno task validate` checks both lockfiles. `/deno-dir` and
+the image's Terraform provider cache are writable by the non-root `vscode` user. The
+GHCR development prebuild is the primary CI toolchain/dependency cache, and BuildKit
 registry layers cache production images.
 
 No GitHub Actions dependency cache is layered on top: local volumes do not transfer to

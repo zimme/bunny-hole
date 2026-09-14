@@ -36,6 +36,13 @@ documented Bunny authentication. Store it only in a reviewer-protected GitHub
 Environment or deploy manually. Pull-request and coding-agent workflows must never
 receive it.
 
+The consumer GitOps template has the same credential boundary. Its live jobs must run
+only from the protected default branch in a pre-created reviewer-gated environment.
+Terraform state can contain sensitive infrastructure metadata and must use encrypted,
+locked, access-controlled remote storage. Never upload state or saved plans as workflow
+artifacts, post plans to pull requests, or expose them to coding agents. Bootstrap must
+adopt the two generated Pull Zones and stop before a separately reviewed full apply.
+
 Read the complete [threat model](docs/threat-model.md),
 [protocol profile](docs/protocol.md), and [deployment guide](docs/deployment.md) before
 exposing a sensitive service.

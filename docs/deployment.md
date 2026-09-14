@@ -2,7 +2,10 @@
 
 This guide uses the Bunny web console and immutable published images. It does not
 connect Bunny to GitHub and keeps every secret-bearing action in a human-controlled
-terminal or dashboard session.
+terminal or dashboard session. For a reviewable consumer repository with protected
+manual Terraform workflows, use the [consumer GitOps template](deployment-template.md).
+Its two-stage bootstrap adopts the Magic-Container-generated Pull Zones before applying
+CDN, hostname, TLS, and optional Bunny DNS policy.
 
 ## 1. Generate the owner identity
 

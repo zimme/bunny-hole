@@ -3,6 +3,8 @@ import { run } from "./process.ts";
 const steps: [string, string[]][] = [
   ["deno", ["task", "agents:check"]],
   ["deno", ["task", "workflows:check"]],
+  ["deno", ["task", "deployment-template:check"]],
+  ["deno", ["task", "deployment-template:terraform"]],
   ["deno", ["task", "version:check"]],
   ["deno", ["ci"]],
   ["deno", ["install", "--config", "deno.runtime.json", "--frozen"]],

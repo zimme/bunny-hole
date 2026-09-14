@@ -1,0 +1,18 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.plan
+crash.log
+crash.*.log
+bunny-hole-owner.json
+*.pem
+*.key
+*credentials*
+*secret*
+# Local Terraform variable files are never committed. The only tracked variable
+# files are the documented examples and the public deployment configuration below.
+*.tfvars*
+!terraform/deployment.auto.tfvars.json
+!terraform/tfvars.example
+!terraform/deployment.auto.tfvars.json.example
