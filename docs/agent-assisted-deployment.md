@@ -42,12 +42,15 @@ does not create those protections.
    state. For Terraform, ask for a sanitized plan summary. The human records the public
    reviewed commit and plan digest from the protected workflow, then gives a new
    explicit approval before entering them into the apply dispatch.
-4. **Edge and identity checkpoint.** After the bootstrap has adopted the two
-   Magic-Container-generated Pull Zones, review a separate full plan for CDN policy,
-   exact hostnames, Bunny-managed TLS, and optional records in an existing Bunny DNS
-   zone. The operator privately completes certificate/DNS validation, owner identity,
-   passkey, and enrollment. Pause. Return only public hostnames/IDs, the verification
-   phrase, route IDs, and health status.
+4. **Edge and identity checkpoint.** After bootstrap imports the two
+   Magic-Container-generated Pull Zones, return its sanitized handoff with each actual
+   generated Pull Zone ID/name and CDN domain. Commit those exact values, then review a
+   separate full policy/DNS plan with hostname TLS disabled. The operator publishes and
+   verifies DNS (Bunny DNS records or external CNAME/alias records), then reviews a
+   distinct TLS-stage plan that creates managed-TLS exact hostnames. The operator
+   privately completes certificate validation, owner identity, passkey, and enrollment.
+   Pause. Return only public hostnames/IDs, the verification phrase, route IDs, and
+   health status.
 5. **Connector and verification.** In the private connector terminal, approve a
    least-privilege exact/suffix grant, create the exact route, and connect over WSS.
    Test the exact hostname from another network. Verify one healthy instance, both
@@ -57,15 +60,19 @@ does not create those protections.
    unresolved dashboard/DNS/TLS or registry items as `pending-manual-items`; do not
    claim `verified` until each requested check has evidence.
 
-The pinned provider can manage the application, the adopted Pull Zones, WebSocket and
-cache policy, exact custom hostnames, managed TLS, and optional records in an existing
-Bunny DNS zone. It cannot atomically create and manage a Magic Container endpoint's
+The pinned provider can manage the application, adopted Pull Zones, WebSocket/cache
+policy, exact custom hostnames, managed TLS, and optional records in an existing Bunny
+DNS zone. It cannot atomically create and manage a Magic Container endpoint's
 side-effect Pull Zone: bootstrap therefore creates only the application, imports both
-generated zones, and stops. The protected apply must reproduce both the reviewed commit
-and canonical plan digest. Review a new full plan before converging edge policy. Use the
-dashboard only for provider gaps and certificate/DNS validation, and never claim a
-setting is verified without checking the deployed result. Endpoint renames require a
-separate review because they may recreate a Pull Zone.
+generated zones, records their actual IDs/names, and stops. Provider 0.18.2 treats Pull
+Zone name as replacement-only, so the template fails a full plan unless the committed
+handoff names match the zones at its recorded IDs. The protected apply must reproduce
+both the reviewed commit and canonical plan digest. First review/apply policy and DNS
+with custom hostname TLS disabled; only after propagation is verified should a
+separately reviewed plan enable managed TLS. Use the dashboard only for provider gaps
+and certificate/DNS validation, and never claim a setting is verified without checking
+the deployed result. Endpoint renames require a separate review because they may
+recreate a Pull Zone.
 
 ## Prompt to give an agent
 

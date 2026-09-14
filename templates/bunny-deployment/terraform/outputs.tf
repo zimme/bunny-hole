@@ -28,6 +28,16 @@ output "connector_pullzone_id" {
   value       = bunnynet_pullzone.connector.id
 }
 
+output "public_pullzone_name" {
+  description = "Actual imported Bunny Pull Zone name for management and exact public application hostnames."
+  value       = bunnynet_pullzone.public.name
+}
+
+output "connector_pullzone_name" {
+  description = "Actual imported Bunny Pull Zone name for the connector WSS hostname."
+  value       = bunnynet_pullzone.connector.name
+}
+
 output "bootstrap_public_pullzone_id" {
   description = "Auto-generated public Pull Zone ID exposed by the application endpoint; use it for the first import."
   value       = bunnynet_compute_container_app.host.container[0].endpoint[1].cdn[0].pullzone_id
@@ -68,18 +78,92 @@ output "image_reference" {
   value       = "ghcr.io/${var.image_namespace}/${var.image_name}:${var.image_tag}@${var.image_digest}"
 }
 
-output "deployment_handoff" {
-  description = "Secret-free values useful for the next human/agent deployment step."
+output "bootstrap_handoff" {
+  description = "Secret-free bootstrap record. After both imports, commit its exact Pull Zone IDs and generated names before running a full convergence plan."
   value = {
-    application_id      = bunnynet_compute_container_app.host.id
-    connector_endpoint  = bunnynet_compute_container_app.host.container[0].endpoint[0].id
-    connector_hostname  = var.connector_hostname
-    connector_pullzone  = bunnynet_pullzone.connector.id
-    image_digest        = var.image_digest
-    image_tag           = var.image_tag
-    management_hostname = var.management_hostname
-    public_endpoint     = bunnynet_compute_container_app.host.container[0].endpoint[1].id
-    public_pullzone     = bunnynet_pullzone.public.id
-    region              = var.region
+    schema = "bunny-hole-setup/v1"
+    status = "awaiting-edge-or-identity"
+    bunny = {
+      applicationId = bunnynet_compute_container_app.host.id
+      containerName = "host"
+      region        = var.region
+      endpointIds = {
+        management = bunnynet_compute_container_app.host.container[0].endpoint[1].id
+        connector  = bunnynet_compute_container_app.host.container[0].endpoint[0].id
+      }
+      pullZoneIds = {
+        management = bunnynet_pullzone.public.id
+        connector  = bunnynet_pullzone.connector.id
+      }
+      pullZoneNames = {
+        management = bunnynet_pullzone.public.name
+        connector  = bunnynet_pullzone.connector.name
+      }
+      cdnDomains = {
+        management = bunnynet_pullzone.public.cdn_domain
+        connector  = bunnynet_pullzone.connector.cdn_domain
+      }
+    }
+    edge = {
+      managementHostname = var.management_hostname
+      connectorHostname  = var.connector_hostname
+      routeHostnames     = sort(tolist(var.application_hostnames))
+      dns                = var.dns_zone_domain == null ? "external-not-configured" : "bunny-records-pending"
+      tls                = "not-requested"
+    }
+    pendingManualItems = [
+      "Commit the generated Pull Zone IDs and names from this handoff before full convergence.",
+      "Publish DNS records and verify propagation before enabling hostname TLS.",
+    ]
+    nextAction = "Commit the exact imported Pull Zone IDs/names, then review a full policy-and-DNS plan with enable_hostname_tls=false."
+  }
+}
+
+output "deployment_handoff" {
+  description = "Secret-free handoff matching .agents/skills/bunny-hole-setup/references/handoff-schema.md."
+  value = {
+    schema = "bunny-hole-setup/v1"
+    status = var.enable_hostname_tls ? "pending-manual-items" : "awaiting-edge-or-identity"
+    release = {
+      version            = var.image_tag
+      imageDigest        = var.image_digest
+      provenanceVerified = false
+    }
+    bunny = {
+      applicationId = bunnynet_compute_container_app.host.id
+      containerName = "host"
+      region        = var.region
+      endpointIds = {
+        management = bunnynet_compute_container_app.host.container[0].endpoint[1].id
+        connector  = bunnynet_compute_container_app.host.container[0].endpoint[0].id
+      }
+      pullZoneIds = {
+        management = bunnynet_pullzone.public.id
+        connector  = bunnynet_pullzone.connector.id
+      }
+      pullZoneNames = {
+        management = bunnynet_pullzone.public.name
+        connector  = bunnynet_pullzone.connector.name
+      }
+      cdnDomains = {
+        management = bunnynet_pullzone.public.cdn_domain
+        connector  = bunnynet_pullzone.connector.cdn_domain
+      }
+    }
+    edge = {
+      managementHostname = var.management_hostname
+      connectorHostname  = var.connector_hostname
+      routeHostnames     = sort(tolist(var.application_hostnames))
+      tls                = var.enable_hostname_tls ? "requested-not-verified" : "not-requested"
+      dns                = var.dns_zone_domain == null ? "external-not-verified" : "bunny-records-not-verified"
+      websockets         = "configured-not-verified"
+      cacheDisabled      = "configured-not-verified"
+    }
+    pendingManualItems = var.enable_hostname_tls ? [
+      "Verify DNS propagation, managed TLS issuance, exact-host routing, caching, and connector WSS externally.",
+      ] : [
+      "Publish DNS records and verify propagation before enabling hostname TLS in a separately reviewed apply.",
+    ]
+    nextAction = var.enable_hostname_tls ? "Verify deployed edge behavior before marking the handoff verified." : "After DNS propagation, set enable_hostname_tls=true in a separately reviewed apply."
   }
 }

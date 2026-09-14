@@ -56,7 +56,9 @@ cp terraform/deployment.auto.tfvars.json.example \
   terraform/deployment.auto.tfvars.json
 ```
 
-Replace every `REPLACE_WITH` marker, then commit `deployment.auto.tfvars.json`: it
+Replace the backend and other general `REPLACE_WITH` markers, but retain the four
+`REPLACE_WITH_BOOTSTRAP_*` Pull Zone ID/name sentinels until the protected bootstrap
+workflow records the generated values. Then commit `deployment.auto.tfvars.json`: it
 contains public configuration only and the protected workflows require this file to be
 present in the repository. Keep local overrides such as `terraform.tfvars` untracked.
 Before `terraform init`, create/select the HCP Terraform workspace and verify in its
@@ -110,10 +112,11 @@ destruction before authorizing a live operation.
 
 ## 6. Bootstrap once, then plan and apply
 
-Magic Containers owns initial creation of the CDN Pull Zones. First run **Plan
-deployment** manually with `operation=bootstrap`. Review its target-only plan and record
-the exact commit and canonical plan SHA-256 printed in the job summary. Then run **Apply
-deployment** with `operation=bootstrap`, confirmation `BOOTSTRAP`, and those two
+Magic Containers owns initial creation of the CDN Pull Zones. The public configuration
+starts with four `REPLACE_WITH_BOOTSTRAP_*` Pull Zone ID/name sentinels. First run
+**Plan deployment** manually with `operation=bootstrap`. Review its target-only plan and
+record the exact commit and canonical plan SHA-256 printed in the job summary. Then run
+**Apply deployment** with `operation=bootstrap`, confirmation `BOOTSTRAP`, and those two
 reviewed values. After the protected-environment approval, the workflow verifies that
 the commit is still the default-branch tip, reproduces the reviewed plan digest, and
 only then:
@@ -121,19 +124,33 @@ only then:
 1. applies only `bunnynet_compute_container_app.host` when absent;
 2. reads the two generated Pull Zone IDs from safe Terraform outputs;
 3. imports them as `bunnynet_pullzone.public` and `bunnynet_pullzone.connector`; and
-4. stops without applying their policy changes.
+4. prints the secret-free `bootstrap_handoff`, including the actual generated Pull Zone
+   names and IDs; and
+5. stops without applying their policy changes.
 
-Next run **Plan deployment** with `operation=apply` and inspect the complete imported
-state and edge-policy plan. Run **Apply deployment** with `operation=apply`,
-confirmation `APPLY`, and the new commit and plan digest. Apply again requires the
+Commit the exact four generated ID/name values from `bootstrap_handoff` before planning
+again. The full plan fails closed if they do not match the current resources, because a
+Pull Zone rename is replacement-only. It also requires that each ID belongs to its exact
+Magic Container endpoint and that the public and connector Pull Zones are distinct. Keep
+`enable_hostname_tls=false` for the first full policy/DNS plan and apply. This creates
+no custom hostnames, so DNS can propagate without racing certificate/TLS creation. If
+Bunny DNS is used, its optional records are created in that first stage; otherwise
+publish the external CNAME/alias records to the safe CDN-domain outputs. After DNS
+propagation is independently verified, set `enable_hostname_tls=true` in a separate
+reviewed commit, then run **Plan deployment** and **Apply deployment** with
+`operation=apply`, confirmation `APPLY`, and the new commit/plan digest. That final
+stage creates managed-TLS custom hostnames and forces HTTPS. Each apply requires the
 reviewed commit to remain the default-branch tip and applies only a reproduced plan with
 the same canonical digest. If configuration or remote state changed, the digest differs
 and apply stops. Binary plans, normalized plan JSON, and state remain on ephemeral
 runners and are never uploaded as artifacts or posted to pull requests.
 
-Bootstrap is idempotent after partial failure. Never rename endpoint or container blocks
-casually: the Bunny provider models them as ordered lists and an endpoint rename may
-replace its Pull Zone. Never use `terraform destroy` as a routine rollback.
+Bootstrap is idempotent after partial failure: rerun the protected bootstrap plan/apply
+with the sentinels still present. It refreshes only the existing host and verifies any
+already-imported Pull Zone against the endpoint output before importing only an absent
+one. Never rename endpoint or container blocks casually: the Bunny provider models them
+as ordered lists and an endpoint rename may replace its Pull Zone. Never use
+`terraform destroy` as a routine rollback.
 
 ## 7. Verify and enroll
 
@@ -151,9 +168,10 @@ In the private terminal, add the host, bootstrap at least two passkeys, approve 
 device's least-privilege grant, create an exact route, and start the connector as
 documented by Bunny Hole. Keep application authentication enabled.
 
-An AI-visible handoff may include only the values defined in `safe_handoff`: public
-URLs/hostnames, region, ComVer, digest, resource IDs, Pull Zone IDs, and pending manual
-checks. It must never contain state or credentials.
+An AI-visible handoff may include only the values defined in the copied
+[`handoff schema`](.agents/skills/bunny-hole-setup/references/handoff-schema.md): public
+URLs/hostnames, region, ComVer, digest, resource IDs, generated Pull Zone names/IDs, CDN
+domains, and pending manual checks. It must never contain state or credentials.
 
 ## Operations
 

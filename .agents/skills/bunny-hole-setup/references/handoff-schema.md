@@ -26,6 +26,14 @@ must be public or intentionally non-sensitive operational facts.
       "management": "public-id",
       "connector": "public-id"
     },
+    "pullZoneNames": {
+      "management": "generated-public-pull-zone-name",
+      "connector": "generated-connector-pull-zone-name"
+    },
+    "cdnDomains": {
+      "management": "public.b-cdn.net",
+      "connector": "connector.b-cdn.net"
+    },
     "healthyAt": "2026-09-12T12:00:00Z"
   },
   "edge": {
@@ -60,10 +68,12 @@ must be public or intentionally non-sensitive operational facts.
 
 ## Allowed and forbidden fields
 
-Allowed values are resource IDs, names, public hostnames, public keys, immutable image
-digests, version, region, route IDs, verification phrases, booleans describing verified
-settings, health timestamps, and a redacted target summary. Use `null` or omit a value
-that is unknown.
+Allowed values are resource IDs, generated Pull Zone names, public CDN domains, public
+hostnames, public keys, immutable image digests, version, region, route IDs,
+verification phrases, booleans describing verified settings, health timestamps, and a
+redacted target summary. Use `null` or omit a value that is unknown. Pull Zone IDs and
+generated names recorded at bootstrap are public inventory; retain both so a later plan
+can prove it is adopting the same zones rather than proposing a replacement.
 
 Reject a handoff containing any API key, backend credential, registry credential, owner
 private key, device private key, passkey response or credential ID, connector config,

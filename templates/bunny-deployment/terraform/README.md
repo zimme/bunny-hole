@@ -16,10 +16,13 @@ This directory provisions the documented Bunny Hole Magic Containers shape:
 The Bunny provider does not create the two Pull Zones as ordinary Terraform resources:
 Magic Containers creates them as a side effect of the CDN endpoints. The declarations
 below are intentionally an adoption workflow. They must be imported after the target
-bootstrap apply. Custom hostnames use Bunny-managed TLS (`tls_enabled = true`, with no
-certificate private key in this repository). Optional Bunny DNS records link an
-already-existing zone to the adopted Pull Zones; this template never creates a DNS zone
-or changes nameserver delegation.
+bootstrap apply. Pull Zone names are replacement-only in provider 0.18.2, so bootstrap
+records the actual generated IDs and names and normal convergence refuses any mismatch.
+Custom hostname resources are deliberately off at first (`enable_hostname_tls = false`).
+After DNS is published and propagation is verified, a separate reviewed apply requests
+Bunny-managed TLS (`tls_enabled = true`, with no certificate private key in this
+repository). Optional Bunny DNS records link an already-existing zone to the adopted
+Pull Zones; this template never creates a DNS zone or changes nameserver delegation.
 
 ## Before you start
 
@@ -75,19 +78,45 @@ terraform output bootstrap_public_pullzone_id
 terraform output bootstrap_connector_pullzone_id
 ```
 
-Import the two side-effect Pull Zones by ID. The following full plan may show their
-generated names changing to the stable, account-unique `public_pullzone_name` and
-`connector_pullzone_name` chosen before bootstrap:
+Import the two side-effect Pull Zones by ID, then read the secret-free bootstrap
+handoff. It contains the actual generated names as well as IDs and CDN domains:
 
 ```sh
 terraform import bunnynet_pullzone.public "PUBLIC_PULLZONE_ID"
 terraform import bunnynet_pullzone.connector "CONNECTOR_PULLZONE_ID"
-terraform plan
+terraform output -json bootstrap_handoff
 ```
 
-The import must be done before a normal full apply. A name collision or unexpected
-replacement is a stop condition. Review the plan carefully: the two Pull Zones should
-resolve to the compute-container origin endpoint IDs, `public` must have
+Copy `pullZoneIds.management`, `pullZoneNames.management`, `pullZoneIds.connector`, and
+`pullZoneNames.connector` from that output into the four `*_pullzone_{id,name}`
+variables, then commit the public configuration. Do not choose friendly replacement
+names. A normal plan fails closed until all four values are present and the provider's
+current names at those IDs exactly match. It also requires each ID to match the
+corresponding endpoint-generated ID on this Magic Containers application and requires
+the public and connector IDs/names to be distinct. This makes a stale, swapped, foreign,
+or mistyped handoff stop before it can produce an applicable policy plan or
+replacement-only Pull Zone rename.
+
+If either import is interrupted, leave all four sentinels in place and retry the
+bootstrap workflow; it validates an already-imported address against the endpoint output
+and imports only an absent address. For a private-terminal bootstrap, do the equivalent
+per address rather than importing blindly:
+
+```sh
+terraform state show bunnynet_pullzone.public >/dev/null 2>&1 || \
+  terraform import bunnynet_pullzone.public "PUBLIC_PULLZONE_ID"
+terraform state show bunnynet_pullzone.connector >/dev/null 2>&1 || \
+  terraform import bunnynet_pullzone.connector "CONNECTOR_PULLZONE_ID"
+terraform output -json bootstrap_handoff
+```
+
+If an existing address does not identify its corresponding endpoint-generated ID, stop.
+Do not repair that condition with a rename, a second address for the same Pull Zone, or
+an import of a different account resource.
+
+The import must be done before a normal full apply. A name mismatch, name collision, or
+unexpected replacement is a stop condition. Review the plan carefully: the two Pull
+Zones should resolve to the compute-container origin endpoint IDs, `public` must have
 `websockets_enabled = false`, `connector` must have it enabled, and both must show
 caching, error caching, request coalescing, and origin retries disabled. If Bunny
 reports drift caused by a dashboard-only setting that provider 0.18.2 cannot model, stop
@@ -95,25 +124,30 @@ and resolve it manually; do not add undocumented Terraform arguments.
 
 ## Apply and hostname/DNS setup
 
-After the plan has been reviewed, apply from the protected default branch or an
-environment-gated private terminal:
+First run a reviewed full plan with `enable_hostname_tls = false`. It converges only
+Pull Zone policy and, when `dns_zone_domain` is set, creates the optional Bunny DNS
+records; it creates no custom hostname/TLS resources. After the plan has been reviewed,
+apply from the protected default branch or an environment-gated private terminal:
 
 ```sh
 terraform apply
 ```
 
-The hostname resources attach the management hostname and each exact application
-hostname to the public Pull Zone, and the connector hostname only to the connector Pull
-Zone. They request Bunny-managed TLS and force HTTPS. Complete the DNS validation and
-certificate issuance steps in the Bunny dashboard, then test `/readyz` and
-`/.well-known/bunny-hole` on the exact management hostname.
-
 To let Bunny DNS manage records, set `dns_zone_domain` to an **existing** Bunny DNS zone
-that is authoritative for every configured hostname and apply again. The module creates
-only `PullZone` records with the matching Pull Zone IDs. It never creates a zone,
-delegates nameservers, or overwrites an unrelated zone. Leave the variable null when DNS
-is managed elsewhere and create CNAME/alias records to each Pull Zone's `*_cdn_domain`
-output using that DNS provider's documented workflow.
+that is authoritative for every configured hostname before this policy/DNS apply. The
+module creates only `PullZone` records with the matching adopted Pull Zone IDs. It never
+creates a zone, delegates nameservers, or overwrites an unrelated zone. Leave the
+variable null when DNS is managed elsewhere and create CNAME/alias records to each Pull
+Zone's `*_cdn_domain` output using that DNS provider's documented workflow.
+
+Wait until public DNS resolution for every exact hostname reaches the intended CDN
+domain and review the result. Then set `enable_hostname_tls = true` in a separate
+reviewed commit and run a new protected plan/apply. Only that TLS stage attaches the
+management and application hostnames to the public Pull Zone and the connector hostname
+to the connector Pull Zone, requests Bunny-managed TLS, and forces HTTPS. Complete any
+Bunny certificate validation, then test `/readyz` and `/.well-known/bunny-hole` on the
+exact management hostname. Do not combine DNS publication and first hostname/TLS
+creation in one apply: DNS visibility and certificate validation are asynchronous.
 
 Do not use a wildcard hostname. Bunny Hole's host routing is exact, and the connector
 hostname must never be attached to the public Pull Zone. Public HTTP/WebSocket cache and
@@ -141,12 +175,14 @@ an explicit maintenance plan.
 
 ## Secret-safe handoff
 
-Safe outputs include resource IDs, exact hostnames, Pull Zone CDN domains, image tag and
-digest, region, URLs, and health status recorded separately by the operator. Do not
-share Terraform state, plan files, provider logs, owner private material, registry
-credentials, passkeys, connector configuration, session tokens, or private backend
-credentials. The `deployment_handoff` output intentionally contains only IDs and public
-release/topology values.
+Safe outputs include resource IDs, generated Pull Zone names, exact hostnames, Pull Zone
+CDN domains, image tag and digest, region, URLs, and health status recorded separately
+by the operator. Do not share Terraform state, plan files, provider logs, owner private
+material, registry credentials, passkeys, connector configuration, session tokens, or
+private backend credentials. `bootstrap_handoff` records the exact generated names/IDs
+needed for adoption; `deployment_handoff` follows the copied
+[`handoff schema`](../.agents/skills/bunny-hole-setup/references/handoff-schema.md) and
+contains public release/topology values only.
 
 This template provisions infrastructure only. Enrollment, passkey ceremonies, route
 grants, connector state, and private DNS/provider credentials remain human-controlled

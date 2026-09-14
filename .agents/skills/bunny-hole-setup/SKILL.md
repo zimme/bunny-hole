@@ -70,10 +70,15 @@ The pinned provider manages the application and, after adoption, both Pull Zones
 WebSocket/cache policy, exact hostnames, Bunny-managed TLS, and optional records in an
 existing Bunny DNS zone. Never invent provider arguments or claim deployed behavior from
 configuration alone. Magic Containers creates the endpoint Pull Zones as a side effect,
-so bootstrap must target only the application, import both generated zones, and stop
-before a separately reviewed full plan. Record certificate/DNS validation, registry
-setup, and any provider gap as `pending-manual-items`. Review stable resource identity
-before changing endpoint names.
+so bootstrap must target only the application, import both generated zones, record both
+their IDs and actual generated names in the sanitized handoff, and stop. The generated
+Pull Zone name is replacement-only in the pinned provider: commit the handoff's exact
+IDs/names before a separately reviewed full plan, never propose a routine rename. First
+converge only Pull Zone policy and optional Bunny DNS records with hostname TLS
+disabled. Publish and verify DNS propagation, then use a separate reviewed apply to
+create custom hostname resources with managed TLS. Record certificate/DNS validation,
+registry setup, and any provider gap as `pending-manual-items`. Review stable resource
+identity before changing endpoint names.
 
 For the GitHub template, plan bootstrap first and record its public commit SHA and
 canonical plan digest. Supply those exact values to the separately approved bootstrap

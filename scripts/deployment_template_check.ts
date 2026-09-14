@@ -7,6 +7,11 @@ export interface DeploymentTemplateCheck {
 }
 
 const TEMPLATE_ROOT = "templates/bunny-deployment";
+const ALLOWED_TFVARS_FILES = new Set([
+  "terraform/tfvars.example",
+  "terraform/deployment.auto.tfvars.json.example",
+  "terraform/deployment.auto.tfvars.json",
+]);
 const REQUIRED_FILES = [
   "AGENTS.md",
   ".github/copilot-instructions.md",
@@ -46,11 +51,9 @@ export async function checkDeploymentTemplate(
     }
   }
   if (
-    ![
-      "terraform/tfvars.example",
-      "terraform/terraform.tfvars.example",
-      "terraform/deployment.auto.tfvars.json.example",
-    ].some((file) => relativeFiles.has(file))
+    ![...ALLOWED_TFVARS_FILES].some((file) =>
+      file.endsWith(".example") && relativeFiles.has(file)
+    )
   ) {
     failures.push(`${TEMPLATE_ROOT}/terraform: an example variables file is required`);
   }
@@ -132,10 +135,8 @@ function checkForbiddenArtifacts(
       /\.tfstate(?:\..*)?$/i.test(name) ||
       /\.tfplan$|\.plan$|^crash(?:\..*)?\.log$/i.test(name) ||
       (name === "bunny-hole-owner.json") ||
-      (/\.tfvars\.json$/i.test(name) &&
-        rel !== "terraform/deployment.auto.tfvars.json") ||
-      (/(?:\.tfvars|\.auto\.tfvars)$/.test(name) &&
-        name !== "terraform.tfvars.example") ||
+      (/(?:^|\.)(?:auto\.)?tfvars(?:\..*)?$/i.test(name) &&
+        !ALLOWED_TFVARS_FILES.has(rel)) ||
       ["coverage", "dist"].some((part) => segments.includes(part));
     if (forbidden) {
       failures.push(
@@ -186,6 +187,14 @@ async function checkWorkflows(
           `${TEMPLATE_ROOT}/${rel}: check workflow must not reference secrets`,
         );
       }
+      if (
+        !/git grep\s+-[A-Za-z]*l[A-Za-z]*(?:\s|$)/.test(source) ||
+        /git grep\s+-[A-Za-z]*n[A-Za-z]*(?:\s|$)/.test(source)
+      ) {
+        failures.push(
+          `${TEMPLATE_ROOT}/${rel}: secret scan must report filenames without matched content`,
+        );
+      }
       if (/':!\*\.md'|":!\*\.md"/.test(source)) {
         failures.push(
           `${TEMPLATE_ROOT}/${rel}: secret scan must include Markdown files`,
@@ -194,12 +203,43 @@ async function checkWorkflows(
     }
     if (name === "plan.yml") {
       checkProtectedWorkflow(workflow, source, rel, failures);
+      checkMarkerGuard(source, rel, failures);
       checkPlanWorkflow(workflow, rel, failures);
+      checkBootstrapRetryPlan(source, rel, failures);
     }
     if (name === "apply.yml") {
       checkProtectedWorkflow(workflow, source, rel, failures);
+      checkMarkerGuard(source, rel, failures);
       checkApplyWorkflow(source, rel, failures);
     }
+  }
+}
+
+function checkMarkerGuard(
+  source: string,
+  rel: string,
+  failures: string[],
+): void {
+  const path = `${TEMPLATE_ROOT}/${rel}`;
+  const requiredSentinels = [
+    "REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_ID",
+    "REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_NAME",
+    "REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_ID",
+    "REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_NAME",
+  ];
+  if (
+    !/OPERATION:\s*\$\{\{\s*inputs\.operation\s*\}\}/.test(source) ||
+    !/grep\s+-Roh\s+'REPLACE_WITH\[A-Za-z0-9_\]\*'\s+terraform\/backend\.tf\s+terraform\/deployment\.auto\.tfvars\.json/
+      .test(source) ||
+    !/invalid_marker/.test(source) ||
+    !/OPERATION.*bootstrap.*apply/s.test(source) ||
+    !/if\s+\[\[\s*"\$OPERATION"\s*!=\s*bootstrap\s*\]\]/.test(source) ||
+    !/case\s+"\$marker"\s+in[\s\S]*\n\s*\*\)/.test(source) ||
+    !requiredSentinels.every((sentinel) => source.includes(sentinel))
+  ) {
+    failures.push(
+      `${path}: marker guard must permit only the four Pull Zone bootstrap sentinels during bootstrap and reject them for normal apply`,
+    );
   }
 }
 
@@ -225,6 +265,22 @@ function checkPlanWorkflow(
   ) {
     failures.push(
       `${path}: plan must safely bind its operation, commit, and canonical digest`,
+    );
+  }
+}
+
+function checkBootstrapRetryPlan(
+  source: string,
+  rel: string,
+  failures: string[],
+): void {
+  if (
+    !/-refresh-only\s+\\\s*\n\s+-target=bunnynet_compute_container_app\.host/.test(
+      source,
+    )
+  ) {
+    failures.push(
+      `${TEMPLATE_ROOT}/${rel}: bootstrap retry plan must target only the host application`,
     );
   }
 }
@@ -263,12 +319,15 @@ function checkApplyWorkflow(
     failures.push(`${path}: apply workflow needs an explicit APPLY confirmation input`);
   }
   for (
-    const output of [
-      "bootstrap_public_pullzone_id",
-      "bootstrap_connector_pullzone_id",
+    const [resource, output] of [
+      ["bunnynet_pullzone.public", "bootstrap_public_pullzone_id"],
+      ["bunnynet_pullzone.connector", "bootstrap_connector_pullzone_id"],
     ]
   ) {
-    if (!source.includes(`output -raw ${output}`)) {
+    if (
+      !source.includes(`output -raw ${output}`) &&
+      !source.includes(`adopt_pullzone ${resource} ${output}`)
+    ) {
       failures.push(`${path}: bootstrap import must use ${output}`);
     }
   }
@@ -277,6 +336,7 @@ function checkApplyWorkflow(
     !/ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/.test(
       source,
     ) ||
+    !/persist-credentials:\s*false/.test(source) ||
     !/git\s+rev-parse\s+HEAD/.test(source) ||
     !/sha256sum/.test(source) ||
     !/terraform\s+-chdir=terraform\s+apply\s+-auto-approve\s+"\$plan_path"/.test(
@@ -285,6 +345,66 @@ function checkApplyWorkflow(
   ) {
     failures.push(
       `${path}: apply must verify and use the reviewed immutable commit and plan digest`,
+    );
+  }
+
+  const applyPositions = [...source.matchAll(
+    /terraform\s+-chdir=terraform\s+apply\s+-auto-approve\s+"\$plan_path"/g,
+  )].map((match) => match.index ?? -1);
+  const remoteTipPositions = [...source.matchAll(
+    /curl\s+--fail-with-body\s+--silent\s+--show-error[\s\S]{0,800}\"\$GITHUB_API_URL\/repos\/\$GITHUB_REPOSITORY\/commits\/\$encoded_branch\"/g,
+  )].map((match) => match.index ?? -1);
+  if (
+    remoteTipPositions.length < applyPositions.length ||
+    !/test\s+"\$remote_default_tip"\s*=\s*"\$REVIEWED_COMMIT"/.test(source) ||
+    !/remote_default_tip.*\^\[0-9a-f\]\{40\}/s.test(source) ||
+    !/printf\s+'%s'\s+"\$DEFAULT_BRANCH"\s+\|\s+jq\s+-sRr\s+@uri/.test(source) ||
+    !/GITHUB_API_URL:\s*\$\{\{\s*github\.api_url\s*\}\}/.test(source) ||
+    !/--header\s+"Authorization: Bearer \$GITHUB_TOKEN"/.test(source) ||
+    /api\.github\.com/.test(source) ||
+    /git\s+ls-remote/.test(source)
+  ) {
+    failures.push(
+      `${path}: every Terraform apply must compare the reviewed commit with the current remote default-branch tip`,
+    );
+  } else {
+    for (const applyPosition of applyPositions) {
+      const precedingRemoteTip = remoteTipPositions.filter((position) =>
+        position < applyPosition
+      ).at(-1);
+      // Keep the read-only tip check in the same short shell section as apply;
+      // an earlier workflow step still leaves a force-push race.
+      if (
+        precedingRemoteTip === undefined || applyPosition - precedingRemoteTip > 1200
+      ) {
+        failures.push(
+          `${path}: remote default-branch tip must be rechecked immediately before every Terraform apply`,
+        );
+      }
+    }
+  }
+  if (
+    !/terraform\s+-chdir=terraform\s+state\s+list/.test(source) ||
+    !/grep\s+-Fqx\s+--\s+"\$resource"/.test(source) ||
+    !/terraform\s+-chdir=terraform\s+state\s+show\s+-no-color\s+"\$resource"/.test(
+      source,
+    ) ||
+    !/state_id.*endpoint_id|endpoint_id.*state_id/s.test(source) ||
+    !/state_id"\s*!=\s*"\$endpoint_id/.test(source) ||
+    !/awk\s+'\$1\s*==\s*"id"\s*&&\s*\$2\s*==\s*"="/.test(source) ||
+    !/\^\[1-9\]\[0-9\]\*\$/.test(source) ||
+    !/terraform\s+-chdir=terraform\s+import\s+"\$resource"\s+"\$endpoint_id"/.test(
+      source,
+    ) ||
+    !/terraform\s+-chdir=terraform\s+output\s+-json\s+bootstrap_handoff/.test(source) ||
+    !/GITHUB_STEP_SUMMARY/.test(source) ||
+    !/terraform\s+-chdir=terraform\s+plan[\s\S]{0,200}-refresh-only[\s\S]{0,200}-target=bunnynet_compute_container_app\.host/
+      .test(
+        source,
+      )
+  ) {
+    failures.push(
+      `${path}: Pull Zone adoption must fail closed on state errors or ID mismatches and import only absent resources`,
     );
   }
 }

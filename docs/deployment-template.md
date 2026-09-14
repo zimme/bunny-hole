@@ -25,9 +25,10 @@ The configuration deliberately creates exactly:
   replicas.
 
 Both Pull Zones have dynamic caching, error caching, request coalescing, redirects, and
-origin retries disabled. Only the connector zone enables WebSockets. Exact hostnames
-request Bunny-managed TLS. Optional `PullZone` records may be created only in an
-existing Bunny DNS zone; the template never creates a zone or changes nameservers.
+origin retries disabled. Only the connector zone enables WebSockets. Custom hostname
+resources are disabled until DNS propagation is reviewed; their later stage requests
+Bunny-managed TLS. Optional `PullZone` records may be created only in an existing Bunny
+DNS zone; the template never creates a zone or changes nameservers.
 
 ## Why bootstrap is a reviewed transaction
 
@@ -41,15 +42,26 @@ exists without proposing a duplicate. The protected workflow therefore:
 3. reproduces the plan, verifies both bindings, and target-applies only
    `bunnynet_compute_container_app.host`;
 4. refreshes and reads the generated Pull Zone IDs from the two endpoint outputs;
-5. imports them at `bunnynet_pullzone.public` and `bunnynet_pullzone.connector`; and
-6. stops without applying policy changes.
+5. imports them at `bunnynet_pullzone.public` and `bunnynet_pullzone.connector`;
+6. emits a secret-free bootstrap handoff containing each imported zone's actual
+   generated ID, name, and CDN domain; and
+7. stops without applying policy changes.
 
-The operator then runs the full plan mode, reviews the complete imported state and
-proposed edge policy, and explicitly authorizes apply with the newly reported commit and
-digest. Apply fails if the default branch or normalized plan content changed. Bootstrap
-is idempotent after partial failure. Endpoint and container blocks are ordered provider
-lists, so renaming or reordering them is a reviewed identity change, not routine
-cleanup.
+The operator commits the handoff's exact generated IDs and names, then runs full plan
+mode. The Terraform guard reads those IDs from Bunny, requires each one to equal its
+corresponding Magic Container endpoint-generated Pull Zone, requires public and
+connector identities to remain distinct, and fails if names do not match. That prevents
+a replacement-only Pull Zone rename from becoming routine drift cleanup. First review
+and apply only the imported edge policy and any optional Bunny DNS records while
+`enable_hostname_tls=false`; no custom hostname/TLS resources exist in that stage. For
+external DNS, publish the CNAME/alias records to the safe CDN-domain outputs. After DNS
+propagation is independently verified, review a separate commit that sets
+`enable_hostname_tls=true`, then authorize the final hostname/TLS plan and apply. Apply
+fails if the default branch or normalized plan content changed. Bootstrap is idempotent
+after partial failure: keep the sentinels, rerun bootstrap, and it verifies an existing
+import against the generated endpoint before importing only a missing address. Endpoint
+and container blocks are ordered provider lists, so renaming or reordering them is a
+reviewed identity change, not routine cleanup.
 
 ## Trust and secret boundaries
 

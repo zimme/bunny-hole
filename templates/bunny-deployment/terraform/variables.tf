@@ -53,22 +53,52 @@ variable "connector_hostname" {
 }
 
 variable "public_pullzone_name" {
-  description = "Desired stable, account-unique name for the adopted 8080 Pull Zone."
+  description = "Actual generated name of the adopted 8080 Pull Zone. Bootstrap starts with its sentinel, then the imported name must be committed before full convergence."
   type        = string
+  default     = "REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_NAME"
 
   validation {
     condition     = length(trimspace(var.public_pullzone_name)) >= 1 && length(var.public_pullzone_name) <= 250
-    error_message = "public_pullzone_name must be the non-empty existing Bunny Pull Zone name."
+    error_message = "public_pullzone_name must be the non-empty actual Bunny Pull Zone name recorded by bootstrap_handoff."
   }
 }
 
 variable "connector_pullzone_name" {
-  description = "Desired stable, account-unique name for the adopted 7000 Pull Zone."
+  description = "Actual generated name of the adopted 7000 Pull Zone. Bootstrap starts with its sentinel, then the imported name must be committed before full convergence."
   type        = string
+  default     = "REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_NAME"
 
   validation {
     condition     = length(trimspace(var.connector_pullzone_name)) >= 1 && length(var.connector_pullzone_name) <= 250
-    error_message = "connector_pullzone_name must be the non-empty existing Bunny Pull Zone name."
+    error_message = "connector_pullzone_name must be the non-empty actual Bunny Pull Zone name recorded by bootstrap_handoff."
+  }
+}
+
+variable "public_pullzone_id" {
+  description = "Actual generated ID of the adopted 8080 Pull Zone. Bootstrap starts with its sentinel, then the imported ID must be committed before full convergence."
+  type        = string
+  default     = "REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_ID"
+
+  validation {
+    condition = (
+      var.public_pullzone_id == "REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_ID" ||
+      can(regex("^[1-9][0-9]*$", var.public_pullzone_id))
+    )
+    error_message = "public_pullzone_id must be the bootstrap sentinel or a positive numeric Bunny Pull Zone ID recorded by bootstrap_handoff."
+  }
+}
+
+variable "connector_pullzone_id" {
+  description = "Actual generated ID of the adopted 7000 Pull Zone. Bootstrap starts with its sentinel, then the imported ID must be committed before full convergence."
+  type        = string
+  default     = "REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_ID"
+
+  validation {
+    condition = (
+      var.connector_pullzone_id == "REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_ID" ||
+      can(regex("^[1-9][0-9]*$", var.connector_pullzone_id))
+    )
+    error_message = "connector_pullzone_id must be the bootstrap sentinel or a positive numeric Bunny Pull Zone ID recorded by bootstrap_handoff."
   }
 }
 
@@ -182,4 +212,10 @@ variable "dns_ttl" {
     condition     = var.dns_ttl >= 60 && var.dns_ttl <= 86400 && floor(var.dns_ttl) == var.dns_ttl
     error_message = "dns_ttl must be a whole number between 60 and 86400 seconds."
   }
+}
+
+variable "enable_hostname_tls" {
+  description = "Creates custom-hostname resources with Bunny-managed TLS and forced HTTPS only after DNS is published and propagation is reviewed."
+  type        = bool
+  default     = false
 }

@@ -62,10 +62,15 @@ Reference an immutable image digest.
 
 Magic Containers creates CDN Pull Zones as a side effect of endpoint creation. The
 template therefore target-applies only the application, imports both generated zones,
-and stops. Treat their IDs as public inventory, but do not rename endpoint blocks
-casually: a rename may recreate a Pull Zone. If the application or zone already exists,
-inspect it first and obtain explicit approval before importing/adopting it. Run and
-review a separate full plan after import; only then ask for apply approval.
+records their IDs and actual generated names in `bootstrap_handoff`, and stops. Commit
+those exact values before the full plan: Pull Zone `name` is replacement-only in
+provider 0.18.2, so an arbitrary desired name is not a normal convergence change. Treat
+IDs and generated names as public inventory, but do not rename endpoint blocks casually:
+a rename may recreate a Pull Zone. If the application or zone already exists, inspect it
+first and obtain explicit approval before importing/adopting it. First run a reviewed
+full plan with hostname TLS disabled to converge policy and optional Bunny DNS records.
+After DNS propagation is verified, review and approve a separate apply that enables
+managed TLS.
 
 Provider 0.18.2 can configure the adopted zones' cache/WebSocket policy, exact custom
 hostnames, managed TLS, and optional records in an existing Bunny DNS zone.

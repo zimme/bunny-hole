@@ -6,11 +6,8 @@
 crash.log
 crash.*.log
 bunny-hole-owner.json
-terraform.tfvars
-# The deployment file contains public configuration and is intentionally tracked.
-*.auto.tfvars
-*.tfvars.json
-*.auto.tfvars.json
+*.tfvars*
+# Only these documented examples and the public deployment configuration may be tracked.
 !tfvars.example
 !deployment.auto.tfvars.json.example
 !deployment.auto.tfvars.json
