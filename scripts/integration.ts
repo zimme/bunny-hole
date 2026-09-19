@@ -257,11 +257,62 @@ try {
   ) throw new Error("response header filtering failed");
   await filtered.body?.cancel();
 
+  const originNotFound = await publicRequest("/origin-404");
+  if (
+    originNotFound.status !== 404 ||
+    originNotFound.headers.get("x-origin-status") !== "not-found" ||
+    await originNotFound.text() !== "origin-not-found"
+  ) throw new Error("origin 404 was not preserved through the tunnel");
+
+  const disconnect = await publicRequest("/disconnect-stream");
+  const disconnectReader = disconnect.body?.getReader();
+  if (!disconnectReader || (await disconnectReader.read()).done) {
+    throw new Error("stream did not begin before public cancellation");
+  }
+  await disconnectReader.cancel();
+  await waitFor(
+    async () => {
+      const observed = await publicRequest("/disconnect-observed");
+      return (await observed.json()).cancelledResponses > 0;
+    },
+    5_000,
+    "origin did not observe public response cancellation",
+  );
+
   const started = Date.now();
   const timedOut = await publicRequest("/slow");
-  if (timedOut.status !== 502 || Date.now() - started > 5_000) {
-    throw new Error("origin timeout was not enforced");
+  const elapsed = Date.now() - started;
+  if (timedOut.status !== 502 || elapsed > 5_000) {
+    throw new Error(
+      `origin timeout was not enforced (status=${timedOut.status}, elapsedMs=${elapsed})`,
+    );
   }
+  await timedOut.body?.cancel();
+
+  await run("docker", [...compose, "stop", "connector"], { env: environment });
+  await waitFor(
+    async () => {
+      const unavailable = await publicRequest("/after-connector-stop");
+      const body = await unavailable.text();
+      return [404, 502, 503].includes(unavailable.status) &&
+        body !== "origin-not-found" &&
+        unavailable.headers.get("x-origin-status") === null;
+    },
+    10_000,
+    "public traffic remained available after connector stopped",
+  );
+  await run("docker", [...compose, "up", "--no-build", "--detach", "connector"], {
+    env: environment,
+  });
+  await waitFor(
+    async () => {
+      const recovered = await publicRequest("/after-connector-restart");
+      await recovered.body?.cancel();
+      return recovered.ok;
+    },
+    30_000,
+    "connector did not restore public traffic",
+  );
 
   if (
     await rawHttpStatus(
@@ -313,6 +364,7 @@ try {
 async function waitFor(
   predicate: () => Promise<boolean>,
   timeout: number,
+  failure = "integration service did not become ready",
 ): Promise<void> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -323,11 +375,12 @@ async function waitFor(
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error("integration service did not become ready");
+  throw new Error(failure);
 }
 
 async function rawHttpStatus(request: string): Promise<number> {
   const connection = await Deno.connect({ hostname: testHost, port: 18080 });
+  const timeout = setTimeout(() => connection.close(), 10_000);
   try {
     await connection.write(new TextEncoder().encode(request));
     const bytes = new Uint8Array(512);
@@ -338,6 +391,7 @@ async function rawHttpStatus(request: string): Promise<number> {
       )[1],
     );
   } finally {
+    clearTimeout(timeout);
     connection.close();
   }
 }
@@ -347,6 +401,9 @@ function publicRequest(
   init: RequestInit = {},
 ): Promise<Response> {
   return new Promise((resolve, reject) => {
+    const signal = init.signal
+      ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+      : AbortSignal.timeout(10_000);
     const headers = new Headers(init.headers);
     headers.set("host", "tunnel.test");
     const client = httpRequest({
@@ -355,6 +412,7 @@ function publicRequest(
       path,
       method: init.method ?? "GET",
       headers: Object.fromEntries(headers),
+      signal,
     }, (response) => {
       const responseHeaders = new Headers();
       for (const [name, values] of Object.entries(response.headersDistinct)) {

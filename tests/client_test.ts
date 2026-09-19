@@ -159,12 +159,15 @@ Deno.test("library connector can run again after stop", async () => {
     )(input);
   };
   const directory = await Deno.makeTempDir();
+  const trustedCaFile = `${directory}/ca-certificates.crt`;
+  await Deno.writeTextFile(trustedCaFile, "test CA bundle\n");
   try {
     const connector = createConnector({
       credentials,
       frpcPath: Deno.execPath(),
       workingDirectory: directory,
       stderr: "pipe",
+      trustedCaFile,
     });
     connector.stop();
     const firstRun = connector.run();

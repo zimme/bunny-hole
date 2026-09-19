@@ -1,0 +1,56 @@
+name: Check deployment
+
+on:
+  pull_request:
+  # A copied consumer repository may use any default-branch name. Keep this
+  # credential-free check on every push rather than silently skipping its
+  # actual deployment branch when it is not named `main`.
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: deployment-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.2
+          terraform_wrapper: false
+      - name: Check formatting
+        run: terraform -chdir=terraform fmt -check -recursive
+      - name: Initialize without a state backend
+        run: terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+      - name: Validate configuration
+        run: terraform -chdir=terraform validate -no-color
+      - name: Run mock-provider regression tests
+        run: terraform -chdir=terraform test -no-color
+      - name: Reject generated or secret-bearing files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find . -type f \( -name '*.tfstate*' -o -name '*.tfplan' -o -name '*.plan' -o -name 'crash.log' -o -name 'crash.*.log' -o -name 'bunny-hole-owner.json' -o -name '*.tfvars*' \) ! -path './terraform/tfvars.example' ! -path './terraform/deployment.auto.tfvars.json.example' ! -path './terraform/deployment.auto.tfvars.json' -print -quit | grep -q .; then
+            echo 'Terraform state, plans, crash logs, owner files, and secret-bearing tfvars must not be committed.' >&2
+            exit 1
+          fi
+          if matched_files="$(git grep -IlE "(BEGIN (EC |OPENSSH |RSA )?PRIVATE KEY|(gh[oprsu]|github_pat)_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|BUNNYNET_API_KEY[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9_-]{16,}[\"']?|[\"']privateKey[\"'][[:space:]]*:[[:space:]]*[\"'][A-Za-z0-9_-]{43}[\"'])")"; then
+            echo 'Likely credential material is present in these tracked files (filenames only):' >&2
+            printf '%s\n' "$matched_files" >&2
+            exit 1
+          else
+            grep_status=$?
+            if (( grep_status != 1 )); then
+              echo 'Credential scan failed; refusing to continue.' >&2
+              exit "$grep_status"
+            fi
+          fi

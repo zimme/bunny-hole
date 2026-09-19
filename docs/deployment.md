@@ -2,7 +2,10 @@
 
 This guide uses the Bunny web console and immutable published images. It does not
 connect Bunny to GitHub and keeps every secret-bearing action in a human-controlled
-terminal or dashboard session.
+terminal or dashboard session. For a reviewable consumer repository with protected
+manual Terraform workflows, use the [consumer GitOps template](deployment-template.md).
+Its two-stage bootstrap adopts the Magic-Container-generated Pull Zones before applying
+CDN, hostname, TLS, and optional Bunny DNS policy.
 
 ## 1. Generate the owner identity
 
@@ -152,8 +155,10 @@ the default. For an explicit Docker, Compose, or private-network service address
 connector into a general proxy. Keep Home Assistant, Plex, and similar applications' own
 authentication enabled. Bunny Hole does not add viewer accounts.
 
-Test `https://home.example.com/` from a different network. A generic 404 means no active
-exact route, 502 means connector/origin failure, and 503 means the host is draining or
+Test `https://home.example.com/` from a different network. A 404 can mean there is no
+active exact route—including a configured route whose connector is temporarily absent—
+but an origin is also free to return its own 404. A 502 means an origin or tunnel error
+after the FRP virtual host accepted the request, and 503 means the host is draining or
 at its concurrency bound. Public errors intentionally omit internal detail.
 
 ## Kubernetes enrollment before installation

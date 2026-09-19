@@ -5,7 +5,8 @@ canonical instruction source for all coding agents.
 
 ## Commands
 
-Use Deno 2.9.5 and the Compose-native development service. From the host:
+Use Deno 2.9.5 and the Compose-native development service. Terraform 1.16.2 is pinned
+for validating the consumer deployment template. From the host:
 
 ```sh
 docker compose up --build --detach development
@@ -38,6 +39,9 @@ Container and agent tooling; never add npm task wrappers.
   the process holding the live FRP connection. Do not use mutable action references.
 - Do not create releases, tags, Bunny resources, or deployments without explicit
   authorization.
+- Keep `templates/bunny-deployment` copyable and self-contained. Its live workflows are
+  manual, default-branch-only, protected-environment operations; PR checks receive no
+  deployment or state credentials.
 - Add behavior tests for protocol/security changes and run the production-image Compose
   integration path.
 - Use Conventional Commits. Never add a hand-written `CHANGELOG.md`.

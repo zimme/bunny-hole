@@ -1,0 +1,240 @@
+name: Apply deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Bootstrap adopts generated Pull Zones; apply converges reviewed infrastructure
+        required: true
+        type: choice
+        options: [bootstrap, apply]
+      confirmation:
+        description: Enter BOOTSTRAP or APPLY to match the selected operation
+        required: true
+        type: string
+      reviewed_commit:
+        description: Exact 40-character commit SHA printed by Plan deployment
+        required: true
+        type: string
+      reviewed_plan_sha256:
+        description: Canonical SHA-256 printed by Plan deployment
+        required: true
+        type: string
+
+concurrency:
+  group: bunny-hole-terraform-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    if: >-
+      github.ref_name == github.event.repository.default_branch &&
+      ((inputs.operation == 'bootstrap' && inputs.confirmation == 'BOOTSTRAP') ||
+       (inputs.operation == 'apply' && inputs.confirmation == 'APPLY'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      BUNNYNET_API_KEY: ${{ secrets.BUNNYNET_API_KEY }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Verify reviewed commit is still the default-branch tip
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$DEFAULT_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]
+          [[ "$REVIEWED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$REVIEWED_COMMIT"
+          encoded_branch="$(printf '%s' "$DEFAULT_BRANCH" | jq -sRr @uri)"
+          remote_default_tip="$(curl --fail-with-body --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GITHUB_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$encoded_branch" |
+            jq -er '.sha')"
+          [[ "$remote_default_tip" =~ ^[0-9a-f]{40}$ ]]
+          test "$remote_default_tip" = "$REVIEWED_COMMIT"
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.2
+          terraform_wrapper: false
+      - name: Verify private setup is complete
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          test -f terraform/backend.tf
+          test -f terraform/deployment.auto.tfvars.json
+          [[ "$OPERATION" == bootstrap || "$OPERATION" == apply ]]
+          markers=''
+          if markers="$(grep -Roh 'REPLACE_WITH[A-Za-z0-9_]*' terraform/backend.tf terraform/deployment.auto.tfvars.json)"; then
+            :
+          else
+            grep_status=$?
+            if (( grep_status > 1 )); then
+              echo 'Unable to inspect deployment marker files; refusing to continue.' >&2
+              exit 1
+            fi
+          fi
+          invalid_marker=0
+          while IFS= read -r marker; do
+            [[ -z "$marker" ]] && continue
+            case "$marker" in
+              REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_ID|REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_NAME|REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_ID|REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_NAME)
+                if [[ "$OPERATION" != bootstrap ]]; then
+                  echo "Bootstrap marker $marker is not allowed for operation=$OPERATION." >&2
+                  invalid_marker=1
+                fi
+                ;;
+              *)
+                echo "Unexpected deployment marker $marker." >&2
+                invalid_marker=1
+                ;;
+            esac
+          done <<< "$markers"
+          (( invalid_marker == 0 ))
+      - name: Initialize remote state
+        run: terraform -chdir=terraform init -input=false -lockfile=readonly
+      - name: Apply the reviewed plan
+        if: inputs.operation == 'apply'
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+          REVIEWED_PLAN_SHA256: ${{ inputs.reviewed_plan_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          for resource in \
+            bunnynet_compute_container_app.host \
+            bunnynet_pullzone.public \
+            bunnynet_pullzone.connector; do
+            terraform -chdir=terraform state show "$resource" >/dev/null 2>&1 || {
+              echo "$resource is not bootstrapped. Run operation=bootstrap first." >&2
+              exit 1
+            }
+          done
+          plan_path=/tmp/bunny-hole-reviewed.tfplan
+          terraform -chdir=terraform plan -no-color -lock-timeout=5m \
+            -out="$plan_path"
+          terraform -chdir=terraform show -json "$plan_path" |
+            jq -S 'del(.timestamp)' \
+              > /tmp/bunny-hole-reviewed-plan.json
+          actual_plan_sha256="$(sha256sum /tmp/bunny-hole-reviewed-plan.json | cut -d ' ' -f1)"
+          test "$actual_plan_sha256" = "$REVIEWED_PLAN_SHA256"
+          echo "Reviewed plan digest verified: $actual_plan_sha256"
+          [[ "$DEFAULT_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]
+          [[ "$REVIEWED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          encoded_branch="$(printf '%s' "$DEFAULT_BRANCH" | jq -sRr @uri)"
+          remote_default_tip="$(curl --fail-with-body --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GITHUB_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$encoded_branch" |
+            jq -er '.sha')"
+          [[ "$remote_default_tip" =~ ^[0-9a-f]{40}$ ]]
+          test "$remote_default_tip" = "$REVIEWED_COMMIT"
+          terraform -chdir=terraform apply -auto-approve "$plan_path"
+
+      - name: Apply the reviewed bootstrap plan and adopt generated Pull Zones
+        if: inputs.operation == 'bootstrap'
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+          REVIEWED_PLAN_SHA256: ${{ inputs.reviewed_plan_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          plan_path=/tmp/bunny-hole-reviewed.tfplan
+          if ! terraform -chdir=terraform state show bunnynet_compute_container_app.host >/dev/null 2>&1; then
+            terraform -chdir=terraform plan -no-color -lock-timeout=5m \
+              -target=bunnynet_compute_container_app.host \
+              -out="$plan_path"
+          else
+            terraform -chdir=terraform plan -no-color -lock-timeout=5m \
+              -refresh-only \
+              -target=bunnynet_compute_container_app.host \
+              -out="$plan_path"
+          fi
+          terraform -chdir=terraform show -json "$plan_path" |
+            jq -S 'del(.timestamp)' \
+              > /tmp/bunny-hole-reviewed-plan.json
+          actual_plan_sha256="$(sha256sum /tmp/bunny-hole-reviewed-plan.json | cut -d ' ' -f1)"
+          test "$actual_plan_sha256" = "$REVIEWED_PLAN_SHA256"
+          echo "Reviewed bootstrap plan digest verified: $actual_plan_sha256"
+          [[ "$DEFAULT_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]
+          [[ "$REVIEWED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          encoded_branch="$(printf '%s' "$DEFAULT_BRANCH" | jq -sRr @uri)"
+          remote_default_tip="$(curl --fail-with-body --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GITHUB_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$encoded_branch" |
+            jq -er '.sha')"
+          [[ "$remote_default_tip" =~ ^[0-9a-f]{40}$ ]]
+          test "$remote_default_tip" = "$REVIEWED_COMMIT"
+          terraform -chdir=terraform apply -auto-approve "$plan_path"
+
+          adopt_pullzone() {
+            local resource="$1"
+            local output_name="$2"
+            local endpoint_id state_list state_output state_id
+
+            endpoint_id="$(terraform -chdir=terraform output -raw "$output_name")"
+            [[ "$endpoint_id" =~ ^[1-9][0-9]*$ ]] || {
+              echo "$output_name did not return one valid Pull Zone ID" >&2
+              return 1
+            }
+            state_list="$(terraform -chdir=terraform state list)" || {
+              echo "Unable to inspect Terraform state for $resource; refusing adoption." >&2
+              return 1
+            }
+            if printf '%s\n' "$state_list" | grep -Fqx -- "$resource"; then
+              state_output="$(terraform -chdir=terraform state show -no-color "$resource")" || {
+                echo "Unable to read Terraform state for $resource; refusing adoption." >&2
+                return 1
+              }
+              state_id="$(printf '%s\n' "$state_output" | awk '$1 == "id" && $2 == "=" { value = $3; gsub(/^"/, "", value); gsub(/"$/, "", value); print value }')"
+              [[ "$state_id" =~ ^[1-9][0-9]*$ ]] || {
+                echo "Terraform state for $resource has no unambiguous ID; refusing adoption." >&2
+                return 1
+              }
+              if [[ "$state_id" != "$endpoint_id" ]]; then
+                echo "Terraform state ID for $resource does not match $output_name; refusing adoption." >&2
+                return 1
+              fi
+              echo "$resource already adopts the endpoint-generated Pull Zone $endpoint_id."
+            else
+              terraform -chdir=terraform import "$resource" "$endpoint_id"
+            fi
+          }
+
+          adopt_pullzone bunnynet_pullzone.public bootstrap_public_pullzone_id
+          adopt_pullzone bunnynet_pullzone.connector bootstrap_connector_pullzone_id
+          {
+            echo '## Safe bootstrap handoff'
+            terraform -chdir=terraform output -json bootstrap_handoff | jq -S .
+          } >> "$GITHUB_STEP_SUMMARY"

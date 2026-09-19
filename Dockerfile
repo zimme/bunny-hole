@@ -23,6 +23,21 @@ RUN case "${TARGETARCH}" in \
     && cp /tmp/frp/frpc /out/frpc \
     && chmod 0755 /out/frps /out/frpc
 
+FROM denoland/deno:${DENO_VERSION}@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463 AS trust
+ARG CA_BUNDLE_SHA256=f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9
+ARG CA_BUNDLE_LICENSE_SHA256=fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85
+USER root
+# curl.se publishes this Mozilla CA extract and its digest. Keep the source bytes and
+# MPL-2.0 license independently pinned so FRP receives identical trust roots in OCI
+# and native connector distributions.
+RUN mkdir -p /out \
+    && deno eval \
+      'const [url,path,want]=Deno.args; const response=await fetch(url); if(!response.ok) throw new Error(`download failed: ${response.status}`); const bytes=new Uint8Array(await response.arrayBuffer()); const got=[...new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))].map(x=>x.toString(16).padStart(2,"0")).join(""); if(got!==want) throw new Error("pinned download checksum mismatch"); await Deno.writeFile(path,bytes);' \
+      https://curl.se/ca/cacert.pem /out/ca-certificates.crt "${CA_BUNDLE_SHA256}" \
+    && deno eval \
+      'const [url,path,want]=Deno.args; const response=await fetch(url); if(!response.ok) throw new Error(`download failed: ${response.status}`); const bytes=new Uint8Array(await response.arrayBuffer()); const got=[...new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))].map(x=>x.toString(16).padStart(2,"0")).join(""); if(got!==want) throw new Error("pinned download checksum mismatch"); await Deno.writeFile(path,bytes);' \
+      https://www.mozilla.org/media/MPL/2.0/index.815ca599c9df.txt /out/MOZILLA-CA-LICENSE.txt "${CA_BUNDLE_LICENSE_SHA256}"
+
 FROM denoland/deno:${DENO_VERSION}@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463 AS builder
 WORKDIR /src
 COPY deno.runtime.json deno.runtime.lock ./
@@ -37,6 +52,10 @@ RUN deno compile --config deno.runtime.json --frozen \
       --output /out/bunny-hole apps/connector/main.ts \
     && deno compile --config deno.runtime.json --frozen --allow-env=PORT --allow-net \
       --output /out/origin fixtures/origin/main.ts \
+    && deno compile --config deno.runtime.json --frozen \
+      --allow-env=BUNNY_HOLE_TLS_CERT_PATH,BUNNY_HOLE_TLS_KEY_PATH,PORT \
+      --allow-net --allow-read \
+      --output /out/tls-gateway fixtures/tls_gateway/main.ts \
     && mkdir -p /out/state
 
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS host-runtime
@@ -56,8 +75,11 @@ ENTRYPOINT ["/usr/local/bin/bunny-hole-host"]
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS connector-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/bunny-hole /usr/local/bin/bunny-hole
 COPY --from=frp --chown=nonroot:nonroot /out/frpc /usr/local/bin/frpc
+COPY --from=trust --chown=nonroot:nonroot /out/ca-certificates.crt /usr/local/bin/ca-certificates.crt
+COPY --from=trust --chown=nonroot:nonroot /out/MOZILLA-CA-LICENSE.txt /usr/share/licenses/mozilla-ca/MPL-2.0.txt
 COPY --chown=nonroot:nonroot third_party/frp.LICENSE /usr/share/licenses/frp/LICENSE
-ENV BUNNY_HOLE_FRPC_PATH=/usr/local/bin/frpc
+ENV BUNNY_HOLE_FRPC_PATH=/usr/local/bin/frpc \
+    BUNNY_HOLE_TRUSTED_CA_FILE=/usr/local/bin/ca-certificates.crt
 ENV HOME=/tmp
 WORKDIR /tmp
 USER nonroot
@@ -70,3 +92,12 @@ ENV PORT=3000
 EXPOSE 3000
 USER nonroot
 ENTRYPOINT ["/usr/local/bin/origin"]
+
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS tls-gateway-runtime
+COPY --from=builder --chown=nonroot:nonroot /out/tls-gateway /usr/local/bin/tls-gateway
+ENV PORT=7443 \
+    BUNNY_HOLE_TLS_CERT_PATH=/tls/tls.crt \
+    BUNNY_HOLE_TLS_KEY_PATH=/tls/tls.key
+EXPOSE 7443/tcp
+USER nonroot
+ENTRYPOINT ["/usr/local/bin/tls-gateway"]

@@ -59,8 +59,27 @@ const frpLicense = await Deno.readTextFile("third_party/frp.LICENSE");
 if (!frpLicense.includes("Apache License") || !frpLicense.includes("Version 2.0")) {
   throw new Error("embedded FRP license text is missing");
 }
+const caBundle = JSON.parse(
+  await Deno.readTextFile("third_party/ca-certificates.json"),
+);
+if (
+  caBundle.name !== "Mozilla CA certificate bundle" ||
+  caBundle.version !== "2026-08-13" ||
+  caBundle.source !== "https://curl.se/ca/cacert.pem" ||
+  caBundle.sha256 !==
+    "f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9" ||
+  caBundle.license !== "MPL-2.0" ||
+  caBundle.licenseSource !==
+    "https://www.mozilla.org/media/MPL/2.0/index.815ca599c9df.txt" ||
+  caBundle.licenseSha256 !==
+    "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+) {
+  throw new Error(
+    "Mozilla CA bundle provenance, checksum, or MPL-2.0 license changed without review",
+  );
+}
 console.log(
-  "license check: MIT project; SimpleWebAuthn and yaml are MIT; cspell is tooling; embedded FRP is Apache-2.0",
+  "license check: MIT project; SimpleWebAuthn and yaml are MIT; cspell is tooling; embedded FRP is Apache-2.0; Mozilla CA bundle is MPL-2.0",
 );
 
 async function typeScriptFiles(path: string): Promise<string[]> {

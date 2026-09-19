@@ -41,6 +41,7 @@ Usage:
   bunny-hole route list [--host NAME]
   bunny-hole route delete ID [--host NAME]
   bunny-hole connect [--host NAME] [--transport wss|quic|tcp|websocket]
+                     [--trusted-ca-file FILE]
   bunny-hole check [--host NAME]
   bunny-hole owner generate --output FILE
   bunny-hole owner passkey --owner-key FILE [--host NAME] [--name NAME]
@@ -446,6 +447,7 @@ async function connect(flags: Flags): Promise<void> {
           transport,
           signal: controller.signal,
           allowInsecureTransport: development,
+          trustedCaFile: optionalString(flags, "trusted-ca-file"),
         });
         if (!controller.signal.aborted) {
           console.error(`connector stopped with code ${code}; reconnecting`);

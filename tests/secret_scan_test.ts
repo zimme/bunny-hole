@@ -11,3 +11,7 @@ Deno.test("secret scan recognizes serialized Bunny Hole private keys", () => {
     false,
   );
 });
+
+Deno.test("secret scan recognizes GitHub refresh tokens", () => {
+  assertEquals(containsSecret(`ghr_${"A".repeat(30)}`), true);
+});

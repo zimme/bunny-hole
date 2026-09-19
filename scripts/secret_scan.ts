@@ -17,7 +17,7 @@ async function walk(path = "."): Promise<string[]> {
 const patterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /\bBUNNYNET_API_KEY\s*[:=]\s*["']?[A-Za-z0-9_-]{16,}/,
-  /\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}/,
+  /\b(?:gh[oprsu]|github_pat)_[A-Za-z0-9_]{20,}/,
   /["']privateKey["']\s*:\s*["'][A-Za-z0-9_-]{43}["']/,
 ];
 
