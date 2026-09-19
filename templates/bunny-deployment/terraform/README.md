@@ -33,31 +33,38 @@ the Bunny API key out of files and agent conversations: the provider reads it on
 that this is a full-account key and does not document scoped/OIDC deployment keys.
 
 The HCP Terraform backend is the checked-in example. Copy it and replace its
-organization placeholder before `terraform init`:
+organization placeholder before `terraform init`. Copy the public deployment
+configuration to the filename required by the protected workflows:
 
 ```sh
 cp backend.tf.example backend.tf
+cp deployment.auto.tfvars.json.example deployment.auto.tfvars.json
+```
+
+Edit `deployment.auto.tfvars.json` with public configuration only and commit it after
+replacing the documented markers. `owner_public_key` is the public Ed25519 key printed
+by the private owner-generation command. Never put the owner private key, passkey
+response, connector state, registry token, or Bunny API key in a tfvars file. The HCL
+`tfvars.example` remains available for an optional local override:
+
+```sh
 cp tfvars.example terraform.tfvars
 chmod 600 terraform.tfvars
 ```
 
-Edit `terraform.tfvars` with public configuration only. `owner_public_key` is the public
-Ed25519 key printed by the private owner-generation command. Never put the owner private
-key, passkey response, connector state, registry token, or Bunny API key in a tfvars
-file. The JSON example is also public-only configuration and should be copied to and
-committed as `deployment.auto.tfvars.json`; the protected workflows require this file.
-Keep local overrides such as `terraform.tfvars` untracked.
+Keep `terraform.tfvars` untracked; the protected workflows require the committed
+`deployment.auto.tfvars.json` file.
 
 Before initialization, create/select the HCP Terraform workspace and verify in its
 Settings that **Execution mode is Local** (not Remote or Agent). This is a required
-prerequisite that must be verified: the protected workflows execute Terraform on the
-GitHub runner, write local plan files, and provide Bunny/HCP credentials through the
-runner environment; HCP still stores and locks the state. The `cloud` backend cannot
-encode that workspace setting. Authenticate the private shell with `terraform login` or
-configure the protected `TF_TOKEN_app_terraform_io` mechanism. State contains resource
-configuration and must be encrypted, access-controlled, locked, backed up, and kept out
-of pull requests. Other secure remote backends may be used only after adapting the
-backend example and the repository's protected workflow.
+prerequisite: the protected workflows execute Terraform on the GitHub runner, write
+local plan files, and provide Bunny/HCP credentials through the runner environment; HCP
+still stores and locks the state. The `cloud` backend cannot encode that workspace
+setting. Authenticate the private shell with `terraform login` or configure the
+protected `TF_TOKEN_app_terraform_io` mechanism. State contains resource configuration
+and must be encrypted, access-controlled, locked, backed up, and kept out of pull
+requests. Other secure remote backends may be used only after adapting the backend
+example and the repository's protected workflow.
 
 ## Bootstrap and adopt the auto-generated Pull Zones
 

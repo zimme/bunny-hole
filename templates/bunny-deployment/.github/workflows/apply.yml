@@ -48,6 +48,8 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
       - name: Verify reviewed commit is still the default-branch tip
+        # This is a point-in-time guard, not an atomic lock on the default branch.
+        # Keep the protected approval and apply window free of new default-branch pushes.
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

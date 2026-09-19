@@ -141,8 +141,10 @@ reviewed commit, then run **Plan deployment** and **Apply deployment** with
 `operation=apply`, confirmation `APPLY`, and the new commit/plan digest. That final
 stage creates managed-TLS custom hostnames and forces HTTPS. Each apply requires the
 reviewed commit to remain the default-branch tip and applies only a reproduced plan with
-the same canonical digest. If configuration or remote state changed, the digest differs
-and apply stops. Binary plans, normalized plan JSON, and state remain on ephemeral
+the same canonical digest. The tip check is a best-effort guard rather than an atomic
+branch lock, so do not push to the default branch between approval and completion. If
+configuration or remote state changed, the digest differs and apply stops. Binary plans,
+normalized plan JSON, and state remain on ephemeral
 runners and are never uploaded as artifacts or posted to pull requests.
 
 Bootstrap is idempotent after partial failure: rerun the protected bootstrap plan/apply
