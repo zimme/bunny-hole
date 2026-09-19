@@ -46,6 +46,7 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
           const fingerprint = JSON.stringify({
             enrollmentId: credentials.enrollmentId,
             routes: session.routes.map((route) => route.id).sort(),
+            renewAt: Date.parse(session.expiresAt) - 60_000,
           });
           const current = supervisors.get(host.reference);
           if (
@@ -254,12 +255,16 @@ function formatHost(host: string): string {
 async function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return;
   await new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = () => {
-      clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
       signal.removeEventListener("abort", finish);
       resolve();
     };
-    const timer = setTimeout(finish, milliseconds);
+    timer = setTimeout(finish, milliseconds);
     signal.addEventListener("abort", finish, { once: true });
     if (signal.aborted) finish();
   });

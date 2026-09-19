@@ -711,12 +711,16 @@ function standardBase64(value: string): string {
 async function abortableDelay(delay: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return;
   await new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = () => {
-      clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
       signal.removeEventListener("abort", finish);
       resolve();
     };
-    const timer = setTimeout(finish, delay);
+    timer = setTimeout(finish, delay);
     signal.addEventListener("abort", finish, { once: true });
     if (signal.aborted) finish();
   });

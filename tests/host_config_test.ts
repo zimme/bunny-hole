@@ -16,6 +16,11 @@ Deno.test("host configuration permits only secure production transports", () => 
       .publicUrl.hostname,
     "hole.example.com",
   );
+  assertEquals(
+    loadHostConfig({ ...base, BUNNY_HOLE_PUBLIC_URL: "https://hole.example.com." })
+      .publicUrl.href,
+    "https://hole.example.com/",
+  );
   assertThrows(
     () => loadHostConfig({ ...base, BUNNY_HOLE_PUBLIC_URL: "http://hole.example.com" }),
     /HTTPS/,
