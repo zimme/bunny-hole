@@ -1,0 +1,13 @@
+.git
+.github
+.agents
+.devcontainer/*
+!.devcontainer/Dockerfile
+!.devcontainer/entrypoint.sh
+.vscode
+coverage
+dist
+docs
+tests
+*.md
+!README.md

@@ -1,0 +1,9 @@
+{
+  "lock": {
+    "path": "./deno.runtime.lock",
+    "frozen": true
+  },
+  "imports": {
+    "@simplewebauthn/server": "npm:@simplewebauthn/server@13.3.2"
+  }
+}

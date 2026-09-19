@@ -1,0 +1,41 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: bunnyholehosts.bunny-hole.dev
+spec:
+  group: bunny-hole.dev
+  names:
+    kind: BunnyHoleHost
+    listKind: BunnyHoleHostList
+    plural: bunnyholehosts
+    shortNames: [bhhost]
+    singular: bunnyholehost
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [url, credentialsSecretRef]
+              properties:
+                url:
+                  type: string
+                  pattern: ^https://
+                transport:
+                  type: string
+                  enum: [wss]
+                  default: wss
+                credentialsSecretRef:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                      minLength: 1
+                  additionalProperties: false
+              additionalProperties: false

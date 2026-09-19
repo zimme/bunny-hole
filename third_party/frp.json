@@ -1,0 +1,14 @@
+{
+  "name": "frp",
+  "version": "0.70.1",
+  "license": "Apache-2.0",
+  "source": "https://github.com/fatedier/frp",
+  "archives": {
+    "linux-amd64": "333da23d1b9009d7c01638e9ba38cf4600f7d37d393f854e96ee1396adefa9a6",
+    "linux-arm64": "3990f396a9a490ee7f0e5f355287750ed41520064ed999eab443b5e9a78d773d",
+    "darwin-amd64": "cbf69cf26e5553e914e97d37f5d4367fa30f5f531d073a889465af4719281e25",
+    "darwin-arm64": "cfa733b5a261c1647edee3c1fc4133d2542989b28f5602e81d47fc821d25c55f",
+    "windows-amd64": "531f3cd3cc41c0b4f077b54fe6b7dd83c0ff727e7f0bf412a4c78fa279165de5",
+    "windows-arm64": "74d3acaf0f03ee190dd0462f9b49861dca50b0559c5488af4b36572fc951fcca"
+  }
+}
