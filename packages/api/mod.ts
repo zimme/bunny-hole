@@ -72,6 +72,23 @@ export class ValidationError extends Error {
   }
 }
 
+/**
+ * Require that `entity` exists and its `state` is one of `allowed`, otherwise throw
+ * `ValidationError` with `message`. Centralizing this check means adding a new state
+ * to a state-union type is a decision every caller must make explicitly, instead of a
+ * scattered `!== "state-x"` check silently keeping stale logic.
+ */
+export function requireState<T extends { state: string }>(
+  entity: T | undefined,
+  allowed: readonly T["state"][],
+  message: string,
+): T {
+  if (!entity || !allowed.includes(entity.state)) {
+    throw new ValidationError(message);
+  }
+  return entity;
+}
+
 export function createId(prefix: string): string {
   if (!/^[a-z][a-z0-9]{1,15}$/.test(prefix)) {
     throw new ValidationError("invalid identifier prefix");
