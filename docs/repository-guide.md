@@ -155,6 +155,31 @@ and its tests together when the contract intentionally changes.
 
   so every caller states which states it accepts, and adding a state is a deliberate,
   reviewable decision at each call site rather than a silent gap.
+- Never leave a promise un-awaited, unreturned, and unhandled. `deno lint`'s recommended
+  rules do not include a type-aware floating-promise check (`typescript-eslint`'s
+  `no-floating-promises` needs full type information that `deno lint` does not do), so
+  nothing here catches this mechanically — it is a real, common correctness bug class
+  that needs manual review on every change. When a promise is intentionally
+  fire-and-forget, mark that explicitly with `.catch(() => { ... })` (see the
+  cancellation/timeout races in `apps/host/host.ts`) rather than a bare statement, so
+  the omission of `await` reads as a decision, not an oversight.
+- Reuse a named constant from a `LIMITS`-style object (see `packages/api/mod.ts`)
+  instead of introducing a new inline number for a size, timeout, or count, and add a
+  new limit there rather than starting a second source for the same kind of value.
+
+## Consistency and maintainability
+
+- Match the file's existing patterns (error handling, naming, module boundaries) before
+  introducing a new one; a second convention for the same problem is a maintenance cost
+  even if both are individually reasonable.
+- Extract a shared helper only on genuine reuse (a second real call site), not
+  speculatively; unused abstraction is harder to maintain than the duplication it was
+  meant to prevent.
+- Keep each module's public surface aligned with "Code map and ownership"; add a new
+  top-level module only when a change genuinely does not belong to an existing one.
+- Prefer the option-object pattern for a function needing more than two required
+  parameters (Deno's own runtime/std convention) so call sites stay readable as
+  parameters grow.
 
 ## Deployment-specific rules
 

@@ -28,3 +28,12 @@ established in `packages/api` and `apps/*`:
 - Guard state-union fields (like `EnrollmentState`) with one allowlist helper per
   required state set instead of a repeated `!== "state-x"` check per call site — see
   "Safe coding patterns" in `docs/repository-guide.md`.
+- Never leave a promise un-awaited, unreturned, and unhandled. `deno lint` has no
+  type-aware floating-promise check (unlike `typescript-eslint`'s
+  `no-floating-promises`), so this is not mechanically enforced here — review it by
+  hand. If a promise is genuinely fire-and-forget, mark that intent explicitly with
+  `.catch(() => { ... })` (see the cancellation/timeout races in `apps/host/host.ts`) or
+  `void expr`, never a bare statement.
+- Reuse a named constant from the relevant `LIMITS`-style object (see
+  `packages/api/mod.ts`) instead of a new inline number for a size, timeout, or count;
+  add to that object rather than introducing a second source for the same kind of limit.
