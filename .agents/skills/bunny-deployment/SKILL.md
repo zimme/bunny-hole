@@ -1,6 +1,6 @@
 ---
 name: bunny-deployment
-description: Work on Bunny Magic Container, CDN, release image, and credential-safe deployment configuration.
+description: Work on Bunny Magic Container, CDN, release image, or credential-safe deployment configuration, including .github/workflows/deploy-bunny.yml, docs/deployment.md, and Terraform under any templates/ or deploy/ directory.
 ---
 
 # Bunny deployment work
