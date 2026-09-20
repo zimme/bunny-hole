@@ -251,26 +251,38 @@ a second, hand-maintained source of the same list that drifts the moment a skill
 added, renamed, or removed, so `AGENTS.md` and `README.md` point straight at
 `.agents/skills/` instead.
 
-### `.github/` stays shims
+### No harness-specific instruction files unless a harness genuinely can't read the standard ones
 
-`.agents/skills/*/SKILL.md` and `AGENTS.md` are the single standardized location for
-agent guidance across harnesses (Claude Code, Claude Desktop, Cursor, and others), so
-`.github/` must not hold a second, GitHub Copilot-specific copy of that guidance.
-`.github/copilot-instructions.md` and every file under `.github/instructions/` are thin
-shims: their body only points to `AGENTS.md` and the relevant
-`.agents/skills/*/SKILL.md` or `docs/repository-guide.md` section.
-`.github/instructions/*.md` keep their `applyTo` front matter, because that is what
-makes Copilot auto-attach them to matching paths — the front matter is mechanism, not
-content. When a path-specific rule is missing, add it to `docs/repository-guide.md` or a
-skill, then add or update the shim's `applyTo` glob; do not grow the shim's body into
-prose that duplicates the canonical source.
+`AGENTS.md` and `.agents/skills/*/SKILL.md` are the single standardized, canonical
+location for agent guidance. Do not add a harness-specific instructions file merely
+because a harness _could_ have its own — add one only when that harness's own
+documentation confirms it does not read `AGENTS.md` (or `.agents/skills/`) by default
+and offers no supported way to point it there:
+
+- GitHub Copilot (coding agent, code review, and IDE chat) reads `AGENTS.md` and
+  `.agents/skills/*/SKILL.md` natively — no `.github/copilot-instructions.md` or
+  `.github/instructions/*.md` shim is needed, and none exist in this repository.
+- Claude Code reads `AGENTS.md` natively, with or without a `CLAUDE.md` — no `CLAUDE.md`
+  shim is needed.
+- Gemini CLI only reads its own `GEMINI.md` by default, but its `context.fileName`
+  project setting lets it treat `AGENTS.md` as a context file directly. This repository
+  configures that in `.gemini/settings.json` instead of maintaining a `GEMINI.md` shim,
+  per the same "automate/restrict with tooling over prose" preference as
+  `scripts/version_check.ts`. `scripts/verify_agents.ts` asserts this setting stays in
+  place.
+
+Before adding any new harness-specific file, check that harness's current documentation
+for an `AGENTS.md`-recognition or `context`/config-file option first; a shim (or config
+pointer, if the harness supports one) is warranted only once that is confirmed absent.
 
 ## Standards and primary references
 
 - [Deno configuration and tasks](https://docs.deno.com/runtime/reference/deno_json/)
 - [TypeScript strict mode and configuration](https://docs.deno.com/runtime/fundamentals/typescript/)
 - [Terraform sensitive data](https://developer.hashicorp.com/terraform/language/manage-sensitive-data)
-- [GitHub repository custom instructions](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions-in-your-ide/add-repository-instructions-in-your-ide)
+- [GitHub Copilot customization cheat sheet](https://docs.github.com/en/copilot/reference/customization-cheat-sheet)
+- [Claude Code memory and AGENTS.md](https://docs.claude.com/en/docs/claude-code/memory)
+- [Gemini CLI GEMINI.md and context file configuration](https://geminicli.com/docs/cli/gemini-md/)
 - [GitHub Actions security hardening](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-for-github-actions)
 - [OpenSSF Scorecard](https://scorecard.dev/)
 - [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
@@ -286,9 +298,7 @@ requirements. There is no single external "official" TypeScript/Deno user-code s
 guide to defer to. This repository's actual enforced baseline is `deno lint`'s
 recommended rules, `deno fmt`, and Deno's default strict type-checking (all in
 `deno.json`, unmodified from Deno's defaults) — extend this "Safe coding patterns"
-section only when it says something these tools do not already enforce; do not restate
-it in `.github/instructions/*.md`, which are thin path-scoped shims into this guide (see
-"`.github/` stays shims" below).
+section only when it says something these tools do not already enforce.
 
 Curated third-party skill lists (for example community "awesome-agent-skills"
 aggregators) carry no vetting: installing one means feeding its instructions and any
