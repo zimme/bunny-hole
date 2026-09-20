@@ -191,9 +191,30 @@ because a directory is large.
 ## Standards and primary references
 
 - [Deno configuration and tasks](https://docs.deno.com/runtime/reference/deno_json/)
+- [TypeScript strict mode and configuration](https://docs.deno.com/runtime/fundamentals/typescript/)
 - [Terraform sensitive data](https://developer.hashicorp.com/terraform/language/manage-sensitive-data)
 - [GitHub repository custom instructions](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions-in-your-ide/add-repository-instructions-in-your-ide)
 - [GitHub Actions security hardening](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-for-github-actions)
 - [OpenSSF Scorecard](https://scorecard.dev/)
 - [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
 - [Compatible Versioning](https://gitlab.com/staltz/comver)
+
+### Why not adopt an external style guide or skill catalog wholesale
+
+Deno's own [style guide](https://docs.deno.com/runtime/contributing/style_guide/) states
+it is for the Deno runtime and standard library, not user code; Google's and other
+vendors' TypeScript style guides are similarly scoped to their own codebases and
+disagree with each other on points such as interfaces versus type aliases or JSDoc
+requirements. There is no single external "official" TypeScript/Deno user-code style
+guide to defer to. This repository's actual enforced baseline is `deno lint`'s
+recommended rules, `deno fmt`, and Deno's default strict type-checking (all in
+`deno.json`, unmodified from Deno's defaults) — extend or restate that baseline in
+`.github/instructions/typescript.instructions.md` only when it says something these
+tools do not already enforce.
+
+Curated third-party skill lists (for example community "awesome-agent-skills"
+aggregators) carry no vetting: installing one means feeding its instructions and any
+bundled scripts to an agent that can run shell commands, which is a supply-chain and
+prompt- injection risk. Do not install external skills into `.agents/skills/` on the
+strength of a list ranking; only add a skill after reading it in full and confirming it
+reflects this repository's actual constraints.
