@@ -186,6 +186,12 @@ Read [SECURITY.md](SECURITY.md), the [threat model](docs/threat-model.md), and t
 - `deploy/kubernetes` — raw Kustomize-compatible controller manifests and examples.
 - `fixtures/origin`, `tests`, and `compose.yaml` — production-image integration path.
 
+For a complete developer orientation, read the
+[repository guide](docs/repository-guide.md) after this README and
+[AGENTS.md](AGENTS.md). It documents the request lifecycle, trust boundaries, state
+model, supported contracts, non-goals, validation layers, release path, and the rules
+for making safe changes without relying on tribal knowledge.
+
 See [deployment](docs/deployment.md), [configuration](docs/configuration.md),
 [development](docs/development.md), [architecture](docs/architecture.md), and
 [Compatible Versioning](docs/versioning.md).
