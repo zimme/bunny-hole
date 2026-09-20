@@ -51,11 +51,36 @@ async function checkDenoVersion(): Promise<string> {
   return version;
 }
 
+async function checkFrpVersion(): Promise<string> {
+  const frp = JSON.parse(await Deno.readTextFile("third_party/frp.json"));
+  const version = frp.version;
+  if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error("third_party/frp.json must declare a stable FRP version");
+  }
+  const expected = new Map<string, string>([
+    ["Dockerfile", `ARG FRP_VERSION=${version}`],
+    ["docs/architecture.md", `FRP ${version} for the`],
+    ["docs/protocol.md", `FRP ${version} data`],
+    ["docs/repository-guide.md", `FRP ${version} with a pinned`],
+    ["README.md", `FRP ${version} is included`],
+    ["scripts/license_check.ts", `frp.version !== "${version}"`],
+  ]);
+  for (const [path, marker] of expected) {
+    if (!(await Deno.readTextFile(path)).includes(marker)) {
+      throw new Error(
+        `${path} does not use authoritative FRP ${version} (source: third_party/frp.json)`,
+      );
+    }
+  }
+  return version;
+}
+
 if (import.meta.main) {
   const version = await readProductVersion();
   parseComVer(version);
   const denoVersion = await checkDenoVersion();
+  const frpVersion = await checkFrpVersion();
   console.log(
-    `version check: ${version} is valid ComVer; Deno ${denoVersion} is consistent`,
+    `version check: ${version} is valid ComVer; Deno ${denoVersion} and FRP ${frpVersion} are consistent`,
   );
 }
