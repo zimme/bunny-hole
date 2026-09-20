@@ -2,8 +2,6 @@
 applyTo: "**/*.tf,**/*.yaml,**/*.yml"
 ---
 
-For infrastructure changes, preserve immutable image references, provider and runtime
-locks, explicit resource ownership, least privilege, and secret boundaries. Do not
-commit state, plans, credentials, generated keys, or environment-specific overlays.
-Review replacement and destruction behavior and test invalid, partial, and
-already-adopted states.
+Follow the canonical instructions in `AGENTS.md` (Safe implementation patterns) and
+`docs/repository-guide.md` (Deployment-specific rules) for this file. Load
+`.agents/skills/bunny-deployment/SKILL.md` for Terraform and deployment changes.

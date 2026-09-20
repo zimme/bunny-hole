@@ -6,8 +6,15 @@ for (const shim of ["CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"]
   const text = await Deno.readTextFile(shim);
   if (!text.includes("AGENTS.md")) throw new Error(`${shim} must point to AGENTS.md`);
 }
-const skills = await Deno.readTextFile("SKILLS.md");
-if (!skills.includes(".agents/skills/")) throw new Error("SKILLS.md is incomplete");
+const skillDirs = [...Deno.readDirSync(".agents/skills")].filter((entry) =>
+  entry.isDirectory
+);
+if (skillDirs.length === 0) {
+  throw new Error(".agents/skills must contain at least one skill directory");
+}
+for (const dir of skillDirs) {
+  await Deno.stat(`.agents/skills/${dir.name}/SKILL.md`);
+}
 
 const devcontainer = JSON.parse(
   await Deno.readTextFile(".devcontainer/devcontainer.json"),

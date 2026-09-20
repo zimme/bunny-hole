@@ -124,6 +124,18 @@ and its tests together when the contract intentionally changes.
 ## Safe coding patterns
 
 - Validate once at boundaries, then pass typed values inward.
+- Treat external input (network, env, filesystem, subprocess output) as `unknown` and
+  narrow it with an explicit parser (see `packages/api/auth.ts`,
+  `packages/api/mod.ts#parseId`), never an unchecked cast (`as T`).
+- Model domain failures as named `Error` subclasses (see `ValidationError` in
+  `packages/api/mod.ts`) instead of throwing strings or plain objects, so callers can
+  discriminate failure kinds.
+- Thread `AbortSignal`/`AbortController` through anything that starts a stream, timer,
+  or subprocess, and confirm cancellation actually stops the underlying work — don't
+  just stop awaiting it.
+- Request the narrowest `--allow-*` permission scope a script or task needs (see the
+  per-task flags in `deno.json`); widening a permission is a reviewable change, not an
+  incidental one.
 - Prefer allowlists, exact matches, bounded sizes, explicit timeouts, and cancellation
   over permissive parsing and ambient defaults.
 - Check status codes and response shapes before reading external data.
@@ -232,13 +244,26 @@ special path-based resolution. Add a nested `AGENTS.md` only if a subtree gains 
 toolchain, license, or release process distinct enough that `AGENTS.md` and every skill
 would otherwise need repeated caveats for it — not merely because a directory is large.
 
-The root `SKILLS.md` is not part of any skills specification — the Agent Skills format
-(the open standard behind `SKILL.md`, used by Claude Code and others) discovers skills
-by scanning a skills-root directory for `<name>/SKILL.md` files; it defines no index
-file. `SKILLS.md` exists only as a hand-maintained pointer for humans and for harnesses
-that read `AGENTS.md`/`README.md` but do not auto-discover `.agents/skills/`. Update it
-whenever a skill is added, renamed, or removed; treat a mismatch between `SKILLS.md` and
-the actual `.agents/skills/*/SKILL.md` directories as a bug.
+Skills are discovered directly under `.agents/skills/*/SKILL.md`, matching the Agent
+Skills open standard (the format behind `SKILL.md`, used by Claude Code and others),
+which defines no root index file. There is deliberately no root `SKILLS.md`: it would be
+a second, hand-maintained source of the same list that drifts the moment a skill is
+added, renamed, or removed, so `AGENTS.md` and `README.md` point straight at
+`.agents/skills/` instead.
+
+### `.github/` stays shims
+
+`.agents/skills/*/SKILL.md` and `AGENTS.md` are the single standardized location for
+agent guidance across harnesses (Claude Code, Claude Desktop, Cursor, and others), so
+`.github/` must not hold a second, GitHub Copilot-specific copy of that guidance.
+`.github/copilot-instructions.md` and every file under `.github/instructions/` are thin
+shims: their body only points to `AGENTS.md` and the relevant
+`.agents/skills/*/SKILL.md` or `docs/repository-guide.md` section.
+`.github/instructions/*.md` keep their `applyTo` front matter, because that is what
+makes Copilot auto-attach them to matching paths — the front matter is mechanism, not
+content. When a path-specific rule is missing, add it to `docs/repository-guide.md` or a
+skill, then add or update the shim's `applyTo` glob; do not grow the shim's body into
+prose that duplicates the canonical source.
 
 ## Standards and primary references
 
@@ -260,9 +285,10 @@ disagree with each other on points such as interfaces versus type aliases or JSD
 requirements. There is no single external "official" TypeScript/Deno user-code style
 guide to defer to. This repository's actual enforced baseline is `deno lint`'s
 recommended rules, `deno fmt`, and Deno's default strict type-checking (all in
-`deno.json`, unmodified from Deno's defaults) — extend or restate that baseline in
-`.github/instructions/typescript.instructions.md` only when it says something these
-tools do not already enforce.
+`deno.json`, unmodified from Deno's defaults) — extend this "Safe coding patterns"
+section only when it says something these tools do not already enforce; do not restate
+it in `.github/instructions/*.md`, which are thin path-scoped shims into this guide (see
+"`.github/` stays shims" below).
 
 Curated third-party skill lists (for example community "awesome-agent-skills"
 aggregators) carry no vetting: installing one means feeding its instructions and any
