@@ -25,3 +25,6 @@ established in `packages/api` and `apps/*`:
 - Request the narrowest `--allow-*` permission scope a script or task needs (see the
   per-task flags in `deno.json`); widening a permission is a reviewable change, not an
   incidental one.
+- Guard state-union fields (like `EnrollmentState`) with one allowlist helper per
+  required state set instead of a repeated `!== "state-x"` check per call site — see
+  "Safe coding patterns" in `docs/repository-guide.md`.

@@ -135,6 +135,26 @@ and its tests together when the contract intentionally changes.
 - Prefer immutable dependencies, full action SHAs, lock files, and digest-pinned images.
 - Add tests for invalid input, expiry, duplicate operations, cancellation, restart,
   partial failure, and authorization boundaries—not only the happy path.
+- Guard lifecycle states (for example `EnrollmentState` in `packages/api/mod.ts`) with
+  one allowlist-based helper per required state set, not repeated `!== "state-x"` checks
+  at each call site. A full state-machine library is unwarranted for a handful of
+  states, but a scattered check does not fail to compile when a new state is added, so a
+  forgotten call site silently keeps stale logic. Prefer:
+
+  ```ts
+  function requireState<S extends string>(
+    entity: { state: S } | undefined,
+    allowed: readonly S[],
+  ): { state: S } {
+    if (!entity || !allowed.includes(entity.state)) {
+      throw new ValidationError("not usable in its current state");
+    }
+    return entity;
+  }
+  ```
+
+  so every caller states which states it accepts, and adding a state is a deliberate,
+  reviewable decision at each call site rather than a silent gap.
 
 ## Deployment-specific rules
 
