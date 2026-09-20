@@ -275,6 +275,18 @@ Before adding any new harness-specific file, check that harness's current docume
 for an `AGENTS.md`-recognition or `context`/config-file option first; a shim (or config
 pointer, if the harness supports one) is warranted only once that is confirmed absent.
 
+The same rule applies to skill _selection_, not just instruction _content_: do not add a
+path-triggered routing file (Copilot's `.github/instructions/*.md` with `applyTo`,
+Claude Code's `.claude/rules/*.md` with `paths`) whose entire body just tells the agent
+to load a skill. Neither the Agent Skills open standard nor any harness documents a
+path-based auto-trigger for skills — deliberately: skills are relevance-matched by the
+agent from their `description`, the same way across every harness, so a router file only
+adds another harness-specific pair of files to keep in sync (and Gemini CLI has no
+equivalent mechanism at all, so it could never be symmetric). Make a skill
+self-triggering instead by naming its concrete paths, directories, or file types in its
+own `description` field, so the description alone is enough for any harness's own
+relevance matching to find it.
+
 ## Standards and primary references
 
 - [Deno configuration and tasks](https://docs.deno.com/runtime/reference/deno_json/)
