@@ -172,6 +172,22 @@ rule cannot be automated, link it from the closest executable source and keep th
 specific. Update this guide in the same change as architecture, commands, public limits,
 workflow names, or trust-boundary changes.
 
+A repeated value (a pinned tool version, a third-party version, a limit) must have
+exactly one authoritative source file; every other mention is checked against it by
+`scripts/version_check.ts` or an equivalent script, never left to match by convention.
+
+### One `AGENTS.md`, scoped skills instead of nested files
+
+The `agents.md` convention supports nested `AGENTS.md` files, with the closest one to an
+edited path taking precedence. This repository intentionally keeps a single root
+`AGENTS.md` and scopes area-specific rules through `.agents/skills/*/SKILL.md` instead
+(see `SKILLS.md`). Skills are chosen deliberately per task, so they cannot be silently
+shadowed the way a forgotten nested file can, and they read as ordinary Markdown from
+any harness without special path-based resolution. Add a nested `AGENTS.md` only if a
+subtree gains its own toolchain, license, or release process distinct enough that
+`AGENTS.md` and every skill would otherwise need repeated caveats for it — not merely
+because a directory is large.
+
 ## Standards and primary references
 
 - [Deno configuration and tasks](https://docs.deno.com/runtime/reference/deno_json/)
