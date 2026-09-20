@@ -225,13 +225,20 @@ exactly one authoritative source file; every other mention is checked against it
 
 The `agents.md` convention supports nested `AGENTS.md` files, with the closest one to an
 edited path taking precedence. This repository intentionally keeps a single root
-`AGENTS.md` and scopes area-specific rules through `.agents/skills/*/SKILL.md` instead
-(see `SKILLS.md`). Skills are chosen deliberately per task, so they cannot be silently
-shadowed the way a forgotten nested file can, and they read as ordinary Markdown from
-any harness without special path-based resolution. Add a nested `AGENTS.md` only if a
-subtree gains its own toolchain, license, or release process distinct enough that
-`AGENTS.md` and every skill would otherwise need repeated caveats for it — not merely
-because a directory is large.
+`AGENTS.md` and scopes area-specific rules through `.agents/skills/*/SKILL.md` instead.
+Skills are chosen deliberately per task, so they cannot be silently shadowed the way a
+forgotten nested file can, and they read as ordinary Markdown from any harness without
+special path-based resolution. Add a nested `AGENTS.md` only if a subtree gains its own
+toolchain, license, or release process distinct enough that `AGENTS.md` and every skill
+would otherwise need repeated caveats for it — not merely because a directory is large.
+
+The root `SKILLS.md` is not part of any skills specification — the Agent Skills format
+(the open standard behind `SKILL.md`, used by Claude Code and others) discovers skills
+by scanning a skills-root directory for `<name>/SKILL.md` files; it defines no index
+file. `SKILLS.md` exists only as a hand-maintained pointer for humans and for harnesses
+that read `AGENTS.md`/`README.md` but do not auto-discover `.agents/skills/`. Update it
+whenever a skill is added, renamed, or removed; treat a mismatch between `SKILLS.md` and
+the actual `.agents/skills/*/SKILL.md` directories as a bug.
 
 ## Standards and primary references
 
