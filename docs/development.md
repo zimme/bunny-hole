@@ -93,15 +93,25 @@ pinned sidecar image.
 `deno task integration` creates an isolated Compose project, a per-run configuration
 volume, and random credential material. It builds the exact `host-runtime` and
 `connector-runtime` Dockerfile targets, enrolls a connector, approves its grant, starts
-FRP, and exercises public HTTP through the host to the deterministic origin. It covers
-concurrent isolation, streaming and binary bodies, public-disconnect propagation, header
-stripping, oversized requests, origin timeouts, route confusion, connector
-disconnect/recovery, and secret-free logs. Cleanup targets only the generated Compose
-project and its exact configuration volume.
+FRP over a verified local WSS gateway, and exercises public HTTP through the host to the
+deterministic origin. It first proves that a different CA rejects the gateway
+certificate and cannot establish a usable route, then trusts the gateway certificate and
+runs the public-traffic checks. These cover concurrent isolation, streaming and binary
+bodies, public-disconnect propagation, header stripping, oversized requests, origin
+timeouts, route confusion, connector disconnect/recovery, origin 404 preservation, and
+secret-free logs. The management origin remains local HTTP under explicit development
+mode; this is not a Bunny CDN or public management-TLS acceptance test. Cleanup targets
+only the generated Compose project and its exact configuration volume.
+
+Bunny-specific acceptance remains a manual, protected-environment operation: verify the
+Magic Container's persistent state across restarts, the exact CDN ports and custom TLS
+hostnames, disabled caching/retries, connector WebSocket policy, DNS, and the
+one-region, one-instance topology before a real deployment or material platform change.
 
 `deno task container:smoke` verifies the production process user and health behavior.
 The final images are distroless and contain only the compiled application plus `frps` or
-`frpc`; Deno and source files remain in build stages.
+`frpc`. The connector also carries its checksum-pinned public CA bundle for FRP WSS
+verification; Deno and source files remain in build stages.
 
 ## Package and release artifacts
 
@@ -109,7 +119,9 @@ The final images are distroless and contain only the compiled application plus `
 tarball, installs it into an isolated Node consumer with lifecycle scripts disabled, and
 exercises the exported control library. `deno task release:artifacts` is intentionally
 tag-workflow work because it downloads a Deno runtime and checksum-verified FRP archive
-for every Linux, macOS, and Windows target.
+for every Linux, macOS, and Windows target. It also bundles the same checksum-pinned
+public CA file and MPL-2.0 license used by the connector OCI image; native users keep
+`bunny-hole`, `frpc`, and `ca-certificates.crt` together.
 
 Every release surface uses one immutable ComVer version: host OCI, connector OCI, native
 bundle, JSR module, and npm package. Releases occur only from increasing `MAJOR.MINOR.0`

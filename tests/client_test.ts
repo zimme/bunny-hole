@@ -160,7 +160,10 @@ Deno.test("library connector can run again after stop", async () => {
   };
   const directory = await Deno.makeTempDir();
   const trustedCaFile = `${directory}/ca-certificates.crt`;
-  await Deno.writeTextFile(trustedCaFile, "test CA bundle\n");
+  await Deno.writeTextFile(
+    trustedCaFile,
+    "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----\n",
+  );
   try {
     const connector = createConnector({
       credentials,

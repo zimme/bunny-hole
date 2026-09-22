@@ -9,7 +9,16 @@ if (import.meta.main) {
     cert: await Deno.readTextFile(certificatePath),
     key: await Deno.readTextFile(keyPath),
   });
-  for await (const client of listener) void proxy(client);
+  while (true) {
+    try {
+      const client = await listener.accept();
+      void proxy(client);
+    } catch (error) {
+      if (error instanceof Deno.errors.BadResource) break;
+      console.error(`TLS gateway accept failed: ${String(error)}`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
 }
 
 async function proxy(client: Deno.Conn): Promise<void> {
@@ -24,7 +33,15 @@ async function proxy(client: Deno.Conn): Promise<void> {
     // The TLS endpoint is intentionally a minimal transport fixture. Either peer may
     // disconnect while FRP is reconnecting or the test stack is being torn down.
   } finally {
-    client.close();
-    upstream?.close();
+    close(client);
+    if (upstream) close(upstream);
+  }
+}
+
+function close(connection: Deno.Conn): void {
+  try {
+    connection.close();
+  } catch {
+    // pipeTo may already have closed either side after an expected TLS or FRP failure.
   }
 }

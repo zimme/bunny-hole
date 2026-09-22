@@ -10,6 +10,7 @@
   ],
   "words": [
     "Anycast",
+    "addext",
     "affinity",
     "anchore",
     "backpressure",
@@ -50,6 +51,7 @@
     "idempotently",
     "imageregistry",
     "keyrings",
+    "keyout",
     "keepalive",
     "loopback",
     "lockfiles",

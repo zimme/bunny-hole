@@ -1,7 +1,7 @@
 {
   "name": "Mozilla CA certificate bundle",
   "version": "2026-08-13",
-  "source": "https://curl.se/ca/cacert.pem",
+  "source": "https://curl.se/ca/cacert-2026-08-13.pem",
   "sha256": "f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9",
   "license": "MPL-2.0",
   "licenseSource": "https://www.mozilla.org/media/MPL/2.0/index.815ca599c9df.txt",

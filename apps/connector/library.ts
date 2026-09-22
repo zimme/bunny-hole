@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { BunnyHoleClient, type HostCredentials } from "./client.ts";
@@ -52,12 +52,7 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
       const runController = controller;
       running = true;
       try {
-        const ca = await stat(trustedCaFile);
-        if (!ca.isFile() || ca.size === 0) {
-          throw new ValidationError(
-            "trusted CA bundle must be a non-empty regular file",
-          );
-        }
+        await validateTrustedCaFile(trustedCaFile);
         const session = await client.session(options.credentials);
         if (runController.signal.aborted || signal?.aborted) return 0;
         const directory = await mkdtemp(
@@ -117,4 +112,28 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
       controller.abort();
     },
   };
+}
+
+async function validateTrustedCaFile(path: string): Promise<void> {
+  try {
+    const info = await stat(path);
+    if (!info.isFile() || info.size === 0) {
+      throw new ValidationError(
+        "trusted CA bundle must be a non-empty PEM certificate bundle",
+      );
+    }
+    const pem = await readFile(path, "utf8");
+    if (
+      !pem.includes("-----BEGIN CERTIFICATE-----") ||
+      !pem.includes("-----END CERTIFICATE-----")
+    ) {
+      throw new ValidationError(
+        "trusted CA bundle must be a non-empty PEM certificate bundle",
+      );
+    }
+  } catch (error) {
+    if (error instanceof ValidationError) throw error;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new ValidationError(`trusted CA bundle is unreadable (${path}): ${detail}`);
+  }
 }

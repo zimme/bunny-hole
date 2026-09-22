@@ -10,7 +10,12 @@ import {
   VERSION,
 } from "../../packages/api/mod.ts";
 import { BunnyHoleClient, type HostCredentials } from "./client.ts";
-import { frpcConfig, runFrpc } from "./frpc.ts";
+import {
+  defaultTrustedCaFile,
+  frpcConfig,
+  runFrpc,
+  validateTrustedCaFile,
+} from "./frpc.ts";
 import {
   defaultStatePath,
   loadState,
@@ -429,6 +434,11 @@ async function connect(flags: Flags): Promise<void> {
     throw new UsageError("production connectors require the wss transport");
   }
   const executable = Deno.env.get("BUNNY_HOLE_FRPC_PATH") ?? siblingExecutable("frpc");
+  const trustedCaFile = transport === "wss"
+    ? await validateTrustedCaFile(
+      optionalString(flags, "trusted-ca-file") ?? defaultTrustedCaFile(executable),
+    )
+    : undefined;
   const controller = new AbortController();
   const stop = () => controller.abort();
   Deno.addSignalListener("SIGINT", stop);
@@ -447,7 +457,7 @@ async function connect(flags: Flags): Promise<void> {
           transport,
           signal: controller.signal,
           allowInsecureTransport: development,
-          trustedCaFile: optionalString(flags, "trusted-ca-file"),
+          trustedCaFile,
         });
         if (!controller.signal.aborted) {
           console.error(`connector stopped with code ${code}; reconnecting`);

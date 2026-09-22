@@ -12,15 +12,34 @@ const device = await generateKeyPair();
 const configRelativeDirectory = `.tmp/${project}`;
 const configDirectory = `${Deno.cwd()}/${configRelativeDirectory}`;
 const configVolume = `${project}-connector-config`;
+const tlsDirectory = `${configDirectory}/tls`;
+const tlsCertificate = `${tlsDirectory}/tls.crt`;
+const tlsKey = `${tlsDirectory}/tls.key`;
+const trustedCa = `${tlsDirectory}/ca.crt`;
+const secrets = new Set([owner.privateKey, device.privateKey]);
 await Deno.mkdir(configDirectory, { recursive: true, mode: 0o700 });
+await Deno.mkdir(tlsDirectory, { recursive: true, mode: 0o700 });
+await createTestCertificates(tlsCertificate, tlsKey, trustedCa);
 await Deno.writeTextFile(
   `${configDirectory}/compose.override.yaml`,
   `services:
+  host:
+    environment:
+      BUNNY_HOLE_CONNECTOR_HOST: connector-gateway
+      BUNNY_HOLE_CONNECTOR_PORT: "7443"
+      BUNNY_HOLE_CONNECTOR_TRANSPORTS: wss
   connector:
+    command: [connect, --host, integration, --transport, wss]
+    environment:
+      BUNNY_HOLE_TRUSTED_CA_FILE: /tls/ca.crt
     volumes:
       - type: volume
         source: connector-config
         target: /config
+        read_only: true
+      - type: bind
+        source: ${tlsDirectory}
+        target: /tls
         read_only: true
 volumes:
   connector-config:
@@ -34,6 +53,7 @@ const hostUrl = `http://${testHost}:18080`;
 const environment: Record<string, string> = {
   ...Deno.env.toObject(),
   BUNNY_HOLE_OWNER_PUBLIC_KEY: owner.publicKey,
+  BUNNY_HOLE_TLS_DIRECTORY: tlsDirectory,
 };
 const compose = [
   "compose",
@@ -53,11 +73,18 @@ const publishedImages = Boolean(
 try {
   await run("docker", ["volume", "create", configVolume], { env: environment });
   if (publishedImages) {
-    await run("docker", [...compose, "build", "origin"], { env: environment });
-  } else {
-    await run("docker", [...compose, "build", "host", "origin", "connector"], {
+    await run("docker", [...compose, "build", "origin", "connector-gateway"], {
       env: environment,
     });
+  } else {
+    await run("docker", [
+      ...compose,
+      "build",
+      "host",
+      "origin",
+      "connector",
+      "connector-gateway",
+    ], { env: environment });
   }
   await run("docker", [
     ...compose,
@@ -67,6 +94,7 @@ try {
     "--wait",
     "host",
     "origin",
+    "connector-gateway",
   ], { env: environment });
 
   const client = new BunnyHoleClient(hostUrl, fetch, true);
@@ -88,6 +116,7 @@ try {
   );
   if (!ownerChallengeResponse.ok) throw new Error("owner challenge failed");
   const { challenge: ownerChallenge } = await ownerChallengeResponse.json();
+  secrets.add(ownerChallenge);
   const approval = await fetch(
     `${hostUrl}/api/v1/enrollments/${enrollment.id}/approve`,
     {
@@ -118,6 +147,7 @@ try {
     ...device,
   };
   const session = await client.session(externalCredentials);
+  secrets.add(session.accessToken);
   await client.createRoute(session, {
     name: "origin",
     protocol: "http",
@@ -179,6 +209,30 @@ try {
     "--detach",
     "connector",
   ], { env: environment });
+
+  await waitFor(
+    async () => {
+      const logs = await output("docker", [
+        ...compose,
+        "logs",
+        "--no-color",
+        "connector",
+      ], { env: environment });
+      return logs.includes("x509: certificate signed by unknown authority");
+    },
+    10_000,
+    "connector did not reject the gateway certificate signed by the wrong CA",
+  );
+  const wrongCa = await publicRequest("/wrong-ca");
+  if (wrongCa.ok || wrongCa.headers.get("x-origin-status") !== null) {
+    throw new Error("connector established a tunnel with the wrong CA");
+  }
+  await wrongCa.body?.cancel();
+  await Deno.copyFile(tlsCertificate, trustedCa);
+  await run("docker", [...compose, "stop", "connector"], { env: environment });
+  await run("docker", [...compose, "up", "--no-build", "--detach", "connector"], {
+    env: environment,
+  });
 
   await waitFor(async () => {
     const response = await publicRequest("/");
@@ -329,7 +383,7 @@ try {
   const logs = await output("docker", [...compose, "logs", "--no-color"], {
     env: environment,
   });
-  if (logs.includes(device.privateKey) || logs.includes(owner.privateKey)) {
+  if ([...secrets].some((secret) => logs.includes(secret))) {
     throw new Error("a private key leaked into logs");
   }
   console.log(
@@ -339,8 +393,12 @@ try {
   );
 } catch (error) {
   console.error(
-    await output("docker", [...compose, "logs", "--no-color"], { env: environment })
-      .catch(() => "compose logs unavailable"),
+    redactLogs(
+      await output("docker", [...compose, "logs", "--no-color"], {
+        env: environment,
+      }).catch(() => "compose logs unavailable"),
+      secrets,
+    ),
   );
   throw error;
 } finally {
@@ -359,6 +417,58 @@ try {
     Deno.exitCode = 1;
   });
   await Deno.remove(configDirectory, { recursive: true }).catch(() => {});
+}
+
+async function createTestCertificates(
+  certificate: string,
+  key: string,
+  ca: string,
+): Promise<void> {
+  await run("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-sha256",
+    "-days",
+    "1",
+    "-subj",
+    "/CN=wrong-ca",
+    "-keyout",
+    `${ca}.key`,
+    "-out",
+    ca,
+  ]);
+  await run("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-sha256",
+    "-days",
+    "1",
+    "-subj",
+    "/CN=connector-gateway",
+    "-addext",
+    "subjectAltName=DNS:connector-gateway",
+    "-keyout",
+    key,
+    "-out",
+    certificate,
+  ]);
+}
+
+function redactLogs(logs: string, values: Set<string>): string {
+  let redacted = logs;
+  for (const value of values) {
+    if (value) redacted = redacted.replaceAll(value, "[REDACTED]");
+  }
+  return redacted.replaceAll(
+    /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g,
+    "[REDACTED]",
+  );
 }
 
 async function waitFor(

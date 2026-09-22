@@ -192,7 +192,8 @@ Pin the controller manifest to the published connector digest by replacing
 The connector OCI works with Docker, Compose, and Podman. Mount its protected state file
 read-only, use a read-only root filesystem, drop all capabilities, set
 `no-new-privileges`, and run as the file-owning non-root UID. The connector image
-contains the Bunny Hole CLI and pinned `frpc`; it does not contain the host.
+contains the Bunny Hole CLI, pinned `frpc`, and the pinned public CA bundle used to
+verify the connector WSS endpoint; it does not contain the host.
 
 The `bunny-hole compose plan|sync|up` adapter derives routes only from explicit
 `dev.bunny-hole.*` labels. See [configuration](configuration.md#compose-discovery). It

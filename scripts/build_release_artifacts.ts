@@ -113,7 +113,7 @@ try {
     }
     await Deno.writeTextFile(
       join(directory, "README.txt"),
-      `Bunny Hole ${version}\n\nKeep bunny-hole and frpc in the same directory. Run bunny-hole --help.\n`,
+      `Bunny Hole ${version}\n\nKeep bunny-hole, frpc, and ca-certificates.crt in the same directory. Run bunny-hole --help.\n`,
     );
     await Deno.copyFile("third_party/frp.LICENSE", join(directory, "FRP-LICENSE.txt"));
     await Deno.copyFile(trustedCa, join(directory, "ca-certificates.crt"));

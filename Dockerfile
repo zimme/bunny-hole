@@ -33,7 +33,7 @@ USER root
 RUN mkdir -p /out \
     && deno eval \
       'const [url,path,want]=Deno.args; const response=await fetch(url); if(!response.ok) throw new Error(`download failed: ${response.status}`); const bytes=new Uint8Array(await response.arrayBuffer()); const got=[...new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))].map(x=>x.toString(16).padStart(2,"0")).join(""); if(got!==want) throw new Error("pinned download checksum mismatch"); await Deno.writeFile(path,bytes);' \
-      https://curl.se/ca/cacert.pem /out/ca-certificates.crt "${CA_BUNDLE_SHA256}" \
+      https://curl.se/ca/cacert-2026-08-13.pem /out/ca-certificates.crt "${CA_BUNDLE_SHA256}" \
     && deno eval \
       'const [url,path,want]=Deno.args; const response=await fetch(url); if(!response.ok) throw new Error(`download failed: ${response.status}`); const bytes=new Uint8Array(await response.arrayBuffer()); const got=[...new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))].map(x=>x.toString(16).padStart(2,"0")).join(""); if(got!==want) throw new Error("pinned download checksum mismatch"); await Deno.writeFile(path,bytes);' \
       https://www.mozilla.org/media/MPL/2.0/index.815ca599c9df.txt /out/MOZILLA-CA-LICENSE.txt "${CA_BUNDLE_LICENSE_SHA256}"
