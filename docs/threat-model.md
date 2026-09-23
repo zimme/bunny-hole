@@ -19,7 +19,15 @@ application data, route policy, live traffic, and released artifacts. Trust cros
 6. the connector into its configured local HTTP/HTTPS origin.
 
 Bunny is trusted to terminate public TLS, route each endpoint to the configured
-container port, and isolate the application. A host operator or compromised host can
+container port, and isolate the application. The connector verifies Bunny's WSS
+certificate before that termination; FRP does not add a second TLS layer inside the
+WebSocket stream
+([FRP WSS implementation](https://github.com/fatedier/frp/blob/v0.70.1/client/connector.go#L202-L227)).
+The `frps` connector listener accepts the CDN-forwarded plaintext WebSocket framing. It
+cannot itself establish network provenance, so deployment **must** expose port 7000 only
+through the connector CDN endpoint and never as raw public TCP. Descriptors permit only
+WSS. The FRP plugin requires a valid host-signed admission token at login and an active
+admitted session for subsequent operations. A host operator or compromised host can
 observe and alter tunneled HTTP. An application embedding the TypeScript library shares
 its process and key boundary. Kubernetes RBAC limits the controller to Secrets in its
 own namespace, but a compromised cluster administrator can read every cluster

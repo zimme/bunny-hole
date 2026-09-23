@@ -6,12 +6,41 @@ import { request as httpRequest } from "node:http";
 import { once } from "node:events";
 import { Readable } from "node:stream";
 
+const tlsStagingScript = `
+const material = JSON.parse(
+  new TextDecoder().decode(await new Response(Deno.stdin.readable).bytes()),
+);
+await Deno.chown("/tls", 65532, 65532);
+await Deno.chmod("/tls", 0o700);
+for (const [name, value] of Object.entries(material)) {
+  const path = "/tls/" + name;
+  await Deno.writeTextFile(path, value, {
+    mode: name === "tls.key" ? 0o600 : 0o644,
+  });
+  await Deno.chown(path, 65532, 65532);
+}
+for (const name of ["tls.crt", "tls.key", "ca.crt"]) {
+  const info = await Deno.stat("/tls/" + name);
+  const expected = name === "tls.key" ? 0o600 : 0o644;
+  if (
+    !info.isFile || info.uid !== 65532 || info.gid !== 65532 ||
+    ((info.mode ?? 0) & 0o777) !== expected
+  ) throw new Error("invalid staged TLS file: " + name);
+}
+const directory = await Deno.stat("/tls");
+if (
+  !directory.isDirectory || directory.uid !== 65532 ||
+  directory.gid !== 65532 || ((directory.mode ?? 0) & 0o777) !== 0o700
+) throw new Error("invalid staged TLS directory");
+`;
+
 const project = `bunny-hole-test-${crypto.randomUUID().slice(0, 8)}`;
 const owner = await generateKeyPair();
 const device = await generateKeyPair();
 const configRelativeDirectory = `.tmp/${project}`;
 const configDirectory = `${Deno.cwd()}/${configRelativeDirectory}`;
 const configVolume = `${project}-connector-config`;
+const tlsVolume = `${project}-tls`;
 const tlsDirectory = `${configDirectory}/tls`;
 const tlsCertificate = `${tlsDirectory}/tls.crt`;
 const tlsKey = `${tlsDirectory}/tls.key`;
@@ -29,7 +58,7 @@ await Deno.writeTextFile(
       BUNNY_HOLE_CONNECTOR_PORT: "7443"
       BUNNY_HOLE_CONNECTOR_TRANSPORTS: wss
   connector:
-    command: [connect, --host, integration, --transport, wss]
+    command: [connect, --host, integration, --transport, wss, --local-development]
     environment:
       BUNNY_HOLE_TRUSTED_CA_FILE: /tls/ca.crt
     volumes:
@@ -37,14 +66,23 @@ await Deno.writeTextFile(
         source: connector-config
         target: /config
         read_only: true
-      - type: bind
-        source: ${tlsDirectory}
+      - type: volume
+        source: tls-material
+        target: /tls
+        read_only: true
+  connector-gateway:
+    volumes:
+      - type: volume
+        source: tls-material
         target: /tls
         read_only: true
 volumes:
   connector-config:
     external: true
     name: ${configVolume}
+  tls-material:
+    external: true
+    name: ${tlsVolume}
 `,
   { mode: 0o600 },
 );
@@ -53,7 +91,6 @@ const hostUrl = `http://${testHost}:18080`;
 const environment: Record<string, string> = {
   ...Deno.env.toObject(),
   BUNNY_HOLE_OWNER_PUBLIC_KEY: owner.publicKey,
-  BUNNY_HOLE_TLS_DIRECTORY: tlsDirectory,
 };
 const compose = [
   "compose",
@@ -72,6 +109,12 @@ const publishedImages = Boolean(
 
 try {
   await run("docker", ["volume", "create", configVolume], { env: environment });
+  await run("docker", ["volume", "create", tlsVolume], { env: environment });
+  await stageTlsMaterial(tlsVolume, {
+    "tls.crt": await Deno.readTextFile(tlsCertificate),
+    "tls.key": await Deno.readTextFile(tlsKey),
+    "ca.crt": await Deno.readTextFile(trustedCa),
+  }, environment);
   if (publishedImages) {
     await run("docker", [...compose, "build", "origin", "connector-gateway"], {
       env: environment,
@@ -228,7 +271,9 @@ try {
     throw new Error("connector established a tunnel with the wrong CA");
   }
   await wrongCa.body?.cancel();
-  await Deno.copyFile(tlsCertificate, trustedCa);
+  await stageTlsMaterial(tlsVolume, {
+    "ca.crt": await Deno.readTextFile(tlsCertificate),
+  }, environment);
   await run("docker", [...compose, "stop", "connector"], { env: environment });
   await run("docker", [...compose, "up", "--no-build", "--detach", "connector"], {
     env: environment,
@@ -410,12 +455,14 @@ try {
     console.error(`integration cleanup failed: ${String(error)}`);
     Deno.exitCode = 1;
   }
-  await run("docker", ["volume", "rm", "--force", configVolume], {
-    env: environment,
-  }).catch((error) => {
-    console.error(`integration config cleanup failed: ${String(error)}`);
-    Deno.exitCode = 1;
-  });
+  for (const volume of [configVolume, tlsVolume]) {
+    await run("docker", ["volume", "rm", "--force", volume], {
+      env: environment,
+    }).catch((error) => {
+      console.error(`integration volume cleanup failed: ${String(error)}`);
+      Deno.exitCode = 1;
+    });
+  }
   await Deno.remove(configDirectory, { recursive: true }).catch(() => {});
 }
 
@@ -458,6 +505,48 @@ async function createTestCertificates(
     "-out",
     certificate,
   ]);
+}
+
+async function stageTlsMaterial(
+  volume: string,
+  material: Record<string, string>,
+  environment: Record<string, string>,
+): Promise<void> {
+  const stage = new Deno.Command("docker", {
+    args: [
+      "run",
+      "--rm",
+      "--interactive",
+      "--user",
+      "0:0",
+      "--volume",
+      `${volume}:/tls`,
+      "denoland/deno:2.9.5@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463",
+      "deno",
+      "eval",
+      tlsStagingScript,
+    ],
+    env: environment,
+    stdin: "piped",
+    stdout: "inherit",
+    stderr: "inherit",
+  }).spawn();
+  const input = stage.stdin.getWriter();
+  await input.write(new TextEncoder().encode(JSON.stringify(material)));
+  await input.close();
+  if (!(await stage.status).success) throw new Error("TLS material staging failed");
+  await run("docker", [
+    "run",
+    "--rm",
+    "--user",
+    "65532:65532",
+    "--volume",
+    `${volume}:/tls:ro`,
+    "denoland/deno:2.9.5@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463",
+    "deno",
+    "eval",
+    'for(const name of ["tls.crt","tls.key","ca.crt"])await Deno.readTextFile(`/tls/${name}`)',
+  ], { env: environment });
 }
 
 function redactLogs(logs: string, values: Set<string>): string {

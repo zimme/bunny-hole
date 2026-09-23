@@ -24,9 +24,16 @@ Use two CDN-facing hostnames/endpoints:
 1. a public/management CDN endpoint mapped to container port 8080; and
 2. a connector CDN endpoint mapped to port 7000 with WebSockets enabled.
 
-The connector uses FRP `wss` on port 443, so Bunny owns the public TLS certificate and
-the host container needs no certificate private key. Direct TCP, QUIC, and unencrypted
-WebSocket transports are rejected outside explicit local-development mode.
+The connector uses FRP `wss` on port 443, verifies Bunny's public TLS certificate, and
+the host container needs no certificate private key. Bunny terminates TLS and passes the
+WebSocket byte stream to the connector endpoint; FRP's WSS implementation does not
+perform a second TLS handshake inside that stream
+([client source](https://github.com/fatedier/frp/blob/v0.70.1/client/connector.go#L202-L227),
+[server source](https://github.com/fatedier/frp/blob/v0.70.1/server/service.go#L288-L293)).
+Deployment must expose the connector endpoint as a CDN-to-container backend, never as a
+raw public TCP service; FRP admission remains host-signed and plugin-authorized. Direct
+TCP, QUIC, and unencrypted WebSocket transports are rejected outside explicit
+local-development mode.
 
 Public requests enter the Deno host, which reserves all control paths, rejects unknown
 hostnames, replaces forwarding headers, and streams to the loopback FRP HTTP virtual

@@ -81,8 +81,17 @@ general API bearer token and is never logged.
 
 The connector writes a mode-`0600` ephemeral TOML file and starts the release-matched
 `frpc`. Production permits only `wss` through the dedicated Bunny CDN connector
-endpoint. FRP transport TLS is also enabled. TCP, QUIC, or unencrypted WebSocket may be
-selected only with explicit local-development mode.
+endpoint. The connector verifies that endpoint's certificate and hostname using its
+pinned CA bundle. Bunny terminates that TLS connection and forwards the WebSocket stream
+to `frps`; FRP's WSS client has no nested FRP TLS layer after the WebSocket upgrade
+([client implementation](https://github.com/fatedier/frp/blob/v0.70.1/client/connector.go#L202-L227)).
+`frps` therefore accepts the CDN-forwarded plaintext WebSocket stream rather than
+requiring a second TLS handshake
+([server implementation](https://github.com/fatedier/frp/blob/v0.70.1/server/service.go#L288-L293)).
+Deployment must expose port 7000 only through Bunny's documented CDN-to-container
+endpoint boundary, never as raw public TCP; `frps` cannot establish that network
+provenance itself. Direct TCP, QUIC, or unencrypted WebSocket may be selected only with
+explicit local-development mode.
 
 The control connection uses TCP multiplexing, a 20-second heartbeat and keepalive, and a
 45-second dead-session timeout. `frps` limits connection pools and proxies, disables

@@ -94,6 +94,11 @@ Create a second CDN endpoint for container TCP port `7000`:
 - Disable caching.
 - Do not publish port 7000 directly to the Internet. Connectors use WSS on port 443.
 
+This is a security requirement, not only a convenience setting: Bunny terminates WSS TLS
+before forwarding the WebSocket stream to port 7000, and `frps` cannot authenticate the
+network peer at that boundary. Keep the port reachable only through this connector CDN
+endpoint; Bunny Hole does not support raw public TCP connectors.
+
 The management and public HTTP traffic can share port 8080 because the host accepts
 control routes only when the exact HTTP Host matches `BUNNY_HOLE_PUBLIC_URL`; a tunneled
 application hostname cannot reach them. The connector endpoint is separate because it
