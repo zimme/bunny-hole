@@ -6,26 +6,83 @@ import { request as httpRequest } from "node:http";
 import { once } from "node:events";
 import { Readable } from "node:stream";
 
+const tlsStagingScript = `
+const material = JSON.parse(
+  new TextDecoder().decode(await new Response(Deno.stdin.readable).bytes()),
+);
+await Deno.chown("/tls", 65532, 65532);
+await Deno.chmod("/tls", 0o700);
+for (const [name, value] of Object.entries(material)) {
+  const path = "/tls/" + name;
+  await Deno.writeTextFile(path, value, {
+    mode: name === "tls.key" ? 0o600 : 0o644,
+  });
+  await Deno.chown(path, 65532, 65532);
+}
+for (const name of ["tls.crt", "tls.key", "ca.crt"]) {
+  const info = await Deno.stat("/tls/" + name);
+  const expected = name === "tls.key" ? 0o600 : 0o644;
+  if (
+    !info.isFile || info.uid !== 65532 || info.gid !== 65532 ||
+    ((info.mode ?? 0) & 0o777) !== expected
+  ) throw new Error("invalid staged TLS file: " + name);
+}
+const directory = await Deno.stat("/tls");
+if (
+  !directory.isDirectory || directory.uid !== 65532 ||
+  directory.gid !== 65532 || ((directory.mode ?? 0) & 0o777) !== 0o700
+) throw new Error("invalid staged TLS directory");
+`;
+
 const project = `bunny-hole-test-${crypto.randomUUID().slice(0, 8)}`;
 const owner = await generateKeyPair();
 const device = await generateKeyPair();
 const configRelativeDirectory = `.tmp/${project}`;
 const configDirectory = `${Deno.cwd()}/${configRelativeDirectory}`;
 const configVolume = `${project}-connector-config`;
+const tlsVolume = `${project}-tls`;
+const tlsDirectory = `${configDirectory}/tls`;
+const tlsCertificate = `${tlsDirectory}/tls.crt`;
+const tlsKey = `${tlsDirectory}/tls.key`;
+const trustedCa = `${tlsDirectory}/ca.crt`;
+const secrets = new Set([owner.privateKey, device.privateKey]);
 await Deno.mkdir(configDirectory, { recursive: true, mode: 0o700 });
+await Deno.mkdir(tlsDirectory, { recursive: true, mode: 0o700 });
+await createTestCertificates(tlsCertificate, tlsKey, trustedCa);
 await Deno.writeTextFile(
   `${configDirectory}/compose.override.yaml`,
   `services:
+  host:
+    environment:
+      BUNNY_HOLE_CONNECTOR_HOST: connector-gateway
+      BUNNY_HOLE_CONNECTOR_PORT: "7443"
+      BUNNY_HOLE_CONNECTOR_TRANSPORTS: wss
   connector:
+    command: [connect, --host, integration, --transport, wss, --local-development]
+    environment:
+      BUNNY_HOLE_TRUSTED_CA_FILE: /tls/ca.crt
     volumes:
       - type: volume
         source: connector-config
         target: /config
         read_only: true
+      - type: volume
+        source: tls-material
+        target: /tls
+        read_only: true
+  connector-gateway:
+    volumes:
+      - type: volume
+        source: tls-material
+        target: /tls
+        read_only: true
 volumes:
   connector-config:
     external: true
     name: ${configVolume}
+  tls-material:
+    external: true
+    name: ${tlsVolume}
 `,
   { mode: 0o600 },
 );
@@ -52,12 +109,25 @@ const publishedImages = Boolean(
 
 try {
   await run("docker", ["volume", "create", configVolume], { env: environment });
+  await run("docker", ["volume", "create", tlsVolume], { env: environment });
+  await stageTlsMaterial(tlsVolume, {
+    "tls.crt": await Deno.readTextFile(tlsCertificate),
+    "tls.key": await Deno.readTextFile(tlsKey),
+    "ca.crt": await Deno.readTextFile(trustedCa),
+  }, environment);
   if (publishedImages) {
-    await run("docker", [...compose, "build", "origin"], { env: environment });
-  } else {
-    await run("docker", [...compose, "build", "host", "origin", "connector"], {
+    await run("docker", [...compose, "build", "origin", "connector-gateway"], {
       env: environment,
     });
+  } else {
+    await run("docker", [
+      ...compose,
+      "build",
+      "host",
+      "origin",
+      "connector",
+      "connector-gateway",
+    ], { env: environment });
   }
   await run("docker", [
     ...compose,
@@ -67,6 +137,7 @@ try {
     "--wait",
     "host",
     "origin",
+    "connector-gateway",
   ], { env: environment });
 
   const client = new BunnyHoleClient(hostUrl, fetch, true);
@@ -88,6 +159,7 @@ try {
   );
   if (!ownerChallengeResponse.ok) throw new Error("owner challenge failed");
   const { challenge: ownerChallenge } = await ownerChallengeResponse.json();
+  secrets.add(ownerChallenge);
   const approval = await fetch(
     `${hostUrl}/api/v1/enrollments/${enrollment.id}/approve`,
     {
@@ -118,6 +190,7 @@ try {
     ...device,
   };
   const session = await client.session(externalCredentials);
+  secrets.add(session.accessToken);
   await client.createRoute(session, {
     name: "origin",
     protocol: "http",
@@ -179,6 +252,32 @@ try {
     "--detach",
     "connector",
   ], { env: environment });
+
+  await waitFor(
+    async () => {
+      const logs = await output("docker", [
+        ...compose,
+        "logs",
+        "--no-color",
+        "connector",
+      ], { env: environment });
+      return logs.includes("x509: certificate signed by unknown authority");
+    },
+    10_000,
+    "connector did not reject the gateway certificate signed by the wrong CA",
+  );
+  const wrongCa = await publicRequest("/wrong-ca");
+  if (wrongCa.ok || wrongCa.headers.get("x-origin-status") !== null) {
+    throw new Error("connector established a tunnel with the wrong CA");
+  }
+  await wrongCa.body?.cancel();
+  await stageTlsMaterial(tlsVolume, {
+    "ca.crt": await Deno.readTextFile(tlsCertificate),
+  }, environment);
+  await run("docker", [...compose, "stop", "connector"], { env: environment });
+  await run("docker", [...compose, "up", "--no-build", "--detach", "connector"], {
+    env: environment,
+  });
 
   await waitFor(async () => {
     const response = await publicRequest("/");
@@ -257,11 +356,62 @@ try {
   ) throw new Error("response header filtering failed");
   await filtered.body?.cancel();
 
+  const originNotFound = await publicRequest("/origin-404");
+  if (
+    originNotFound.status !== 404 ||
+    originNotFound.headers.get("x-origin-status") !== "not-found" ||
+    await originNotFound.text() !== "origin-not-found"
+  ) throw new Error("origin 404 was not preserved through the tunnel");
+
+  const disconnect = await publicRequest("/disconnect-stream");
+  const disconnectReader = disconnect.body?.getReader();
+  if (!disconnectReader || (await disconnectReader.read()).done) {
+    throw new Error("stream did not begin before public cancellation");
+  }
+  await disconnectReader.cancel();
+  await waitFor(
+    async () => {
+      const observed = await publicRequest("/disconnect-observed");
+      return (await observed.json()).cancelledResponses > 0;
+    },
+    5_000,
+    "origin did not observe public response cancellation",
+  );
+
   const started = Date.now();
   const timedOut = await publicRequest("/slow");
-  if (timedOut.status !== 502 || Date.now() - started > 5_000) {
-    throw new Error("origin timeout was not enforced");
+  const elapsed = Date.now() - started;
+  if (timedOut.status !== 502 || elapsed > 5_000) {
+    throw new Error(
+      `origin timeout was not enforced (status=${timedOut.status}, elapsedMs=${elapsed})`,
+    );
   }
+  await timedOut.body?.cancel();
+
+  await run("docker", [...compose, "stop", "connector"], { env: environment });
+  await waitFor(
+    async () => {
+      const unavailable = await publicRequest("/after-connector-stop");
+      const body = await unavailable.text();
+      return [404, 502, 503].includes(unavailable.status) &&
+        body !== "origin-not-found" &&
+        unavailable.headers.get("x-origin-status") === null;
+    },
+    10_000,
+    "public traffic remained available after connector stopped",
+  );
+  await run("docker", [...compose, "up", "--no-build", "--detach", "connector"], {
+    env: environment,
+  });
+  await waitFor(
+    async () => {
+      const recovered = await publicRequest("/after-connector-restart");
+      await recovered.body?.cancel();
+      return recovered.ok;
+    },
+    30_000,
+    "connector did not restore public traffic",
+  );
 
   if (
     await rawHttpStatus(
@@ -278,7 +428,7 @@ try {
   const logs = await output("docker", [...compose, "logs", "--no-color"], {
     env: environment,
   });
-  if (logs.includes(device.privateKey) || logs.includes(owner.privateKey)) {
+  if ([...secrets].some((secret) => logs.includes(secret))) {
     throw new Error("a private key leaked into logs");
   }
   console.log(
@@ -288,8 +438,12 @@ try {
   );
 } catch (error) {
   console.error(
-    await output("docker", [...compose, "logs", "--no-color"], { env: environment })
-      .catch(() => "compose logs unavailable"),
+    redactLogs(
+      await output("docker", [...compose, "logs", "--no-color"], {
+        env: environment,
+      }).catch(() => "compose logs unavailable"),
+      secrets,
+    ),
   );
   throw error;
 } finally {
@@ -301,18 +455,115 @@ try {
     console.error(`integration cleanup failed: ${String(error)}`);
     Deno.exitCode = 1;
   }
-  await run("docker", ["volume", "rm", "--force", configVolume], {
-    env: environment,
-  }).catch((error) => {
-    console.error(`integration config cleanup failed: ${String(error)}`);
-    Deno.exitCode = 1;
-  });
+  for (const volume of [configVolume, tlsVolume]) {
+    await run("docker", ["volume", "rm", "--force", volume], {
+      env: environment,
+    }).catch((error) => {
+      console.error(`integration volume cleanup failed: ${String(error)}`);
+      Deno.exitCode = 1;
+    });
+  }
   await Deno.remove(configDirectory, { recursive: true }).catch(() => {});
+}
+
+async function createTestCertificates(
+  certificate: string,
+  key: string,
+  ca: string,
+): Promise<void> {
+  await run("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-sha256",
+    "-days",
+    "1",
+    "-subj",
+    "/CN=wrong-ca",
+    "-keyout",
+    `${ca}.key`,
+    "-out",
+    ca,
+  ]);
+  await run("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-sha256",
+    "-days",
+    "1",
+    "-subj",
+    "/CN=connector-gateway",
+    "-addext",
+    "subjectAltName=DNS:connector-gateway",
+    "-keyout",
+    key,
+    "-out",
+    certificate,
+  ]);
+}
+
+async function stageTlsMaterial(
+  volume: string,
+  material: Record<string, string>,
+  environment: Record<string, string>,
+): Promise<void> {
+  const stage = new Deno.Command("docker", {
+    args: [
+      "run",
+      "--rm",
+      "--interactive",
+      "--user",
+      "0:0",
+      "--volume",
+      `${volume}:/tls`,
+      "denoland/deno:2.9.5@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463",
+      "deno",
+      "eval",
+      tlsStagingScript,
+    ],
+    env: environment,
+    stdin: "piped",
+    stdout: "inherit",
+    stderr: "inherit",
+  }).spawn();
+  const input = stage.stdin.getWriter();
+  await input.write(new TextEncoder().encode(JSON.stringify(material)));
+  await input.close();
+  if (!(await stage.status).success) throw new Error("TLS material staging failed");
+  await run("docker", [
+    "run",
+    "--rm",
+    "--user",
+    "65532:65532",
+    "--volume",
+    `${volume}:/tls:ro`,
+    "denoland/deno:2.9.5@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463",
+    "deno",
+    "eval",
+    'for(const name of ["tls.crt","tls.key","ca.crt"])await Deno.readTextFile(`/tls/${name}`)',
+  ], { env: environment });
+}
+
+function redactLogs(logs: string, values: Set<string>): string {
+  let redacted = logs;
+  for (const value of values) {
+    if (value) redacted = redacted.replaceAll(value, "[REDACTED]");
+  }
+  return redacted.replaceAll(
+    /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g,
+    "[REDACTED]",
+  );
 }
 
 async function waitFor(
   predicate: () => Promise<boolean>,
   timeout: number,
+  failure = "integration service did not become ready",
 ): Promise<void> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -323,11 +574,12 @@ async function waitFor(
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error("integration service did not become ready");
+  throw new Error(failure);
 }
 
 async function rawHttpStatus(request: string): Promise<number> {
   const connection = await Deno.connect({ hostname: testHost, port: 18080 });
+  const timeout = setTimeout(() => connection.close(), 10_000);
   try {
     await connection.write(new TextEncoder().encode(request));
     const bytes = new Uint8Array(512);
@@ -338,6 +590,7 @@ async function rawHttpStatus(request: string): Promise<number> {
       )[1],
     );
   } finally {
+    clearTimeout(timeout);
     connection.close();
   }
 }
@@ -347,6 +600,9 @@ function publicRequest(
   init: RequestInit = {},
 ): Promise<Response> {
   return new Promise((resolve, reject) => {
+    const signal = init.signal
+      ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+      : AbortSignal.timeout(10_000);
     const headers = new Headers(init.headers);
     headers.set("host", "tunnel.test");
     const client = httpRequest({
@@ -355,6 +611,7 @@ function publicRequest(
       path,
       method: init.method ?? "GET",
       headers: Object.fromEntries(headers),
+      signal,
     }, (response) => {
       const responseHeaders = new Headers();
       for (const [name, values] of Object.entries(response.headersDistinct)) {

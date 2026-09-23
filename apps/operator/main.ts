@@ -18,6 +18,30 @@ interface HostResource {
   transport: "quic" | "tcp" | "websocket" | "wss";
 }
 
+interface SupervisorState {
+  fingerprint: string;
+  renewAt: number;
+  controller: AbortController;
+}
+
+export function connectorFingerprint(
+  enrollmentId: string,
+  routes: Iterable<Pick<Route, "id">>,
+): string {
+  return JSON.stringify({
+    enrollmentId,
+    routes: [...routes].map((route) => route.id).sort(),
+  });
+}
+
+export function shouldRestartConnector(
+  current: Pick<SupervisorState, "fingerprint" | "renewAt"> | undefined,
+  fingerprint: string,
+  now: number,
+): boolean {
+  return current?.fingerprint !== fingerprint || now >= (current?.renewAt ?? 0);
+}
+
 export async function runOperator(signal: AbortSignal): Promise<void> {
   const logger = createLogger("json");
   const kube = await KubernetesClient.create();
@@ -28,7 +52,7 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
   }
   const supervisors = new Map<
     string,
-    { fingerprint: string; renewAt: number; controller: AbortController }
+    SupervisorState
   >();
   while (!signal.aborted) {
     try {
@@ -43,16 +67,12 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
           );
           const desired = routes.filter((route) => route.hostRef === host.reference);
           const session = await reconcileHost(host, credentials, desired);
-          const fingerprint = JSON.stringify({
-            enrollmentId: credentials.enrollmentId,
-            routes: session.routes.map((route) => route.id).sort(),
-            renewAt: Date.parse(session.expiresAt) - 60_000,
-          });
+          const fingerprint = connectorFingerprint(
+            credentials.enrollmentId,
+            session.routes,
+          );
           const current = supervisors.get(host.reference);
-          if (
-            current?.fingerprint !== fingerprint ||
-            Date.now() >= (current?.renewAt ?? 0)
-          ) {
+          if (shouldRestartConnector(current, fingerprint, Date.now())) {
             current?.controller.abort();
             const controller = new AbortController();
             const supervisor = {

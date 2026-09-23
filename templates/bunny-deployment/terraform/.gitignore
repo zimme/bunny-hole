@@ -1,0 +1,13 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.plan
+crash.log
+crash.*.log
+bunny-hole-owner.json
+*.tfvars*
+# Only these documented examples and the public deployment configuration may be tracked.
+!tfvars.example
+!deployment.auto.tfvars.json.example
+!deployment.auto.tfvars.json

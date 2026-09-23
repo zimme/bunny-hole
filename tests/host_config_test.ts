@@ -11,6 +11,9 @@ const base = {
 
 Deno.test("host configuration permits only secure production transports", () => {
   assertEquals(loadHostConfig(base).connectorTransports, ["wss"]);
+  const productionFrps = frpsConfig(loadHostConfig(base));
+  assertEquals(productionFrps.includes("transport.tls.force = false"), true);
+  assertEquals(productionFrps.includes("transport.tls.force = true"), false);
   assertEquals(
     loadHostConfig({ ...base, BUNNY_HOLE_PUBLIC_URL: "https://hole.example.com." })
       .publicUrl.hostname,

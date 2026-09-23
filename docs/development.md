@@ -1,10 +1,11 @@
 # Development
 
 Deno 2.9.5 is the only task runner and is also the compiler, dependency manager,
-formatter, linter, test runner, coverage tool, build tool, and task runner. Node 24.13.1
-and npm 11.8.0 exist in the development image only for GitHub Copilot CLI, Dev Container
-tooling, and validating the actual npm package. There are no npm task wrappers or
-repository `package.json`.
+formatter, linter, test runner, coverage tool, and build tool. Terraform 1.16.2 exists
+only to validate the copyable consumer deployment configuration against its pinned
+provider. Node 24.13.1 and npm 11.8.0 exist in the development image only for GitHub
+Copilot CLI, Dev Container tooling, and validating the actual npm package. There are no
+npm task wrappers or repository `package.json`.
 
 ## Compose-native toolchain
 
@@ -46,7 +47,9 @@ Inside the service, run `deno task setup` once and then focused tasks such as `f
 `lint`, `check`, `test`, `coverage`, `integration`, `build`, `package:check`, `audit`,
 or `container:smoke`. `deno task validate` is authoritative and executes, in order:
 
-- agent, workflow, version, generated-file, and license policy checks;
+- agent, workflow, version, deployment-template, generated-file, and license policy
+  checks, including real backend-free Terraform initialization, validation, and
+  mock-provider regression tests;
 - frozen dependency resolution, formatting, spelling, Deno lint and type checking;
 - documentation checks, tests, and coverage threshold enforcement;
 - the production host/connector image integration topology;
@@ -61,10 +64,11 @@ the same development service.
 The development Dockerfile copies `deno.json`, `deno.lock`, and the smaller
 `deno.runtime.json`/`deno.runtime.lock` production graph before source. It freezes and
 prewarms both graphs, so dependency changes invalidate the layer while ordinary source
-changes do not. The split prevents repository-only tools such as cspell from being
-embedded by `deno compile`; `deno task validate` checks both lockfiles. `/deno-dir` is a
-persistent named local volume whose ownership is fixed for the non-root `vscode` user.
-The GHCR development prebuild is the primary CI toolchain/dependency cache, and BuildKit
+changes do not. It also prewarms the provider graph from the consumer template's frozen
+Terraform lockfile. The split prevents repository-only tools such as cspell from being
+embedded by `deno compile`; `deno task validate` checks both lockfiles. `/deno-dir` and
+the image's Terraform provider cache are writable by the non-root `vscode` user. The
+GHCR development prebuild is the primary CI toolchain/dependency cache, and BuildKit
 registry layers cache production images.
 
 No GitHub Actions dependency cache is layered on top: local volumes do not transfer to
@@ -89,15 +93,25 @@ pinned sidecar image.
 `deno task integration` creates an isolated Compose project, a per-run configuration
 volume, and random credential material. It builds the exact `host-runtime` and
 `connector-runtime` Dockerfile targets, enrolls a connector, approves its grant, starts
-FRP, and exercises public HTTP through the host to the deterministic origin. It covers
-concurrent isolation, streaming and binary bodies, header stripping, oversized requests,
-timeouts, route confusion, replacement/revocation behavior, health, readiness, and
-secret-free logs. Cleanup targets only the generated Compose project and its exact
-configuration volume.
+FRP over a verified local WSS gateway, and exercises public HTTP through the host to the
+deterministic origin. It first proves that a different CA rejects the gateway
+certificate and cannot establish a usable route, then trusts the gateway certificate and
+runs the public-traffic checks. These cover concurrent isolation, streaming and binary
+bodies, public-disconnect propagation, header stripping, oversized requests, origin
+timeouts, route confusion, connector disconnect/recovery, origin 404 preservation, and
+secret-free logs. The management origin remains local HTTP under explicit development
+mode; this is not a Bunny CDN or public management-TLS acceptance test. Cleanup targets
+only the generated Compose project and its exact configuration volume.
+
+Bunny-specific acceptance remains a manual, protected-environment operation: verify the
+Magic Container's persistent state across restarts, the exact CDN ports and custom TLS
+hostnames, disabled caching/retries, connector WebSocket policy, DNS, and the
+one-region, one-instance topology before a real deployment or material platform change.
 
 `deno task container:smoke` verifies the production process user and health behavior.
 The final images are distroless and contain only the compiled application plus `frps` or
-`frpc`; Deno and source files remain in build stages.
+`frpc`. The connector also carries its checksum-pinned public CA bundle for FRP WSS
+verification; Deno and source files remain in build stages.
 
 ## Package and release artifacts
 
@@ -105,7 +119,9 @@ The final images are distroless and contain only the compiled application plus `
 tarball, installs it into an isolated Node consumer with lifecycle scripts disabled, and
 exercises the exported control library. `deno task release:artifacts` is intentionally
 tag-workflow work because it downloads a Deno runtime and checksum-verified FRP archive
-for every Linux, macOS, and Windows target.
+for every Linux, macOS, and Windows target. It also bundles the same checksum-pinned
+public CA file and MPL-2.0 license used by the connector OCI image; native users keep
+`bunny-hole`, `frpc`, and `ca-certificates.crt` together.
 
 Every release surface uses one immutable ComVer version: host OCI, connector OCI, native
 bundle, JSR module, and npm package. Releases occur only from increasing `MAJOR.MINOR.0`

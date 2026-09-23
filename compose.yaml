@@ -38,6 +38,7 @@ services:
         NPM_VERSION: "11.8.0"
         GH_VERSION: "2.96.0"
         COPILOT_VERSION: "1.0.72"
+        TERRAFORM_VERSION: "1.16.2"
         DOCKER_CLI_VERSION: "5:29.6.2-1~debian.13~trixie"
         DOCKER_BUILDX_VERSION: "0.35.0-1~debian.13~trixie"
         DOCKER_COMPOSE_VERSION: "5.3.1-1~debian.13~trixie"
@@ -94,6 +95,22 @@ services:
       target: fixture-runtime
     networks: [tunnel]
     read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  connector-gateway:
+    profiles: [tunnel]
+    image: bunny-hole-tls-gateway-fixture:local
+    build:
+      context: .
+      target: tls-gateway-runtime
+    depends_on:
+      host: { condition: service_healthy }
+    volumes:
+      - "${BUNNY_HOLE_TLS_DIRECTORY:-/tmp/bunny-hole-tls-required}:/tls:ro"
+    networks: [tunnel, public]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,noexec,nosuid"]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
 

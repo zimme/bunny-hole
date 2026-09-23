@@ -1,4 +1,5 @@
 const port = Number(Deno.env.get("PORT") ?? "3000");
+let cancelledResponses = 0;
 
 if (import.meta.main) {
   Deno.serve({ hostname: "0.0.0.0", port }, async (request) => {
@@ -15,6 +16,12 @@ if (import.meta.main) {
         },
       });
     }
+    if (url.pathname === "/origin-404") {
+      return new Response("origin-not-found", {
+        status: 404,
+        headers: { "x-origin-status": "not-found" },
+      });
+    }
     if (url.pathname === "/disconnect-stream") {
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -29,8 +36,14 @@ if (import.meta.main) {
               }
             }, 100);
           },
+          cancel() {
+            cancelledResponses++;
+          },
         }),
       );
+    }
+    if (url.pathname === "/disconnect-observed") {
+      return Response.json({ cancelledResponses });
     }
     const body = new Uint8Array(await request.arrayBuffer());
     if (url.pathname === "/binary") {

@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { BunnyHoleClient, type HostCredentials } from "./client.ts";
 import { frpcConfig } from "./frpc_config.ts";
 import { ValidationError } from "../../packages/api/mod.ts";
@@ -12,6 +12,8 @@ export interface ConnectorOptions {
   transport?: "wss";
   workingDirectory?: string;
   stderr?: "inherit" | "pipe";
+  /** PEM roots used to verify the connector WSS endpoint. */
+  trustedCaFile?: string;
 }
 
 export interface ConnectorHandle {
@@ -33,6 +35,11 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
   if (options.transport && options.transport !== "wss") {
     throw new ValidationError("library connectors require WSS");
   }
+  const trustedCaFile = options.trustedCaFile ??
+    join(dirname(options.frpcPath), "ca-certificates.crt");
+  if (!trustedCaFile || trustedCaFile.includes("\0")) {
+    throw new ValidationError("trusted CA bundle path is invalid");
+  }
   const client = new BunnyHoleClient(options.credentials.url);
   let controller = new AbortController();
   let child: ChildProcess | undefined;
@@ -45,6 +52,7 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
       const runController = controller;
       running = true;
       try {
+        await validateTrustedCaFile(trustedCaFile);
         const session = await client.session(options.credentials);
         if (runController.signal.aborted || signal?.aborted) return 0;
         const directory = await mkdtemp(
@@ -52,10 +60,14 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
         );
         try {
           const path = join(directory, "frpc.toml");
-          await writeFile(path, frpcConfig(session, options.transport ?? "wss"), {
-            mode: 0o600,
-            flag: "wx",
-          });
+          await writeFile(
+            path,
+            frpcConfig(session, options.transport ?? "wss", false, trustedCaFile),
+            {
+              mode: 0o600,
+              flag: "wx",
+            },
+          );
           if (runController.signal.aborted || signal?.aborted) return 0;
           const abort = () => {
             try {
@@ -100,4 +112,28 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
       controller.abort();
     },
   };
+}
+
+async function validateTrustedCaFile(path: string): Promise<void> {
+  try {
+    const info = await stat(path);
+    if (!info.isFile() || info.size === 0) {
+      throw new ValidationError(
+        "trusted CA bundle must be a non-empty PEM certificate bundle",
+      );
+    }
+    const pem = await readFile(path, "utf8");
+    if (
+      !pem.includes("-----BEGIN CERTIFICATE-----") ||
+      !pem.includes("-----END CERTIFICATE-----")
+    ) {
+      throw new ValidationError(
+        "trusted CA bundle must be a non-empty PEM certificate bundle",
+      );
+    }
+  } catch (error) {
+    if (error instanceof ValidationError) throw error;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new ValidationError(`trusted CA bundle is unreadable (${path}): ${detail}`);
+  }
 }

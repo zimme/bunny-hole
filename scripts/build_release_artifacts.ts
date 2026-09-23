@@ -48,12 +48,23 @@ const targets: Target[] = [
   },
 ];
 const metadata = JSON.parse(await Deno.readTextFile("third_party/frp.json"));
+const caBundle = JSON.parse(
+  await Deno.readTextFile("third_party/ca-certificates.json"),
+);
 const version = await readProductVersion();
 const outputDirectory = "dist/release";
 await Deno.mkdir(outputDirectory, { recursive: true });
 const temporary = await Deno.makeTempDir({ prefix: "bunny-hole-release-" });
 
 try {
+  const trustedCa = join(temporary, "ca-certificates.crt");
+  const caLicense = join(temporary, "MOZILLA-CA-LICENSE.txt");
+  await downloadPinned(caBundle.source, trustedCa, caBundle.sha256);
+  await downloadPinned(
+    caBundle.licenseSource,
+    caLicense,
+    caBundle.licenseSha256,
+  );
   for (const target of targets) {
     const directory = join(temporary, `bunny-hole-${version}-${target.key}`);
     await Deno.mkdir(directory);
@@ -102,9 +113,11 @@ try {
     }
     await Deno.writeTextFile(
       join(directory, "README.txt"),
-      `Bunny Hole ${version}\n\nKeep bunny-hole and frpc in the same directory. Run bunny-hole --help.\n`,
+      `Bunny Hole ${version}\n\nKeep bunny-hole, frpc, and ca-certificates.crt in the same directory. Run bunny-hole --help.\n`,
     );
     await Deno.copyFile("third_party/frp.LICENSE", join(directory, "FRP-LICENSE.txt"));
+    await Deno.copyFile(trustedCa, join(directory, "ca-certificates.crt"));
+    await Deno.copyFile(caLicense, join(directory, "MOZILLA-CA-LICENSE.txt"));
     await run("tar", [
       "-czf",
       join(outputDirectory, `${basename(directory)}.tar.gz`),
@@ -143,4 +156,21 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   owned.set(bytes);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", owned));
   return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function downloadPinned(
+  url: string,
+  path: string,
+  expectedSha256: string,
+): Promise<void> {
+  const response = await fetch(url, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!response.ok) throw new Error(`download failed (${response.status})`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (await sha256(bytes) !== expectedSha256) {
+    throw new Error(`checksum mismatch for ${url}`);
+  }
+  await Deno.writeFile(path, bytes);
 }

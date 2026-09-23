@@ -56,6 +56,12 @@ The pending connector polls for approval, proves possession of its private key, 
 short-lived host-signed session, and starts FRP. Subsequent sessions use fresh Ed25519
 challenge-response; the private key never crosses the network.
 
+WSS endpoint certificates are verified with the bundled `ca-certificates.crt` next to
+`frpc`. Override that public CA-bundle path only when a deployment uses its own trust
+roots, with `bunny-hole connect --trusted-ca-file FILE` or `BUNNY_HOLE_TRUSTED_CA_FILE`.
+The file must be a non-empty PEM bundle. Bunny Hole never falls back to unverified WSS
+TLS.
+
 Common management commands are:
 
 ```sh
