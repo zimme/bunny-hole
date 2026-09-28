@@ -75,10 +75,11 @@ for the agent. GitHub Actions runs the same tasks inside the same development se
 
 The initializer writes a path-derived `COMPOSE_PROJECT_NAME` to the ignored `.env` file
 unless one is already configured, and creates the external Deno cache volume. The Dev
-Container adapter runs it automatically before startup; `deno task devcontainer:up` does
-too. This keeps same-named Git worktrees in separate projects, each with its own
-rootless Docker daemon data and host state. It also mounts the Git common directory at
-its original path, so linked worktrees can run tracked-file, secret, and commit checks
+Container adapter runs it during startup; GitHub workflows run it before
+`devcontainers/ci` reads Compose for its build. `deno task devcontainer:up` does too.
+This keeps same-named Git worktrees in separate projects, each with its own rootless
+Docker daemon data and host state. It also mounts the Git common directory at its
+original path, so linked worktrees can run tracked-file, secret, and commit checks
 inside the container. Docker selects network ranges and published host ports to avoid
 collisions. Inside a Compose project, services resolve `host.test`,
 `connector-gateway.test`, and `origin` through Docker's project-local DNS. Nothing needs

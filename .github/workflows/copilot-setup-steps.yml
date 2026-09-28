@@ -25,6 +25,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/rootlesskit-apparmor
+      - name: Initialize Compose workspace
+        run: sh .devcontainer/initialize.sh
       - name: Prepare the shared Dev Container
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         env:

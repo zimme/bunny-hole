@@ -21,6 +21,8 @@ is not the validation pipeline or a command that shuts down the container. CI us
 signal, and tears down its project in an `always()` step. Copilot setup leaves its
 environment running for the agent. Keep `BUNNY_HOLE_ENVIRONMENT_NAME` descriptive and
 `BUNNY_HOLE_DEVELOPMENT` an explicit test transport opt-in; neither is derived from
-`CI`. Keep the toolchain aligned with `.tool-versions`, `compose.yaml`, and the Dev
-Container. Check workflow syntax and policy with `deno task workflows:check`, then run
-`deno task validate` in the development service when possible.
+`CI`. Run `.devcontainer/initialize.sh` before `devcontainers/ci`: its separate build
+phase reads Compose before Dev Container `initializeCommand` runs. Keep the toolchain
+aligned with `.tool-versions`, `compose.yaml`, and the Dev Container. Check workflow
+syntax and policy with `deno task workflows:check`, then run `deno task validate` in the
+development service when possible.
