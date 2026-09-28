@@ -11,6 +11,14 @@ const base = {
 
 Deno.test("host configuration permits only secure production transports", () => {
   assertEquals(loadHostConfig(base).connectorTransports, ["wss"]);
+  assertEquals(
+    loadHostConfig({
+      ...base,
+      CI: "true",
+      BUNNY_HOLE_ENVIRONMENT_NAME: "development",
+    }).development,
+    false,
+  );
   const productionFrps = frpsConfig(loadHostConfig(base));
   assertEquals(productionFrps.includes("transport.tls.force = false"), true);
   assertEquals(productionFrps.includes("transport.tls.force = true"), false);
@@ -59,20 +67,58 @@ Deno.test("host configuration fails closed on secrets and port collisions", () =
   );
 });
 
-Deno.test("local development explicitly permits direct transports", () => {
+Deno.test("development explicitly permits direct transports", () => {
+  const secureDefaults = loadHostConfig({
+    ...base,
+    BUNNY_HOLE_DEVELOPMENT: "true",
+    BUNNY_HOLE_PUBLIC_URL: "https://host.test",
+  });
+  assertEquals(secureDefaults.connectorTransports, ["wss"]);
+  assertEquals(secureDefaults.connectorPort, 443);
   const config = loadHostConfig({
     ...base,
-    BUNNY_HOLE_LOCAL_DEVELOPMENT: "true",
+    BUNNY_HOLE_DEVELOPMENT: "true",
     BUNNY_HOLE_PUBLIC_URL: "http://127.0.0.1:8080",
     BUNNY_HOLE_CONNECTOR_HOST: "host.test",
     BUNNY_HOLE_CONNECTOR_TRANSPORTS: "tcp,quic",
   });
-  assertEquals(config.localDevelopment, true);
+  assertEquals(config.development, true);
   assertEquals(config.connectorTransports, ["tcp", "quic"]);
   assertEquals(frpsConfig(config).includes("quicBindPort = 7000"), true);
   assertEquals(frpsConfig(config).includes('proxyBindAddr = "127.0.0.1"'), true);
   assertEquals(
     frpsConfig(loadHostConfig(base)).includes("quicBindPort"),
     false,
+  );
+  assertThrows(
+    () => loadHostConfig({ ...base, BUNNY_HOLE_DEVELOPMENT: "true" }),
+    /local management hostname/,
+  );
+  assertThrows(
+    () =>
+      loadHostConfig({
+        ...base,
+        BUNNY_HOLE_DEVELOPMENT: "true",
+        BUNNY_HOLE_PUBLIC_URL: "ftp://host.test",
+      }),
+    /HTTPS outside development/,
+  );
+  assertThrows(
+    () =>
+      loadHostConfig({
+        ...base,
+        BUNNY_HOLE_DEVELOPMENT: "true",
+        BUNNY_HOLE_PUBLIC_URL: "http://host.test",
+        BUNNY_HOLE_CONNECTOR_HOST: "connect.example.com",
+      }),
+    /local connector hostname/,
+  );
+  assertThrows(
+    () =>
+      loadHostConfig({
+        BUNNY_HOLE_OWNER_PUBLIC_KEY: owner.publicKey,
+        BUNNY_HOLE_DEVELOPMENT: "true",
+      }),
+    /PUBLIC_URL/,
   );
 });

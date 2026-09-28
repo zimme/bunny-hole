@@ -117,6 +117,16 @@ credential.
   run only in a trusted developer context or through a restricted socket proxy.
 - Repository validation uses a separate pinned rootless Docker-in-Docker daemon and
   never mounts the host Docker socket into pull-request code.
+- The Compose fixture keeps the connector listener on a project-local network. Only the
+  host service's HTTP port is published for host-side tests, on loopback by default.
+  Services use project-local DNS aliases; host DNS changes are unnecessary. The nested
+  test daemon publishes to its own private network interface so the development
+  container can reach it, without publishing a port from the outer Docker host.
+- The explicit development switch is read from process configuration, never from a
+  request. It accepts only loopback or reserved test hostnames, and does not disable
+  management hostname or descriptor origin checks. Production deployments must leave it
+  unset; an operator who deliberately routes a reserved test hostname to a public
+  service can still expose the development transport.
 - Bunny Hole does not weaken Home Assistant, Plex, dashboards, or other application
   auth. Operators must not expose an unauthenticated administrative service merely
   because the transport is encrypted.

@@ -42,6 +42,7 @@ Deno 2.9.5 is pinned throughout. The complete development image is Compose-nativ
 Container-aware editors are optional adapters and add no Features.
 
 ```sh
+sh .devcontainer/initialize.sh
 docker compose up --build --detach development
 docker compose exec --user vscode development deno task validate
 docker compose down

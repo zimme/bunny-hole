@@ -96,7 +96,7 @@ export class Host {
         );
       }
       if (
-        !this.config.localDevelopment && isReservedPath(url.pathname) &&
+        isReservedPath(url.pathname) &&
         requestHostname(request) !== this.config.publicUrl.hostname
       ) return json({ error: "not found" }, 404);
       if (!this.#accepting) return publicError(503);

@@ -33,7 +33,7 @@ perform a second TLS handshake inside that stream
 Deployment must expose the connector endpoint as a CDN-to-container backend, never as a
 raw public TCP service; FRP admission remains host-signed and plugin-authorized. Direct
 TCP, QUIC, and unencrypted WebSocket transports are rejected outside explicit
-local-development mode.
+development mode.
 
 Public requests enter the Deno host, which reserves all control paths, rejects unknown
 hostnames, replaces forwarding headers, and streams to the loopback FRP HTTP virtual

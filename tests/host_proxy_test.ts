@@ -300,7 +300,7 @@ async function hostContext(frpHttpPort: number, requestTimeoutMs = 30_000) {
     connectorTransports: ["tcp"],
     requestTimeoutMs,
     logFormat: "json",
-    localDevelopment: true,
+    development: true,
   };
   return { store, host: new Host(config, store, identity, logger) };
 }

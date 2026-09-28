@@ -60,6 +60,9 @@ jobs:
               exit 1
               ;;
           esac
+      - name: Initialize Compose workspace
+        if: steps.image.outputs.exists != 'true'
+        run: sh .devcontainer/initialize.sh
       - name: Publish immutable and cache tags
         if: steps.image.outputs.exists != 'true'
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3

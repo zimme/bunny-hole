@@ -54,11 +54,11 @@ await Deno.writeTextFile(
   `services:
   host:
     environment:
-      BUNNY_HOLE_CONNECTOR_HOST: connector-gateway
+      BUNNY_HOLE_CONNECTOR_HOST: connector-gateway.test
       BUNNY_HOLE_CONNECTOR_PORT: "7443"
       BUNNY_HOLE_CONNECTOR_TRANSPORTS: wss
   connector:
-    command: [connect, --host, integration, --transport, wss, --local-development]
+    command: [connect, --host, integration, --transport, wss, --development]
     environment:
       BUNNY_HOLE_TRUSTED_CA_FILE: /tls/ca.crt
     volumes:
@@ -87,7 +87,7 @@ volumes:
   { mode: 0o600 },
 );
 const testHost = Deno.env.get("BUNNY_HOLE_TEST_HOST") ?? "127.0.0.1";
-const hostUrl = `http://${testHost}:18080`;
+let hostPort = 0;
 const environment: Record<string, string> = {
   ...Deno.env.toObject(),
   BUNNY_HOLE_OWNER_PUBLIC_KEY: owner.publicKey,
@@ -140,8 +140,35 @@ try {
     "connector-gateway",
   ], { env: environment });
 
-  const client = new BunnyHoleClient(hostUrl, fetch, true);
+  const binding = await output("docker", [...compose, "port", "host", "8080"], {
+    env: environment,
+  });
+  hostPort = Number(binding.match(/:(\d+)$/)?.[1]);
+  if (!Number.isInteger(hostPort) || hostPort < 1 || hostPort > 65535) {
+    throw new Error(`invalid host port from Compose: ${binding}`);
+  }
+  const managementUrl = "http://host.test:8080";
+  const managementFetch: typeof fetch = (input, init) => {
+    if (input instanceof Request) {
+      throw new Error("management fixture expects a URL");
+    }
+    const requested = new URL(String(input));
+    if (requested.origin !== managementUrl) {
+      throw new Error("management fixture URL changed origin");
+    }
+    return fixtureRequest(
+      `${requested.pathname}${requested.search}`,
+      "host.test",
+      init,
+    );
+  };
+  const client = new BunnyHoleClient(managementUrl, managementFetch, true);
   const descriptor = await client.descriptor();
+  const crossHostControl = await publicRequest("/.well-known/bunny-hole");
+  if (crossHostControl.status !== 404) {
+    throw new Error("management descriptor was exposed on the public hostname");
+  }
+  await crossHostControl.body?.cancel();
   const enrollment = await client.enroll("integration", "device", device.publicKey);
   const grant = validateGrant({
     exactHostnames: ["tunnel.test"],
@@ -149,8 +176,8 @@ try {
     protocols: ["http"],
     maxRoutes: 2,
   });
-  const ownerChallengeResponse = await fetch(
-    `${hostUrl}/api/v1/admin/owner/challenge`,
+  const ownerChallengeResponse = await managementFetch(
+    `${managementUrl}/api/v1/admin/owner/challenge`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -160,8 +187,8 @@ try {
   if (!ownerChallengeResponse.ok) throw new Error("owner challenge failed");
   const { challenge: ownerChallenge } = await ownerChallengeResponse.json();
   secrets.add(ownerChallenge);
-  const approval = await fetch(
-    `${hostUrl}/api/v1/enrollments/${enrollment.id}/approve`,
+  const approval = await managementFetch(
+    `${managementUrl}/api/v1/enrollments/${enrollment.id}/approve`,
     {
       method: "POST",
       headers: {
@@ -184,7 +211,7 @@ try {
   );
   if (!approval.ok) throw new Error(`approval failed: ${approval.status}`);
   const externalCredentials = {
-    url: hostUrl,
+    url: managementUrl,
     identityPublicKey: descriptor.identityPublicKey,
     enrollmentId: enrollment.id,
     ...device,
@@ -204,7 +231,7 @@ try {
       version: 1,
       defaultHost: "integration",
       hosts: {
-        integration: { ...externalCredentials, url: "http://host:8080" },
+        integration: externalCredentials,
       },
     },
     null,
@@ -243,7 +270,7 @@ try {
     "check",
     "--host",
     "integration",
-    "--local-development",
+    "--development",
   ], { env: environment });
   await run("docker", [
     ...compose,
@@ -497,9 +524,9 @@ async function createTestCertificates(
     "-days",
     "1",
     "-subj",
-    "/CN=connector-gateway",
+    "/CN=connector-gateway.test",
     "-addext",
-    "subjectAltName=DNS:connector-gateway",
+    "subjectAltName=DNS:connector-gateway.test",
     "-keyout",
     key,
     "-out",
@@ -578,7 +605,7 @@ async function waitFor(
 }
 
 async function rawHttpStatus(request: string): Promise<number> {
-  const connection = await Deno.connect({ hostname: testHost, port: 18080 });
+  const connection = await Deno.connect({ hostname: testHost, port: hostPort });
   const timeout = setTimeout(() => connection.close(), 10_000);
   try {
     await connection.write(new TextEncoder().encode(request));
@@ -599,15 +626,23 @@ function publicRequest(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
+  return fixtureRequest(path, "tunnel.test", init);
+}
+
+function fixtureRequest(
+  path: string,
+  hostname: string,
+  init: RequestInit = {},
+): Promise<Response> {
   return new Promise((resolve, reject) => {
     const signal = init.signal
       ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
       : AbortSignal.timeout(10_000);
     const headers = new Headers(init.headers);
-    headers.set("host", "tunnel.test");
+    headers.set("host", hostname);
     const client = httpRequest({
       hostname: testHost,
-      port: 18080,
+      port: hostPort,
       path,
       method: init.method ?? "GET",
       headers: Object.fromEntries(headers),

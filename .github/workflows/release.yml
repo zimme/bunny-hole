@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: release
+    env:
+      BUNNY_HOLE_ENVIRONMENT_NAME: release-validation
+      RELEASE_TAG: ${{ github.ref_name }}
     permissions:
       contents: write
       packages: write
@@ -36,15 +39,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Initialize Compose workspace
+        run: sh .devcontainer/initialize.sh
       - name: Run the authoritative validation
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           configFile: .devcontainer/devcontainer.json
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
           push: never
+          env: |
+            CI
+            BUNNY_HOLE_ENVIRONMENT_NAME
+            RELEASE_TAG
           runCmd: >-
-            CI=true deno task validate &&
-            deno task release:check ${{ github.ref_name }} &&
+            deno task validate &&
+            deno task release:check "$RELEASE_TAG" &&
             deno task release:artifacts
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -111,14 +120,19 @@ jobs:
           docker run --rm "$CONNECTOR_IMAGE" --version
       - name: Exercise the exact published images end to end
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
+        env:
+          BUNNY_HOLE_HOST_IMAGE: ghcr.io/${{ github.repository }}-host@${{ steps.host.outputs.digest }}
+          BUNNY_HOLE_CONNECTOR_IMAGE: ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
         with:
           configFile: .devcontainer/devcontainer.json
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
           push: never
-          runCmd: >-
-            BUNNY_HOLE_HOST_IMAGE=ghcr.io/${{ github.repository }}-host@${{ steps.host.outputs.digest }}
-            BUNNY_HOLE_CONNECTOR_IMAGE=ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
-            CI=true deno task integration
+          env: |
+            CI
+            BUNNY_HOLE_ENVIRONMENT_NAME
+            BUNNY_HOLE_HOST_IMAGE
+            BUNNY_HOLE_CONNECTOR_IMAGE
+          runCmd: deno task integration
       - name: Generate host SPDX SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
@@ -167,7 +181,11 @@ jobs:
           configFile: .devcontainer/devcontainer.json
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
           push: never
-          runCmd: RELEASE_TAG=${{ github.ref_name }} deno task release:publish-package
+          env: |
+            CI
+            BUNNY_HOLE_ENVIRONMENT_NAME
+            RELEASE_TAG
+          runCmd: deno task release:publish-package
       - name: Generate Conventional Commit release notes
         env:
           HOST_DIGEST: ${{ steps.host.outputs.digest }}
@@ -191,9 +209,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
-          gh release create "${{ github.ref_name }}"
-          bunny-hole-host-${{ github.ref_name }}.spdx.json
-          bunny-hole-connector-${{ github.ref_name }}.spdx.json
+          gh release create "$RELEASE_TAG"
+          "bunny-hole-host-${RELEASE_TAG}.spdx.json"
+          "bunny-hole-connector-${RELEASE_TAG}.spdx.json"
           dist/release/*
-          --verify-tag --title "Bunny Hole ${{ github.ref_name }}"
+          --verify-tag --title "Bunny Hole $RELEASE_TAG"
           --notes-file release-notes.md
+      - name: Tear down release validation environment
+        if: always()
+        run: |
+          if [ -f .env ]; then
+            docker compose --profile development down --volumes --remove-orphans
+          fi

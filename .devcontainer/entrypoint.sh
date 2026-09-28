@@ -2,7 +2,7 @@
 set -euo pipefail
 
 install -d -o vscode -g vscode /deno-dir /home/vscode/.cache
-chown -R vscode:vscode /deno-dir /home/vscode/.cache
+chown -R vscode:vscode /home/vscode/.cache
 
 # Keep the checkout itself host-owned. Only ignored build/test output needs to be
 # writable by the fixed UID shared with the rootless Docker sidecar.
