@@ -91,7 +91,8 @@ requiring a second TLS handshake
 Deployment must expose port 7000 only through Bunny's documented CDN-to-container
 endpoint boundary, never as raw public TCP; `frps` cannot establish that network
 provenance itself. Direct TCP, QUIC, or unencrypted WebSocket may be selected only with
-explicit local-development mode.
+explicit development mode and reserved test or loopback hostnames. Development mode does
+not bypass management hostname or descriptor origin checks.
 
 The control connection uses TCP multiplexing, a 20-second heartbeat and keepalive, and a
 45-second dead-session timeout. `frps` limits connection pools and proxies, disables

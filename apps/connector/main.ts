@@ -46,7 +46,7 @@ Usage:
   bunny-hole route list [--host NAME]
   bunny-hole route delete ID [--host NAME]
   bunny-hole connect [--host NAME] [--transport wss|quic|tcp|websocket]
-                     [--trusted-ca-file FILE]
+                     [--trusted-ca-file FILE] [--development]
   bunny-hole check [--host NAME]
   bunny-hole owner generate --output FILE
   bunny-hole owner passkey --owner-key FILE [--host NAME] [--name NAME]
@@ -56,7 +56,8 @@ Usage:
 
 Private keys are stored only in mode-0600 files and are never accepted as command-line
 values. Production host URLs must use HTTPS. Non-loopback targets require the explicit
---allow-private-network option.
+--allow-private-network option. --development permits HTTP and direct connector
+transports in isolated development environments.
 `;
 
 if (import.meta.main) {
@@ -168,7 +169,7 @@ async function addHost(flags: Flags): Promise<void> {
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(alias)) {
     throw new UsageError("invalid host name");
   }
-  const client = new BunnyHoleClient(url, fetch, localDevelopment(flags));
+  const client = new BunnyHoleClient(url, fetch, isDevelopment(flags));
   const descriptor = await client.descriptor();
   const state = await loadStateOrEmpty(configPath(flags));
   if (state.hosts[alias]) throw new UsageError("host already exists");
@@ -429,7 +430,7 @@ async function connect(flags: Flags): Promise<void> {
   if (!["quic", "tcp", "websocket", "wss"].includes(transport)) {
     throw new UsageError("invalid transport");
   }
-  const development = localDevelopment(flags);
+  const development = isDevelopment(flags);
   if (transport !== "wss" && !development) {
     throw new UsageError("production connectors require the wss transport");
   }
@@ -587,7 +588,7 @@ async function prepareCluster(flags: Flags): Promise<void> {
       throw new UsageError(`invalid ${label}`);
     }
   }
-  const client = new BunnyHoleClient(url, fetch, localDevelopment(flags));
+  const client = new BunnyHoleClient(url, fetch, isDevelopment(flags));
   const descriptor = await client.descriptor();
   const keys = await generateKeyPair();
   const enrollment = await client.enroll(name, "cluster", keys.publicKey);
@@ -634,7 +635,7 @@ function flagsFrom(args: string[]): Flags {
     }
     if (name in flags) throw new UsageError(`duplicate flag --${name}`);
     if (
-      ["allow-private-network", "local-development", "passkey", "yes"].includes(name)
+      ["allow-private-network", "development", "passkey", "yes"].includes(name)
     ) {
       flags[name] = true;
     } else {
@@ -663,9 +664,9 @@ function configPath(flags: Flags): string {
     defaultStatePath();
 }
 
-function localDevelopment(flags: Flags): boolean {
-  return flags["local-development"] === true ||
-    Deno.env.get("BUNNY_HOLE_LOCAL_DEVELOPMENT") === "true";
+function isDevelopment(flags: Flags): boolean {
+  return flags["development"] === true ||
+    Deno.env.get("BUNNY_HOLE_DEVELOPMENT") === "true";
 }
 
 function hostAlias(url: string): string {
@@ -674,7 +675,7 @@ function hostAlias(url: string): string {
 }
 
 function clientFor(credentials: HostCredentials, flags: Flags): BunnyHoleClient {
-  return new BunnyHoleClient(credentials.url, fetch, localDevelopment(flags));
+  return new BunnyHoleClient(credentials.url, fetch, isDevelopment(flags));
 }
 
 function parseTarget(value: string): { host: string; port: number } {

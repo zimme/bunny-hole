@@ -12,6 +12,7 @@ import {
   type Route,
   ValidationError,
 } from "../../packages/api/mod.ts";
+import { isDevelopmentHostname } from "../../packages/api/security.ts";
 import { validateOrigin } from "../../packages/api/security.ts";
 import { sign, validatePublicKey } from "../../packages/api/auth.ts";
 
@@ -72,14 +73,17 @@ export class BunnyHoleClient {
   constructor(
     url: string | URL,
     private fetcher: typeof fetch = fetch,
-    private localDevelopment = false,
+    private development = false,
   ) {
     this.url = new URL(url);
     if (
       this.url.protocol !== "https:" &&
-      !(localDevelopment && this.url.protocol === "http:")
+      !(development && this.url.protocol === "http:")
     ) {
       throw new ValidationError("host URL must use HTTPS");
+    }
+    if (development && !isDevelopmentHostname(this.url.hostname)) {
+      throw new ValidationError("development requires a local management hostname");
     }
     if (
       this.url.username || this.url.password || this.url.search || this.url.hash ||
@@ -93,7 +97,7 @@ export class BunnyHoleClient {
     return parseDescriptor(
       await this.request("/.well-known/bunny-hole"),
       this.url,
-      this.localDevelopment,
+      this.development,
     );
   }
 
@@ -171,7 +175,7 @@ export class BunnyHoleClient {
     const descriptor = parseDescriptor(
       value.descriptor,
       this.url,
-      this.localDevelopment,
+      this.development,
     );
     if (descriptor.identityPublicKey !== credentials.identityPublicKey) {
       throw new ValidationError("host identity changed");
@@ -299,7 +303,7 @@ function parseRoute(value: unknown): Route {
 function parseDescriptor(
   value: unknown,
   expectedUrl: URL,
-  localDevelopment: boolean,
+  development: boolean,
 ): HostDescriptor {
   if (
     !isRecord(value) || value.apiVersion !== API_VERSION ||
@@ -309,7 +313,10 @@ function parseDescriptor(
     value.connectorTransports.length < 1 || value.connectorTransports.length > 3 ||
     value.connectorTransports.some((item) => !["wss", "quic", "tcp"].includes(item)) ||
     new Set(value.connectorTransports).size !== value.connectorTransports.length ||
-    (!localDevelopment && value.connectorTransports.some((item) => item !== "wss")) ||
+    (!development && value.connectorTransports.some((item) => item !== "wss")) ||
+    (development &&
+      (typeof value.connectorHost !== "string" ||
+        !isDevelopmentHostname(value.connectorHost))) ||
     !Array.isArray(value.capabilities) || value.capabilities.length > 2 ||
     new Set(value.capabilities).size !== value.capabilities.length ||
     !hasOnlyKeys(value, [
@@ -330,10 +337,10 @@ function parseDescriptor(
     throw new ValidationError("incompatible Bunny Hole host");
   }
   if (
-    (!localDevelopment && managementUrl.origin !== expectedUrl.origin) ||
+    managementUrl.origin !== expectedUrl.origin ||
     managementUrl.pathname !== "/" ||
     managementUrl.search || managementUrl.hash ||
-    (!localDevelopment && normalizeHostname(value.name) !== expectedUrl.hostname) ||
+    normalizeHostname(value.name) !== expectedUrl.hostname ||
     value.capabilities.some((item) => {
       try {
         parseProtocol(item);

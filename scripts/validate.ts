@@ -1,5 +1,11 @@
 import { run } from "./process.ts";
 
+console.log(
+  `Validation environment: ${
+    Deno.env.get("BUNNY_HOLE_ENVIRONMENT_NAME") || "development"
+  }`,
+);
+
 const steps: [string, string[]][] = [
   ["deno", ["task", "agents:check"]],
   ["deno", ["task", "workflows:check"]],

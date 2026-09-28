@@ -16,6 +16,8 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      BUNNY_HOLE_ENVIRONMENT_NAME: ci-validation
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -28,9 +30,18 @@ jobs:
           configFile: .devcontainer/devcontainer.json
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
           push: never
-          runCmd: CI=true deno task validate
+          env: |
+            CI
+            BUNNY_HOLE_ENVIRONMENT_NAME
+          runCmd: deno task validate
       - name: Diagnose Dev Container startup
         if: failure()
         run: |
           docker compose --profile development ps --all
           docker compose --profile development logs --no-color docker-engine
+      - name: Tear down validation environment
+        if: always()
+        run: |
+          if [ -f .env ]; then
+            docker compose --profile development down --volumes --remove-orphans
+          fi

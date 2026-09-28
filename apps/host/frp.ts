@@ -5,7 +5,7 @@ import { isRecord, LIMITS } from "../../packages/api/mod.ts";
 import { verifySessionToken } from "./session.ts";
 
 export function frpsConfig(config: HostConfig): string {
-  const quic = config.localDevelopment && config.connectorTransports.includes("quic")
+  const quic = config.development && config.connectorTransports.includes("quic")
     ? `quicBindPort = ${config.frpBindPort}\n`
     : "";
   return `bindAddr = "0.0.0.0"

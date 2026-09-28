@@ -54,7 +54,7 @@
     "commits:check": "deno run --allow-run=git scripts/commit_check.ts",
     "hooks:install": "deno run --allow-run=git scripts/install_hooks.ts",
     "validate": "deno run --allow-env --allow-net --allow-read=. --allow-run=deno,docker,git,terraform --allow-write=coverage,dist,/tmp scripts/validate.ts",
-    "devcontainer:up": "docker compose up --build --detach development",
+    "devcontainer:up": "sh .devcontainer/initialize.sh && docker compose up --build --detach development",
     "devcontainer:exec": "deno run --allow-run=docker scripts/development_exec.ts",
     "devcontainer:down": "docker compose down"
   },
