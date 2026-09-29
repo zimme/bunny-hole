@@ -6,7 +6,11 @@ import {
   parseId,
   validateGrant,
 } from "../packages/api/mod.ts";
-import { secureRequestHeaders, validateOrigin } from "../packages/api/security.ts";
+import {
+  secureRequestHeaders,
+  secureResponseHeaders,
+  validateOrigin,
+} from "../packages/api/security.ts";
 
 Deno.test("Ed25519 signatures are context separated", async () => {
   const keys = await generateKeyPair();
@@ -17,6 +21,22 @@ Deno.test("Ed25519 signatures are context separated", async () => {
     false,
   );
   assertEquals(await verify(keys.publicKey, "session", ["a", "c"], signature), false);
+});
+
+Deno.test("response cookies preserve duplicates and respect Connection stripping", () => {
+  const headers = new Headers();
+  headers.append("set-cookie", "first=1; HttpOnly");
+  headers.append("set-cookie", "second=2; Secure");
+  assertEquals(secureResponseHeaders(headers).getSetCookie(), [
+    "first=1; HttpOnly",
+    "second=2; Secure",
+  ]);
+  headers.set("connection", "Set-Cookie, x-origin-only");
+  headers.set("x-origin-only", "private");
+  const filtered = secureResponseHeaders(headers);
+  assertEquals(filtered.getSetCookie(), []);
+  assertEquals(filtered.get("x-origin-only"), null);
+  assertEquals(filtered.get("cache-control"), "no-store");
 });
 
 Deno.test("identifier prefixes cannot alter validation syntax", () => {
@@ -90,5 +110,10 @@ Deno.test("headers and origin policy fail closed", () => {
   );
   assertThrows(() => validateOrigin("http://127.999.999.999:8123", false));
   assertEquals(validateOrigin("http://127.1:8123", false).hostname, "127.0.0.1");
+  assertEquals(validateOrigin("http://[::1]:8123", false).hostname, "[::1]");
+  assertThrows(
+    () => validateOrigin("http://[::2]:8123", false),
+    /explicit private-network opt-in/,
+  );
   assertEquals(normalizeHostname("HOME.Example.com."), "home.example.com");
 });

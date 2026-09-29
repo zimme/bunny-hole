@@ -450,7 +450,7 @@ async function connect(flags: Flags): Promise<void> {
       const started = Date.now();
       let stage = "session acquisition";
       try {
-        const session = await client.session(credentials);
+        const session = await client.session(credentials, controller.signal);
         stage = "FRP process";
         const code = await runFrpc({
           executable,

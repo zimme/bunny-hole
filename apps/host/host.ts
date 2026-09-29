@@ -156,7 +156,7 @@ export class Host {
         if (!isRecord(body)) throw new ValidationError("invalid registration request");
         assertOnlyKeys(body, ["flowToken"]);
         const flow = this.registrationFlow(body, false);
-        return json(await this.#passkeys.registrationOptions(flow.name));
+        return json(await this.#passkeys.registrationOptions(flow.token));
       }
       if (
         url.pathname === "/api/v1/admin/passkeys/registration" &&
@@ -168,7 +168,11 @@ export class Host {
         }
         assertOnlyKeys(body, ["flowToken", "response"]);
         const flow = this.registrationFlow(body, true);
-        await this.#passkeys.register(flow.name, body.response as never);
+        try {
+          await this.#passkeys.register(flow.name, body.response as never, flow.token);
+        } finally {
+          this.store.deleteAdminChallenges(`register:${flow.token}`);
+        }
         return json({ registered: true });
       }
       if (
@@ -186,7 +190,10 @@ export class Host {
         const grants = validateGrant(body.grants);
         this.cleanFlows();
         for (const [token, flow] of this.#approvalFlows) {
-          if (flow.enrollmentId === enrollmentId) this.#approvalFlows.delete(token);
+          if (flow.enrollmentId === enrollmentId) {
+            this.#approvalFlows.delete(token);
+            this.store.deleteAdminChallenges(`authenticate:${token}`);
+          }
         }
         if (this.#approvalFlows.size >= 128) {
           throw new ValidationError("too many active approval flows");
@@ -210,8 +217,8 @@ export class Host {
         assertOnlyKeys(body, ["flowToken"]);
         const flow = this.approvalFlow(body, false);
         return json({
-          options: await this.#passkeys.authenticationOptions(),
-          enrollment: publicEnrollment(this.store.getEnrollment(flow.enrollmentId)!),
+          options: await this.#passkeys.authenticationOptions(flow.token),
+          enrollment: publicEnrollment(flow.enrollment),
           grants: flow.grants,
         });
       }
@@ -225,7 +232,11 @@ export class Host {
         }
         assertOnlyKeys(body, ["flowToken", "response"]);
         const flow = this.approvalFlow(body, true);
-        await this.#passkeys.authenticate(body.response as never);
+        try {
+          await this.#passkeys.authenticate(body.response as never, flow.token);
+        } finally {
+          this.store.deleteAdminChallenges(`authenticate:${flow.token}`);
+        }
         if (!this.store.approveEnrollment(flow.enrollmentId, flow.grants)) {
           throw new ValidationError("enrollment cannot be approved");
         }
@@ -479,14 +490,14 @@ export class Host {
   private registrationFlow(
     body: Record<string, unknown>,
     consume: boolean,
-  ): { name: string; expiresAt: number } {
+  ): { name: string; expiresAt: number; token: string } {
     const token = parseId(body.flowToken, "flow");
     const flow = this.#registrationFlows.get(token);
     if (consume) this.#registrationFlows.delete(token);
     if (!flow || flow.expiresAt < Date.now()) {
       throw new ValidationError("registration flow expired");
     }
-    return flow;
+    return { ...flow, token };
   }
 
   private approvalFlow(
@@ -496,6 +507,8 @@ export class Host {
     enrollmentId: string;
     grants: ReturnType<typeof validateGrant>;
     expiresAt: number;
+    token: string;
+    enrollment: Enrollment;
   } {
     const token = parseId(body.flowToken, "flow");
     const flow = this.#approvalFlows.get(token);
@@ -503,16 +516,27 @@ export class Host {
     if (!flow || flow.expiresAt < Date.now()) {
       throw new ValidationError("approval flow expired");
     }
-    return flow;
+    const enrollment = this.store.getEnrollment(flow.enrollmentId);
+    if (
+      enrollment?.state !== "pending" || !enrollment.expiresAt ||
+      Date.parse(enrollment.expiresAt) <= Date.now()
+    ) throw new ValidationError("enrollment cannot be approved");
+    return { ...flow, token, enrollment };
   }
 
   private cleanFlows(): void {
     const now = Date.now();
     for (const [token, flow] of this.#registrationFlows) {
-      if (flow.expiresAt < now) this.#registrationFlows.delete(token);
+      if (flow.expiresAt < now) {
+        this.#registrationFlows.delete(token);
+        this.store.deleteAdminChallenges(`register:${token}`);
+      }
     }
     for (const [token, flow] of this.#approvalFlows) {
-      if (flow.expiresAt < now) this.#approvalFlows.delete(token);
+      if (flow.expiresAt < now) {
+        this.#approvalFlows.delete(token);
+        this.store.deleteAdminChallenges(`authenticate:${token}`);
+      }
     }
     for (const [challenge, value] of this.#ownerChallenges) {
       if (value.expiresAt < now) this.#ownerChallenges.delete(challenge);
@@ -881,14 +905,22 @@ async function proxyHttp(
     }
     response.once("end", complete);
     response.once("close", complete);
+    const status = response.statusCode ?? 502;
+    const safeHeaders = secureResponseHeaders(responseHeaders);
+    if (request.method === "HEAD" || [204, 205, 304].includes(status)) {
+      upstream.destroy();
+      response.destroy();
+      complete();
+      return new Response(null, { status, headers: safeHeaders });
+    }
     return new Response(
       limitedBody(
         Readable.toWeb(response) as ReadableStream<Uint8Array>,
         LIMITS.maxBodyBytes,
       ),
       {
-        status: response.statusCode ?? 502,
-        headers: secureResponseHeaders(responseHeaders),
+        status,
+        headers: safeHeaders,
       },
     );
   } catch (error) {
@@ -906,6 +938,8 @@ function passkeyPage(): Response {
 const options=await post('/api/v1/admin/passkeys/registration/options',{flowToken:token});
 options.challenge=decode(options.challenge);options.user.id=decode(options.user.id);
 options.excludeCredentials=(options.excludeCredentials||[]).map(item=>({...item,id:decode(item.id)}));
+return options;`,
+    `
 const credential=await navigator.credentials.create({publicKey:options});
 await post('/api/v1/admin/passkeys/registration',{flowToken:token,response:registration(credential)});
 status.textContent='Passkey registered. You may close this page.';`,
@@ -920,15 +954,17 @@ const value=await post('/api/v1/admin/enrollment-approvals/options',{flowToken:t
 details.textContent=JSON.stringify({enrollment:value.enrollment,grants:value.grants},null,2);
 const options=value.options;options.challenge=decode(options.challenge);
 options.allowCredentials=(options.allowCredentials||[]).map(item=>({...item,id:decode(item.id)}));
+return options;`,
+    `
 const credential=await navigator.credentials.get({publicKey:options});
 await post('/api/v1/admin/enrollment-approvals/complete',{flowToken:token,response:authentication(credential)});
 status.textContent='Enrollment approved. You may close this page.';`,
   );
 }
 
-function ceremonyPage(title: string, action: string): Response {
+function ceremonyPage(title: string, prepare: string, action: string): Response {
   return new Response(
-    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title></head><body><main><h1>${title}</h1><p>Verify the management hostname and the details below before continuing.</p><pre id="details"></pre><button id="continue">Continue with passkey</button><pre id="status"></pre></main><script>
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title></head><body><main><h1>${title}</h1><p>Verify the management hostname and the details below before continuing.</p><pre id="details"></pre><button id="continue" disabled>Continue with passkey</button><pre id="status"></pre></main><script>
 const token=location.hash.slice(1);history.replaceState(null,'',location.pathname);
 const status=document.querySelector('#status'),details=document.querySelector('#details');
 const encode=value=>{const bytes=new Uint8Array(value);let text='';for(const byte of bytes)text+=String.fromCharCode(byte);return btoa(text).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'')};
@@ -936,7 +972,11 @@ const decode=value=>{const normalized=value.replaceAll('-','+').replaceAll('_','
 const post=async(path,body)=>{const response=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!response.ok)throw new Error('The host rejected this ceremony');return await response.json()};
 const registration=credential=>({id:credential.id,rawId:encode(credential.rawId),type:credential.type,authenticatorAttachment:credential.authenticatorAttachment,response:{clientDataJSON:encode(credential.response.clientDataJSON),attestationObject:encode(credential.response.attestationObject),transports:credential.response.getTransports?.()||[]},clientExtensionResults:credential.getClientExtensionResults()});
 const authentication=credential=>({id:credential.id,rawId:encode(credential.rawId),type:credential.type,authenticatorAttachment:credential.authenticatorAttachment,response:{clientDataJSON:encode(credential.response.clientDataJSON),authenticatorData:encode(credential.response.authenticatorData),signature:encode(credential.response.signature),userHandle:credential.response.userHandle?encode(credential.response.userHandle):undefined},clientExtensionResults:credential.getClientExtensionResults()});
-document.querySelector('#continue').onclick=async()=>{try{if(!token)throw new Error('This ceremony link is incomplete');${action}}catch(error){status.textContent=error instanceof Error?error.message:'Ceremony failed'}};
+const button=document.querySelector('#continue');let options;
+const failed=error=>{status.textContent=error instanceof Error?error.message:'Ceremony failed'};
+const prepare=async()=>{${prepare}};
+(async()=>{try{if(!token)throw new Error('This ceremony link is incomplete');options=await prepare();button.disabled=false}catch(error){failed(error)}})();
+button.onclick=async()=>{button.disabled=true;try{${action}}catch(error){failed(error)}};
 </script></body></html>`,
     {
       headers: {

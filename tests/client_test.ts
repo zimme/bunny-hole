@@ -219,6 +219,66 @@ Deno.test("library connector can run again after stop", async () => {
   }
 });
 
+Deno.test("library cancellation aborts either session acquisition request", async () => {
+  const directory = await Deno.makeTempDir();
+  const trustedCaFile = `${directory}/ca-certificates.crt`;
+  await Deno.writeTextFile(
+    trustedCaFile,
+    "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----\n",
+  );
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const phase of ["challenge", "session"]) {
+      for (const external of [false, true]) {
+        let reached: () => void = () => {};
+        const pending = new Promise<void>((resolve) => reached = resolve);
+        let requestSignal: AbortSignal | undefined;
+        globalThis.fetch = (input, init) => {
+          const path = new URL(input instanceof Request ? input.url : input).pathname;
+          if (phase === "session" && path.endsWith("challenge")) {
+            return responder({
+              challengeId: "chl_AAAAAAAAAAAAAAAAAAAAAAAA",
+              challenge: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            })(input);
+          }
+          reached();
+          requestSignal = init?.signal ?? undefined;
+          if (!requestSignal) return Promise.reject(new Error("missing abort signal"));
+          const signal = requestSignal;
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          });
+        };
+        const connector = createConnector({
+          credentials: {
+            url: "https://hole.example.com/",
+            identityPublicKey: identity.publicKey,
+            enrollmentId: "enr_AAAAAAAAAAAAAAAAAAAAAAAA",
+            ...device,
+          },
+          frpcPath: Deno.execPath(),
+          workingDirectory: directory,
+          trustedCaFile,
+        });
+        const controller = new AbortController();
+        const run = connector.run(external ? controller.signal : undefined);
+        run.catch(() => {});
+        await pending;
+        if (external) controller.abort();
+        else connector.stop();
+        assertEquals(await run, 0);
+        assertEquals(requestSignal?.aborted, true);
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 function responder(value: unknown): typeof fetch {
   return () =>
     Promise.resolve(

@@ -19,7 +19,7 @@ export class PasskeyService {
     this.origin = publicUrl.origin;
   }
 
-  async registrationOptions(name: string) {
+  async registrationOptions(flowToken: string) {
     const passkeys = this.store.listPasskeys();
     const options = await generateRegistrationOptions({
       rpName: "Bunny Hole",
@@ -39,20 +39,26 @@ export class PasskeyService {
     });
     this.store.saveAdminChallenge(
       options.challenge,
-      `register:${name}`,
+      `register:${flowToken}`,
       Date.now() + 5 * 60_000,
     );
     return options;
   }
 
-  async register(name: string, response: RegistrationResponseJSON): Promise<void> {
+  async register(
+    name: string,
+    response: RegistrationResponseJSON,
+    flowToken: string,
+  ): Promise<void> {
     let challenge: string;
     try {
       challenge = clientChallenge(response.response.clientDataJSON);
     } catch {
       throw new ValidationError("passkey registration failed");
     }
-    if (!this.store.consumeAdminChallenge(challenge, `register:${name}`, Date.now())) {
+    if (
+      !this.store.consumeAdminChallenge(challenge, `register:${flowToken}`, Date.now())
+    ) {
       throw new ValidationError("registration ceremony expired");
     }
     let verification;
@@ -82,7 +88,7 @@ export class PasskeyService {
     });
   }
 
-  async authenticationOptions() {
+  async authenticationOptions(flowToken: string) {
     const passkeys = this.store.listPasskeys();
     if (passkeys.length === 0) throw new ValidationError("no passkeys are registered");
     const options = await generateAuthenticationOptions({
@@ -95,13 +101,16 @@ export class PasskeyService {
     });
     this.store.saveAdminChallenge(
       options.challenge,
-      "authenticate",
+      `authenticate:${flowToken}`,
       Date.now() + 2 * 60_000,
     );
     return options;
   }
 
-  async authenticate(response: AuthenticationResponseJSON): Promise<void> {
+  async authenticate(
+    response: AuthenticationResponseJSON,
+    flowToken: string,
+  ): Promise<void> {
     let passkey;
     let challenge: string;
     try {
@@ -111,7 +120,13 @@ export class PasskeyService {
       throw new ValidationError("passkey authentication failed");
     }
     if (!passkey) throw new ValidationError("passkey authentication failed");
-    if (!this.store.consumeAdminChallenge(challenge, "authenticate", Date.now())) {
+    if (
+      !this.store.consumeAdminChallenge(
+        challenge,
+        `authenticate:${flowToken}`,
+        Date.now(),
+      )
+    ) {
       throw new ValidationError("authentication ceremony expired");
     }
     let verification;

@@ -195,6 +195,36 @@ Deno.test("public proxy exposes an early origin response during upload", async (
   }
 });
 
+Deno.test("public proxy preserves HEAD and statuses without bodies or leaked slots", async () => {
+  const fixture = startFixture();
+  const context = await hostContext(fixture.port);
+  try {
+    for (let index = 0; index <= LIMITS.maxConcurrentRequests; index++) {
+      for (const status of [204, 205, 304]) {
+        const response = await context.host.handle(
+          new Request(`http://relay.test/status/${status}`, {
+            headers: { host: "home.example.com" },
+          }),
+        );
+        assertEquals(response.status, status);
+        assertEquals(response.body, null);
+        assertEquals(response.headers.get("etag"), '"fixture"');
+      }
+    }
+    const response = await context.host.handle(
+      new Request("http://relay.test/echo", {
+        method: "HEAD",
+        headers: { host: "home.example.com" },
+      }),
+    );
+    assertEquals(response.status, 200);
+    assertEquals(response.body, null);
+  } finally {
+    context.store[Symbol.dispose]();
+    await fixture.stop();
+  }
+});
+
 function startFixture(): { port: number; stop: () => Promise<void> } {
   let port = 0;
   const waiting = new Set<() => void>();
@@ -205,6 +235,13 @@ function startFixture(): { port: number; stop: () => Promise<void> } {
       port = address.port;
     },
   }, async (request) => {
+    const path = new URL(request.url).pathname;
+    if (path.startsWith("/status/")) {
+      return new Response(null, {
+        status: Number(path.slice("/status/".length)),
+        headers: { etag: '"fixture"' },
+      });
+    }
     if (new URL(request.url).pathname === "/early") {
       return new Response("early", { status: 202 });
     }

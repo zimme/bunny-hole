@@ -50,10 +50,13 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
       if (signal?.aborted) return 0;
       if (controller.signal.aborted) controller = new AbortController();
       const runController = controller;
+      const runSignal = signal
+        ? AbortSignal.any([runController.signal, signal])
+        : runController.signal;
       running = true;
       try {
         await validateTrustedCaFile(trustedCaFile);
-        const session = await client.session(options.credentials);
+        const session = await client.session(options.credentials, runSignal);
         if (runController.signal.aborted || signal?.aborted) return 0;
         const directory = await mkdtemp(
           join(options.workingDirectory ?? tmpdir(), "bunny-hole-library-"),
@@ -103,6 +106,9 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
         } finally {
           await rm(directory, { recursive: true, force: true });
         }
+      } catch (error) {
+        if (runSignal.aborted) return 0;
+        throw error;
       } finally {
         running = false;
         if (controller === runController) controller = new AbortController();

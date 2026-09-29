@@ -338,6 +338,54 @@ Deno.test("passkey registration uses a bounded one-use management-origin flow", 
   );
 });
 
+Deno.test("approval options reject enrollments revoked or pruned after flow creation", async () => {
+  for (const revoked of [true, false]) {
+    const directory = await Deno.makeTempDir();
+    try {
+      const owner = await generateKeyPair();
+      const identity = await generateKeyPair();
+      const device = await generateKeyPair();
+      using store = new HostStore(`${directory}/state.sqlite`);
+      const host = new Host(
+        config(owner.publicKey, directory),
+        store,
+        identity,
+        logger,
+      );
+      const enrolled = await host.handle(request("/api/v1/enrollments", "POST", {
+        kind: "device",
+        name: "pending device",
+        publicKey: device.publicKey,
+      }));
+      const { id: enrollmentId } = await enrolled.json();
+      const started = await host.handle(
+        request("/api/v1/admin/enrollment-approvals", "POST", {
+          enrollmentId,
+          grants: {
+            exactHostnames: ["home.example.com"],
+            hostnameSuffixes: [],
+            protocols: ["http"],
+            maxRoutes: 1,
+          },
+        }),
+      );
+      assertEquals(started.status, 200);
+      const flowToken = new URL((await started.json()).url).hash.slice(1);
+      if (revoked) store.revokeEnrollment(enrollmentId);
+      else {store.pruneExpiredEnrollments(
+          new Date(Date.now() + 60 * 60_000).toISOString(),
+        );}
+      const options = await host.handle(
+        request("/api/v1/admin/enrollment-approvals/options", "POST", { flowToken }),
+      );
+      assertEquals(options.status, 400);
+      assertEquals(await options.json(), { error: "enrollment cannot be approved" });
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  }
+});
+
 function request(path: string, method: string, body: unknown): Request {
   return new Request(`http://host.test${path}`, {
     method,

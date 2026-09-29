@@ -266,11 +266,15 @@ export class HostStore implements Disposable {
 
   saveAdminChallenge(challenge: string, purpose: string, expiresAt: number): void {
     this.#db.prepare(
-      "DELETE FROM admin_challenges WHERE expires_at<? OR used=1",
-    ).run(Date.now());
+      "DELETE FROM admin_challenges WHERE expires_at<? OR used=1 OR purpose=?",
+    ).run(Date.now(), purpose);
     this.#db.prepare(
       "INSERT INTO admin_challenges (challenge,purpose,expires_at,used) VALUES (?,?,?,0)",
     ).run(challenge, purpose, expiresAt);
+  }
+
+  deleteAdminChallenges(purpose: string): void {
+    this.#db.prepare("DELETE FROM admin_challenges WHERE purpose=?").run(purpose);
   }
 
   consumeAdminChallenge(challenge: string, purpose: string, now: number): boolean {
