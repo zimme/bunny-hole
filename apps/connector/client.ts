@@ -128,9 +128,10 @@ export class BunnyHoleClient {
     return enrollment;
   }
 
-  async session(credentials: HostCredentials): Promise<Session> {
+  async session(credentials: HostCredentials, signal?: AbortSignal): Promise<Session> {
     const challenge = await this.request("/api/v1/session/challenge", {
       method: "POST",
+      signal,
       body: JSON.stringify({ enrollmentId: credentials.enrollmentId }),
     });
     if (
@@ -154,6 +155,7 @@ export class BunnyHoleClient {
     ]);
     const value = await this.request("/api/v1/session", {
       method: "POST",
+      signal,
       body: JSON.stringify({
         enrollmentId: credentials.enrollmentId,
         challengeId: challenge.challengeId,

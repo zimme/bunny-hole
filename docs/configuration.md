@@ -105,9 +105,10 @@ connector to its fixed local origin; it does not add public WebSocket or arbitra
 support. Hostnames are normalized and matched exactly. A public request cannot name an
 enrollment, route, port, or destination.
 
-Origins default to `127.0.0.1`. A non-loopback target is rejected unless that individual
-route has `allowPrivateNetwork: true`. This opt-in is intended for an explicit Compose
-or Kubernetes service address; it is not permission for arbitrary destinations.
+Origins default to `127.0.0.1`; IPv6 loopback `::1` is also permitted. A non-loopback
+target is rejected unless that individual route has `allowPrivateNetwork: true`. This
+opt-in is intended for an explicit Compose or Kubernetes service address; it is not
+permission for arbitrary destinations.
 
 ## Compose discovery
 
@@ -128,6 +129,13 @@ The service port must be published to host loopback when the adapter uses the de
 `dev.bunny-hole.target-host` and `dev.bunny-hole.allow-private-network: "true"`. The
 adapter reconciles only labeled routes and never treats arbitrary public request data as
 a destination.
+
+One Compose project owns all `compose-` routes for its enrollment. Sync removes any such
+routes absent from the current project, even when another project created them. Use
+separate enrollment/configuration files for independently managed projects. Named hosts
+in one configuration file are all reconciled; hosts with no labeled services have their
+stale `compose-` routes removed. This also respects the one-active-connector limit per
+enrollment.
 
 ## Kubernetes GitOps
 

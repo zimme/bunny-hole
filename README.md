@@ -92,9 +92,12 @@ pasted into an AI conversation, committed, or supplied as command-line values.
 
 ## Declarative local services
 
-`bunny-hole compose up` starts the current Compose project, reconciles only its managed
-routes, and runs the connector. The service port must be published to loopback so the
-host-side connector can reach it without exposing it to the LAN:
+`bunny-hole compose up` starts the current Compose project, reconciles its enrollment's
+`compose-` routes, and runs the connector. Use a separate enrollment/configuration file
+for each independently managed project: syncing a project deletes stale `compose-`
+routes from that enrollment, including routes created by another project sharing it. The
+service port must be published to loopback so the host-side connector can reach it
+without exposing it to the LAN:
 
 ```yaml
 services:
@@ -160,6 +163,9 @@ supervises the process, and removes the profile on exit. The library does not do
 executables, persist credentials, reconnect indefinitely, or accept an insecure
 transport. Use the CLI or connector OCI image when those lifecycle responsibilities
 should be managed for you.
+
+`stop()` or an aborted `run(signal)` cancels session acquisition as well as the FRP
+process, and a cancelled run resolves with exit code `0`.
 
 The matching `ca-certificates.crt` must be alongside `frpc` so the WSS endpoint
 certificate is verified. Pass `trustedCaFile` when the executable is installed elsewhere

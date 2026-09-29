@@ -91,6 +91,7 @@
     "socat",
     "serviceaccount",
     "WebSocket",
+    "WebAuthn",
     "hostnames",
     "spoofable",
     "tmpfs",

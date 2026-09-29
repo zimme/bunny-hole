@@ -48,7 +48,9 @@ credential.
   substituted onto another host or grant.
 - Passkeys require user verification, one-use WebAuthn challenges, RP/origin validation,
   and signature-counter updates. Short flow tokens remain in URL fragments until the
-  management-origin page removes them and never become connector credentials.
+  management-origin page removes them and never become connector credentials. Challenges
+  are bound to one ceremony flow, and only its latest options remain valid; an assertion
+  for another enrollment or grant cannot complete that approval.
 - Verification phrases let a human compare the requesting terminal with the approval
   ceremony. Phishing remains possible if the human ignores the hostname or phrase.
 

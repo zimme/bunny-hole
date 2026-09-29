@@ -87,7 +87,9 @@ export function secureResponseHeaders(input: Headers): Headers {
     ) return;
     output.append(name, value);
   });
-  for (const cookie of input.getSetCookie()) output.append("set-cookie", cookie);
+  if (!connectionTokens.has("set-cookie")) {
+    for (const cookie of input.getSetCookie()) output.append("set-cookie", cookie);
+  }
   output.set("cache-control", "no-store");
   enforceHeaders(output);
   return output;
@@ -110,7 +112,7 @@ export function validateOrigin(raw: string, allowPrivateNetwork: boolean): URL {
   const octets = host.split(".");
   const loopbackV4 = octets.length === 4 && octets[0] === "127" &&
     octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255);
-  const loopback = host === "localhost" || host === "::1" || loopbackV4;
+  const loopback = host === "localhost" || host === "[::1]" || loopbackV4;
   if (!loopback && !allowPrivateNetwork) {
     throw new ValidationError(
       "non-loopback origin requires explicit private-network opt-in",

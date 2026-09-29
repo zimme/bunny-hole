@@ -155,6 +155,8 @@ enrollment; no enrollment can list or delete another enrollment's routes.
 - Redirects are returned without following. Trailers are not forwarded. Partial origin
   responses are terminated rather than retried. Every public response sets
   `Cache-Control: no-store`; the Bunny CDN endpoint must independently disable caching.
+- HEAD responses and origin statuses 204, 205, and 304 preserve their status and headers
+  with no response body, and release their upstream request and concurrency slot.
 - Public WebSocket upgrades receive 501. Raw TCP/UDP and arbitrary destinations have no
   route representation.
 
@@ -180,6 +182,12 @@ displays the pending enrollment and exact grant, requires user verification, and
 consumes a two-minute flow before changing state. Failed final verification also
 consumes the flow. Pages use no third-party resources and set CSP, no-referrer,
 no-store, and nosniff headers.
+
+Each WebAuthn challenge belongs to exactly one flow token. Reissuing options replaces
+that flow's previous challenge; replacing or expiring a flow removes its challenges. An
+assertion from another approval flow cannot approve the displayed enrollment or grant.
+The browser loads and displays the enrollment and grant before enabling the passkey
+button.
 
 ## Declarative reconciliation
 
