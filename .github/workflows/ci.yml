@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 45
     env:
       BUNNY_HOLE_ENVIRONMENT_NAME: ci-validation
+      COMPOSE_PARALLEL_LIMIT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -35,6 +36,7 @@ jobs:
           env: |
             CI
             BUNNY_HOLE_ENVIRONMENT_NAME
+            COMPOSE_PARALLEL_LIMIT
           runCmd: deno task validate
       - name: Diagnose Dev Container startup
         if: failure()

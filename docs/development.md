@@ -104,8 +104,9 @@ dependencies; it does not run the validation pipeline or stop the service. Copil
 then use `docker compose exec -T --user vscode development deno task ...` for focused
 checks. The CI workflow uses the same action and service with `deno task validate` as
 its `runCmd` to execute the full gate. The action forwards GitHub's `CI` variable into
-the container. A local agent can start the service directly with Compose, without
-running either GitHub workflow.
+the container. CI also forwards `COMPOSE_PARALLEL_LIMIT=1` so nested integration startup
+uses one Docker engine call at a time on the hosted runner. A local agent can start the
+service directly with Compose, without running either GitHub workflow.
 
 ## Cache design
 

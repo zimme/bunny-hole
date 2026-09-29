@@ -12,9 +12,10 @@ trust-boundary changes, read `docs/architecture.md`, `docs/protocol.md`, and
 
 Trace changed success, failure, timeout, cancellation, retry, and cleanup paths. Check
 exact-host routing, authorization, state transitions, secret handling, and streaming
-behavior where relevant. For deployment or workflow changes, verify pinned inputs,
-protected environments, credential boundaries, and whether a failure leaves the system
-in a safe state.
+behavior where relevant. Check that asynchronous work is awaited, returned, or has an
+explicit error handler; Deno lint does not catch every floating promise. For deployment
+or workflow changes, verify pinned inputs, protected environments, credential
+boundaries, and whether a failure leaves the system in a safe state.
 
 Report actionable findings with file and line references and explain their impact. Run
 focused checks for the changed behavior when feasible, and state what could not be
