@@ -2,7 +2,10 @@
 
 This guide uses the Bunny web console and immutable published images. It does not
 connect Bunny to GitHub and keeps every secret-bearing action in a human-controlled
-terminal or dashboard session.
+terminal or dashboard session. For a reviewable consumer repository with protected
+manual Terraform workflows, use the [consumer GitOps template](deployment-template.md).
+Its two-stage bootstrap adopts the Magic-Container-generated Pull Zones before applying
+CDN, hostname, TLS, and optional Bunny DNS policy.
 
 ## 1. Generate the owner identity
 
@@ -91,6 +94,11 @@ Create a second CDN endpoint for container TCP port `7000`:
 - Disable caching.
 - Do not publish port 7000 directly to the Internet. Connectors use WSS on port 443.
 
+This is a security requirement, not only a convenience setting: Bunny terminates WSS TLS
+before forwarding the WebSocket stream to port 7000, and `frps` cannot authenticate the
+network peer at that boundary. Keep the port reachable only through this connector CDN
+endpoint; Bunny Hole does not support raw public TCP connectors.
+
 The management and public HTTP traffic can share port 8080 because the host accepts
 control routes only when the exact HTTP Host matches `BUNNY_HOLE_PUBLIC_URL`; a tunneled
 application hostname cannot reach them. The connector endpoint is separate because it
@@ -152,8 +160,10 @@ the default. For an explicit Docker, Compose, or private-network service address
 connector into a general proxy. Keep Home Assistant, Plex, and similar applications' own
 authentication enabled. Bunny Hole does not add viewer accounts.
 
-Test `https://home.example.com/` from a different network. A generic 404 means no active
-exact route, 502 means connector/origin failure, and 503 means the host is draining or
+Test `https://home.example.com/` from a different network. A 404 can mean there is no
+active exact route—including a configured route whose connector is temporarily absent—
+but an origin is also free to return its own 404. A 502 means an origin or tunnel error
+after the FRP virtual host accepted the request, and 503 means the host is draining or
 at its concurrency bound. Public errors intentionally omit internal detail.
 
 ## Kubernetes enrollment before installation
@@ -187,7 +197,8 @@ Pin the controller manifest to the published connector digest by replacing
 The connector OCI works with Docker, Compose, and Podman. Mount its protected state file
 read-only, use a read-only root filesystem, drop all capabilities, set
 `no-new-privileges`, and run as the file-owning non-root UID. The connector image
-contains the Bunny Hole CLI and pinned `frpc`; it does not contain the host.
+contains the Bunny Hole CLI, pinned `frpc`, and the pinned public CA bundle used to
+verify the connector WSS endpoint; it does not contain the host.
 
 The `bunny-hole compose plan|sync|up` adapter derives routes only from explicit
 `dev.bunny-hole.*` labels. See [configuration](configuration.md#compose-discovery). It

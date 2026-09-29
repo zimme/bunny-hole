@@ -6,9 +6,13 @@ export function frpcConfig(
   session: Session,
   transport: "quic" | "tcp" | "websocket" | "wss",
   allowInsecureTransport = false,
+  trustedCaFile?: string,
 ): string {
   if (transport !== "wss" && !allowInsecureTransport) {
     throw new Error("production connectors require the wss transport");
+  }
+  if (transport === "wss" && (!trustedCaFile || trustedCaFile.includes("\0"))) {
+    throw new Error("WSS connectors require a trusted CA bundle");
   }
   const lines = [
     `serverAddr = ${toml(session.descriptor.connectorHost)}`,
@@ -24,6 +28,9 @@ export function frpcConfig(
     'auth.token = "bunny-hole-plugin-enforced"',
     `metadatas.bunny_hole_token = ${toml(session.accessToken)}`,
   ];
+  if (transport === "wss") {
+    lines.push(`transport.tls.trustedCaFile = ${toml(trustedCaFile!)}`);
+  }
   for (const route of session.routes) {
     lines.push("", ...proxyConfig(route, session.accessToken));
   }

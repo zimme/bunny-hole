@@ -11,7 +11,6 @@ import {
   parseName,
   parsePort,
   parseProtocol,
-  requireState,
   type Route,
   validateGrant,
   ValidationError,
@@ -97,7 +96,7 @@ export class Host {
         );
       }
       if (
-        !this.config.localDevelopment && isReservedPath(url.pathname) &&
+        isReservedPath(url.pathname) &&
         requestHostname(request) !== this.config.publicUrl.hostname
       ) return json({ error: "not found" }, 404);
       if (!this.#accepting) return publicError(503);
@@ -180,11 +179,10 @@ export class Host {
         if (!isRecord(body)) throw new ValidationError("invalid approval request");
         assertOnlyKeys(body, ["enrollmentId", "grants"]);
         const enrollmentId = parseId(body.enrollmentId, "enr");
-        requireState(
-          this.store.getEnrollment(enrollmentId),
-          ["pending"],
-          "enrollment cannot be approved",
-        );
+        const enrollment = this.store.getEnrollment(enrollmentId);
+        if (!enrollment || enrollment.state !== "pending") {
+          throw new ValidationError("enrollment cannot be approved");
+        }
         const grants = validateGrant(body.grants);
         this.cleanFlows();
         for (const [token, flow] of this.#approvalFlows) {
@@ -260,7 +258,7 @@ export class Host {
         }
       }
       if (url.pathname === "/api/v1/session/challenge" && request.method === "POST") {
-        return this.createSessionChallenge(request);
+        return await this.createSessionChallenge(request);
       }
       if (url.pathname === "/api/v1/session" && request.method === "POST") {
         return await this.createSession(request);
@@ -391,11 +389,7 @@ export class Host {
     const body = await readJson(request);
     if (!isRecord(body)) throw new ValidationError("invalid challenge request");
     assertOnlyKeys(body, ["enrollmentId"]);
-    const enrollment = requireState(
-      this.store.getEnrollment(parseId(body.enrollmentId, "enr")),
-      ["active"],
-      "authentication failed",
-    );
+    const enrollment = this.requireActiveEnrollment(parseId(body.enrollmentId, "enr"));
     const id = createId("chl");
     const challenge = createChallenge();
     const expiresAt = Date.now() + 60_000;
@@ -424,11 +418,7 @@ export class Host {
       Date.now(),
     );
     if (!challenge) throw new ValidationError("authentication failed");
-    const enrollment = requireState(
-      this.store.getEnrollment(enrollmentId),
-      ["active"],
-      "authentication failed",
-    );
+    const enrollment = this.requireActiveEnrollment(enrollmentId);
     if (
       !(await verify(enrollment.publicKey, "session", [
         enrollmentId,
@@ -453,11 +443,17 @@ export class Host {
       this.identity.publicKey,
       bearerToken(request),
     );
-    return requireState(
-      claims ? this.store.getEnrollment(claims.enrollmentId) : undefined,
-      ["active"],
-      "authentication failed",
-    );
+    return this.requireActiveEnrollment(claims?.enrollmentId);
+  }
+
+  private requireActiveEnrollment(enrollmentId: string | undefined): Enrollment {
+    const enrollment = enrollmentId
+      ? this.store.getEnrollment(enrollmentId)
+      : undefined;
+    if (enrollment?.state !== "active") {
+      throw new ValidationError("authentication failed");
+    }
+    return enrollment;
   }
 
   private async requireOwnerProof(

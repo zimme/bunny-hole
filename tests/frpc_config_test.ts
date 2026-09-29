@@ -32,21 +32,30 @@ const session: Session = {
 };
 
 Deno.test("FRP configuration is secure, scoped, and contains no private key", () => {
-  const config = frpcConfig(session, "wss");
+  const config = frpcConfig(session, "wss", false, "/bundle/ca-certificates.crt");
   assert(config.includes('transport.protocol = "wss"'));
   assert(config.includes("transport.tls.enable = true"));
+  assert(
+    config.includes('transport.tls.trustedCaFile = "/bundle/ca-certificates.crt"'),
+  );
   assert(config.includes('customDomains = ["home.example.com"]'));
   assert(config.includes('user = "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA"'));
   assert(config.includes("short-lived-token"));
   assert(!config.includes("privateKey"));
   assertThrows(() => frpcConfig(session, "tcp"), /production connectors require/);
   assert(frpcConfig(session, "tcp", true).includes('transport.protocol = "tcp"'));
+  assertThrows(() => frpcConfig(session, "wss"), /trusted CA bundle/);
 });
 
 Deno.test("FRP configuration isolates an enrollment with no routes", () => {
   const routeLessSession = structuredClone(session);
   routeLessSession.routes = [];
-  const config = frpcConfig(routeLessSession, "wss");
+  const config = frpcConfig(
+    routeLessSession,
+    "wss",
+    false,
+    "/bundle/ca-certificates.crt",
+  );
   assert(config.includes('user = "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA"'));
   assert(!config.includes('user = "bh-device"'));
 });
@@ -55,7 +64,7 @@ Deno.test("FRP configuration rejects private-network targets without opt-in", ()
   const privateSession = structuredClone(session);
   privateSession.routes[0].targetHost = "home.internal";
   assertThrows(
-    () => frpcConfig(privateSession, "wss"),
+    () => frpcConfig(privateSession, "wss", false, "/bundle/ca-certificates.crt"),
     /explicit private-network opt-in/,
   );
 });

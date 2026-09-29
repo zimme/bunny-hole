@@ -5,6 +5,7 @@ import {
   parsePort,
   ValidationError,
 } from "../../packages/api/mod.ts";
+import { isDevelopmentHostname } from "../../packages/api/security.ts";
 
 export interface HostConfig {
   bindAddress: string;
@@ -21,31 +22,37 @@ export interface HostConfig {
   connectorTransports: HostDescriptor["connectorTransports"];
   requestTimeoutMs: number;
   logFormat: "json" | "pretty";
-  localDevelopment: boolean;
+  development: boolean;
 }
 
 export function loadHostConfig(env = Deno.env.toObject()): HostConfig {
-  const localDevelopment = env.BUNNY_HOLE_LOCAL_DEVELOPMENT === "true";
-  if (!localDevelopment && !env.BUNNY_HOLE_PUBLIC_URL) {
+  const development = env.BUNNY_HOLE_DEVELOPMENT === "true";
+  if (!env.BUNNY_HOLE_PUBLIC_URL) {
     throw new ValidationError("BUNNY_HOLE_PUBLIC_URL is required");
   }
   let publicUrl: URL;
   try {
     publicUrl = new URL(
-      env.BUNNY_HOLE_PUBLIC_URL ?? "http://127.0.0.1:8080",
+      env.BUNNY_HOLE_PUBLIC_URL,
     );
   } catch {
     throw new ValidationError("invalid public URL");
   }
-  if (!localDevelopment && publicUrl.protocol !== "https:") {
-    throw new ValidationError("public URL must use HTTPS");
+  if (
+    publicUrl.protocol !== "https:" &&
+    !(development && publicUrl.protocol === "http:")
+  ) {
+    throw new ValidationError("public URL must use HTTPS outside development");
   }
   if (
     !publicUrl.hostname || publicUrl.username || publicUrl.password ||
     publicUrl.search ||
     publicUrl.hash || publicUrl.pathname !== "/"
   ) throw new ValidationError("public URL must contain only an origin");
-  if (!localDevelopment) publicUrl.hostname = normalizeHostname(publicUrl.hostname);
+  publicUrl.hostname = normalizeHostname(publicUrl.hostname);
+  if (development && !isDevelopmentHostname(publicUrl.hostname)) {
+    throw new ValidationError("development requires a local management hostname");
+  }
 
   const ownerPublicKey = env.BUNNY_HOLE_OWNER_PUBLIC_KEY;
   if (!ownerPublicKey) {
@@ -54,14 +61,16 @@ export function loadHostConfig(env = Deno.env.toObject()): HostConfig {
   const connectorHost = normalizeHostname(
     env.BUNNY_HOLE_CONNECTOR_HOST ?? publicUrl.hostname,
   );
-  const connectorTransports = (env.BUNNY_HOLE_CONNECTOR_TRANSPORTS ??
-    (localDevelopment ? "tcp,quic" : "wss"))
+  if (development && !isDevelopmentHostname(connectorHost)) {
+    throw new ValidationError("development requires a local connector hostname");
+  }
+  const connectorTransports = (env.BUNNY_HOLE_CONNECTOR_TRANSPORTS ?? "wss")
     .split(",").map((value) => value.trim()) as HostDescriptor["connectorTransports"];
   if (
     connectorTransports.length === 0 ||
     new Set(connectorTransports).size !== connectorTransports.length ||
     connectorTransports.some((value) => !["quic", "tcp", "wss"].includes(value)) ||
-    (!localDevelopment && connectorTransports.some((value) => value !== "wss"))
+    (!development && connectorTransports.some((value) => value !== "wss"))
   ) throw new ValidationError("invalid connector transports");
   const port = parsePort(Number(env.PORT ?? "8080"));
   const frpBindPort = parsePort(Number(env.BUNNY_HOLE_FRP_BIND_PORT ?? "7000"));
@@ -98,13 +107,11 @@ export function loadHostConfig(env = Deno.env.toObject()): HostConfig {
     frpBindPort,
     frpHttpPort,
     connectorHost,
-    connectorPort: parsePort(Number(
-      env.BUNNY_HOLE_CONNECTOR_PORT ?? (localDevelopment ? "7000" : "443"),
-    )),
+    connectorPort: parsePort(Number(env.BUNNY_HOLE_CONNECTOR_PORT ?? "443")),
     connectorTransports,
     requestTimeoutMs,
     logFormat: logFormat as HostConfig["logFormat"],
-    localDevelopment,
+    development,
   };
 }
 
@@ -124,6 +131,6 @@ export function redactedHostConfig(config: HostConfig): Record<string, unknown> 
     connectorTransports: config.connectorTransports,
     requestTimeoutMs: config.requestTimeoutMs,
     logFormat: config.logFormat,
-    localDevelopment: config.localDevelopment,
+    development: config.development,
   };
 }

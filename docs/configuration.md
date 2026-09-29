@@ -22,12 +22,23 @@ and accepts CLI flags for selecting a named host and route.
 | `BUNNY_HOLE_CONNECTOR_TRANSPORTS` | `wss`                               | Advertised transports; production accepts only `wss`                                          |
 | `BUNNY_HOLE_REQUEST_TIMEOUT_MS`   | `30000`                             | Whole public request/response deadline, from 1000 through 120000 ms                           |
 | `BUNNY_HOLE_LOG_FORMAT`           | `json`                              | `json` for production or `pretty` for an interactive local terminal                           |
-| `BUNNY_HOLE_LOCAL_DEVELOPMENT`    | `false`                             | Explicitly permits HTTP and direct `tcp`/`quic` only for isolated local tests                 |
+| `BUNNY_HOLE_DEVELOPMENT`          | `false`                             | Permits HTTP and direct connector transport only for reserved test or loopback hostnames      |
 
 Listener ports must be distinct. `BUNNY_HOLE_PUBLIC_URL` must contain only an origin:
 credentials, paths, queries, and fragments are rejected. The host never logs the owner
 key, private host identity, bearer passkeys, enrollment challenge material, session
 tokens, or complete request headers.
+
+`BUNNY_HOLE_DEVELOPMENT` explicitly selects host and connector development behavior. The
+Dev Container toolchain, `CI=true`, and an environment name do not enable it
+automatically. The connector also accepts `--development` when connecting to a
+development host. Development mode requires the management and connector hostnames to be
+loopback or reserved `.test`/`.localhost` names. It still requires a public URL,
+enforces the management `Host` boundary, and verifies that a connector's discovered
+management origin matches its configured URL. Production DNS names are rejected when
+this mode is enabled. The flag does not select direct transport by itself: WSS and port
+443 remain the defaults. A development fixture must explicitly configure any HTTP URL or
+direct connector transport it needs.
 
 `GET /healthz` reports process liveness. `GET /readyz` succeeds only after the database,
 host identity, and FRP server are ready and while the process accepts new work. Neither
@@ -55,6 +66,12 @@ bunny-hole enrollment approve ENROLLMENT_ID \
 The pending connector polls for approval, proves possession of its private key, stores a
 short-lived host-signed session, and starts FRP. Subsequent sessions use fresh Ed25519
 challenge-response; the private key never crosses the network.
+
+WSS endpoint certificates are verified with the bundled `ca-certificates.crt` next to
+`frpc`. Override that public CA-bundle path only when a deployment uses its own trust
+roots, with `bunny-hole connect --trusted-ca-file FILE` or `BUNNY_HOLE_TRUSTED_CA_FILE`.
+The file must be a non-empty PEM bundle. Bunny Hole never falls back to unverified WSS
+TLS.
 
 Common management commands are:
 

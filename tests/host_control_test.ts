@@ -40,6 +40,7 @@ Deno.test("enrollment, one-use challenge, session, and scoped route work end to 
       {
         method: "POST",
         headers: {
+          host: "host.test",
           "content-type": "application/json",
           "x-bunny-hole-owner-challenge": ownerChallengeValue,
           "x-bunny-hole-owner-signature": await sign(
@@ -89,6 +90,7 @@ Deno.test("enrollment, one-use challenge, session, and scoped route work end to 
     new Request("http://host.test/api/v1/routes", {
       method: "POST",
       headers: {
+        host: "host.test",
         "content-type": "application/json",
         authorization: `Bearer ${session.accessToken}`,
       },
@@ -108,7 +110,13 @@ Deno.test("enrollment, one-use challenge, session, and scoped route work end to 
   const deleted = await host.handle(
     new Request(
       `http://host.test/api/v1/routes/${route.id}`,
-      { method: "DELETE", headers: { authorization: `Bearer ${session.accessToken}` } },
+      {
+        method: "DELETE",
+        headers: {
+          host: "host.test",
+          authorization: `Bearer ${session.accessToken}`,
+        },
+      },
     ),
   );
   assertEquals(deleted.status, 204);
@@ -118,6 +126,7 @@ Deno.test("enrollment, one-use challenge, session, and scoped route work end to 
     new Request("http://host.test/api/v1/routes", {
       method: "POST",
       headers: {
+        host: "host.test",
         "content-type": "application/json",
         authorization: `Bearer ${session.accessToken}`,
       },
@@ -132,6 +141,39 @@ Deno.test("enrollment, one-use challenge, session, and scoped route work end to 
     }),
   );
   assertEquals(confused.status, 400);
+
+  const lastChallengeResponse = await host.handle(
+    request("/api/v1/session/challenge", "POST", { enrollmentId: enrollment.id }),
+  );
+  assertEquals(lastChallengeResponse.status, 200);
+  const lastChallenge = await lastChallengeResponse.json();
+  assertEquals(store.revokeEnrollment(enrollment.id), true);
+  assertEquals(
+    (await host.handle(request("/api/v1/session/challenge", "POST", {
+      enrollmentId: enrollment.id,
+    }))).status,
+    401,
+  );
+  assertEquals(
+    (await host.handle(request("/api/v1/session", "POST", {
+      enrollmentId: enrollment.id,
+      challengeId: lastChallenge.challengeId,
+      signature: await sign(device.privateKey, "session", [
+        enrollment.id,
+        lastChallenge.challengeId,
+        lastChallenge.challenge,
+      ]),
+    }))).status,
+    401,
+  );
+  assertEquals(
+    (await host.handle(
+      new Request("http://host.test/api/v1/routes", {
+        headers: { host: "host.test", authorization: `Bearer ${session.accessToken}` },
+      }),
+    )).status,
+    401,
+  );
 
   host.shutdown();
   assertEquals(
@@ -152,7 +194,7 @@ Deno.test("management API is isolated by hostname and rejects malformed input", 
     connectorHost: "connect.example.com",
     connectorPort: 443,
     connectorTransports: ["wss"],
-    localDevelopment: false,
+    development: false,
   };
   const host = new Host(production, store, identity, logger);
   assertEquals(
@@ -204,6 +246,30 @@ Deno.test("management API is isolated by hostname and rejects malformed input", 
   );
 });
 
+Deno.test("development keeps the management hostname boundary", async () => {
+  const directory = await Deno.makeTempDir();
+  const owner = await generateKeyPair();
+  const identity = await generateKeyPair();
+  using store = new HostStore(`${directory}/state.sqlite`);
+  const host = new Host(config(owner.publicKey, directory), store, identity, logger);
+  assertEquals(
+    (await host.handle(
+      new Request("http://host.test/.well-known/bunny-hole", {
+        headers: { host: "viewer.test" },
+      }),
+    )).status,
+    404,
+  );
+  assertEquals(
+    (await host.handle(
+      new Request("http://host.test/.well-known/bunny-hole", {
+        headers: { host: "host.test" },
+      }),
+    )).status,
+    200,
+  );
+});
+
 Deno.test("passkey registration uses a bounded one-use management-origin flow", async () => {
   const directory = await Deno.makeTempDir();
   const owner = await generateKeyPair();
@@ -228,6 +294,7 @@ Deno.test("passkey registration uses a bounded one-use management-origin flow", 
         {
           method: "POST",
           headers: {
+            host: "host.test",
             "content-type": "application/json",
             "x-bunny-hole-owner-challenge": challenge,
             "x-bunny-hole-owner-signature": ownerSignature,
@@ -248,7 +315,11 @@ Deno.test("passkey registration uses a bounded one-use management-origin flow", 
     request("/api/v1/admin/passkeys/registration/options", "POST", { flowToken }),
   );
   assertEquals(options.status, 200);
-  const page = await host.handle(new Request("http://host.test/_bunny/admin/passkey"));
+  const page = await host.handle(
+    new Request("http://host.test/_bunny/admin/passkey", {
+      headers: { host: "host.test" },
+    }),
+  );
   assertEquals(page.status, 200);
   assertEquals(page.headers.get("referrer-policy"), "no-referrer");
 
@@ -270,7 +341,7 @@ Deno.test("passkey registration uses a bounded one-use management-origin flow", 
 function request(path: string, method: string, body: unknown): Request {
   return new Request(`http://host.test${path}`, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { host: "host.test", "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 }
@@ -291,6 +362,6 @@ function config(ownerPublicKey: string, directory: string): HostConfig {
     connectorTransports: ["tcp"],
     requestTimeoutMs: 30_000,
     logFormat: "json",
-    localDevelopment: true,
+    development: true,
   };
 }

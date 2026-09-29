@@ -1,0 +1,13 @@
+terraform {
+  # HCP workspace execution mode is configured outside this file. Set it to
+  # Local in HCP Terraform before initialization: the protected workflows run
+  # Terraform on the runner and use local plan files and runner credentials.
+  # The cloud backend intentionally cannot encode that workspace setting.
+  cloud {
+    organization = "REPLACE_WITH_HCP_ORGANIZATION"
+
+    workspaces {
+      name = "bunny-hole-production"
+    }
+  }
+}

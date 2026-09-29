@@ -1,0 +1,35 @@
+application_name       = "bunny-hole-production"
+region                 = "DE"
+management_hostname    = "manage.hole.example"
+application_hostnames  = ["home.example.com"]
+connector_hostname     = "connect.hole.example"
+
+# Bootstrap-only sentinels. The protected bootstrap imports Bunny's generated Pull Zones
+# and emits bootstrap_handoff. Replace all four values with its exact IDs and generated
+# names in a reviewed commit before any normal full plan. Never choose replacement names.
+public_pullzone_id      = "REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_ID"
+public_pullzone_name    = "REPLACE_WITH_BOOTSTRAP_PUBLIC_PULLZONE_NAME"
+connector_pullzone_id   = "REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_ID"
+connector_pullzone_name = "REPLACE_WITH_BOOTSTRAP_CONNECTOR_PULLZONE_NAME"
+
+image_namespace = "zimme"
+image_name      = "bunny-hole-host"
+image_tag       = "REPLACE_WITH_RELEASE_COMVER"
+image_digest    = "sha256:REPLACE_WITH_64_LOWERCASE_HEX_DIGEST"
+
+# This is the public Ed25519 owner key only. Never put the owner private key here.
+owner_public_key = "REPLACE_WITH_PUBLIC_OWNER_KEY"
+
+volume_size_gb     = 2
+request_timeout_ms = 30000
+connector_websocket_limit = 500
+
+# Keep false for the first full apply. That apply converges Pull Zone policy and, when
+# configured, Bunny DNS records. After DNS records have propagated and been reviewed,
+# set true in a separate reviewed apply to request managed TLS and force HTTPS.
+enable_hostname_tls = false
+
+# Optional. This must already exist in Bunny DNS. This template never creates a zone
+# and never changes nameserver delegation.
+# dns_zone_domain = "example.com"
+# dns_ttl = 300
