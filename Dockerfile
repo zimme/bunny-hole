@@ -58,7 +58,7 @@ RUN deno compile --config deno.runtime.json --frozen \
       --output /out/tls-gateway fixtures/tls_gateway/main.ts \
     && mkdir -p /out/state
 
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS host-runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS host-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/bunny-hole-host /usr/local/bin/bunny-hole-host
 COPY --from=frp --chown=nonroot:nonroot /out/frps /usr/local/bin/frps
 COPY --chown=nonroot:nonroot third_party/frp.LICENSE /usr/share/licenses/frp/LICENSE
@@ -72,7 +72,7 @@ VOLUME ["/var/lib/bunny-hole"]
 USER nonroot
 ENTRYPOINT ["/usr/local/bin/bunny-hole-host"]
 
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS connector-runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS connector-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/bunny-hole /usr/local/bin/bunny-hole
 COPY --from=frp --chown=nonroot:nonroot /out/frpc /usr/local/bin/frpc
 COPY --from=trust --chown=nonroot:nonroot /out/ca-certificates.crt /usr/local/bin/ca-certificates.crt
@@ -86,14 +86,14 @@ USER nonroot
 ENTRYPOINT ["/usr/local/bin/bunny-hole"]
 CMD ["connect"]
 
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS fixture-runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS fixture-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/origin /usr/local/bin/origin
 ENV PORT=3000
 EXPOSE 3000
 USER nonroot
 ENTRYPOINT ["/usr/local/bin/origin"]
 
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS tls-gateway-runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS tls-gateway-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/tls-gateway /usr/local/bin/tls-gateway
 ENV PORT=7443 \
     BUNNY_HOLE_TLS_CERT_PATH=/tls/tls.crt \
