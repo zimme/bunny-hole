@@ -142,6 +142,39 @@ Deno.test("enrollment, one-use challenge, session, and scoped route work end to 
   );
   assertEquals(confused.status, 400);
 
+  const lastChallengeResponse = await host.handle(
+    request("/api/v1/session/challenge", "POST", { enrollmentId: enrollment.id }),
+  );
+  assertEquals(lastChallengeResponse.status, 200);
+  const lastChallenge = await lastChallengeResponse.json();
+  assertEquals(store.revokeEnrollment(enrollment.id), true);
+  assertEquals(
+    (await host.handle(request("/api/v1/session/challenge", "POST", {
+      enrollmentId: enrollment.id,
+    }))).status,
+    401,
+  );
+  assertEquals(
+    (await host.handle(request("/api/v1/session", "POST", {
+      enrollmentId: enrollment.id,
+      challengeId: lastChallenge.challengeId,
+      signature: await sign(device.privateKey, "session", [
+        enrollment.id,
+        lastChallenge.challengeId,
+        lastChallenge.challenge,
+      ]),
+    }))).status,
+    401,
+  );
+  assertEquals(
+    (await host.handle(
+      new Request("http://host.test/api/v1/routes", {
+        headers: { host: "host.test", authorization: `Bearer ${session.accessToken}` },
+      }),
+    )).status,
+    401,
+  );
+
   host.shutdown();
   assertEquals(
     (await host.handle(new Request("http://host.test/healthz"))).status,

@@ -258,7 +258,7 @@ export class Host {
         }
       }
       if (url.pathname === "/api/v1/session/challenge" && request.method === "POST") {
-        return this.createSessionChallenge(request);
+        return await this.createSessionChallenge(request);
       }
       if (url.pathname === "/api/v1/session" && request.method === "POST") {
         return await this.createSession(request);
@@ -389,10 +389,7 @@ export class Host {
     const body = await readJson(request);
     if (!isRecord(body)) throw new ValidationError("invalid challenge request");
     assertOnlyKeys(body, ["enrollmentId"]);
-    const enrollment = this.store.getEnrollment(parseId(body.enrollmentId, "enr"));
-    if (!enrollment || enrollment.state !== "active") {
-      throw new ValidationError("authentication failed");
-    }
+    const enrollment = this.requireActiveEnrollment(parseId(body.enrollmentId, "enr"));
     const id = createId("chl");
     const challenge = createChallenge();
     const expiresAt = Date.now() + 60_000;
@@ -415,14 +412,14 @@ export class Host {
     if (typeof body.signature !== "string") {
       throw new ValidationError("authentication failed");
     }
-    const enrollment = this.store.getEnrollment(enrollmentId);
     const challenge = this.store.consumeChallenge(
       challengeId,
       enrollmentId,
       Date.now(),
     );
+    if (!challenge) throw new ValidationError("authentication failed");
+    const enrollment = this.requireActiveEnrollment(enrollmentId);
     if (
-      !enrollment || enrollment.state !== "active" || !challenge ||
       !(await verify(enrollment.publicKey, "session", [
         enrollmentId,
         challengeId,
@@ -446,8 +443,14 @@ export class Host {
       this.identity.publicKey,
       bearerToken(request),
     );
-    const enrollment = claims && this.store.getEnrollment(claims.enrollmentId);
-    if (!enrollment || enrollment.state !== "active") {
+    return this.requireActiveEnrollment(claims?.enrollmentId);
+  }
+
+  private requireActiveEnrollment(enrollmentId: string | undefined): Enrollment {
+    const enrollment = enrollmentId
+      ? this.store.getEnrollment(enrollmentId)
+      : undefined;
+    if (enrollment?.state !== "active") {
       throw new ValidationError("authentication failed");
     }
     return enrollment;
