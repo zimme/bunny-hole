@@ -11,3 +11,9 @@ connector images and release archives:
 
 No source modifications are made to frp. Bunny Hole's control plane and authorization
 plugin constrain how the embedded executable may register proxies.
+
+- **Mozilla CA certificate bundle**, extracted and published by curl, licensed under
+  MPL-2.0. Source: <https://curl.se/ca/cacert-2026-08-13.pem>. The pinned provenance,
+  source date, and SHA-256 values are recorded in `third_party/ca-certificates.json`.
+  The bundle and MPL-2.0 license text are checksum-verified before inclusion in the
+  connector OCI image and every native connector archive.

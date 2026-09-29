@@ -5,7 +5,7 @@ import { isRecord, LIMITS } from "../../packages/api/mod.ts";
 import { verifySessionToken } from "./session.ts";
 
 export function frpsConfig(config: HostConfig): string {
-  const quic = config.localDevelopment && config.connectorTransports.includes("quic")
+  const quic = config.development && config.connectorTransports.includes("quic")
     ? `quicBindPort = ${config.frpBindPort}\n`
     : "";
   return `bindAddr = "0.0.0.0"
@@ -16,7 +16,9 @@ transport.maxPoolCount = 16
 transport.tcpMux = true
 transport.tcpMuxKeepaliveInterval = ${LIMITS.heartbeatIntervalMs / 1_000}
 transport.heartbeatTimeout = ${LIMITS.heartbeatTimeoutMs / 1_000}
-transport.tls.force = true
+# Bunny terminates WSS TLS before forwarding the WebSocket stream to this endpoint.
+# FRP's WSS transport has no second TLS layer inside that stream.
+transport.tls.force = false
 auth.method = "token"
 auth.token = "bunny-hole-plugin-enforced"
 detailedErrorsToClient = false

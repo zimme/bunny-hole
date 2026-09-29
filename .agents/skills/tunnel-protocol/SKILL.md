@@ -1,6 +1,6 @@
 ---
 name: tunnel-protocol
-description: Modify or review Bunny Hole control API, FRP profile, host, connector, routing, and security behavior, including apps/host/, apps/connector/, and packages/api/.
+description: Modify or review Bunny Hole control API, FRP profile, host, connector, routing, and security behavior.
 ---
 
 # Tunnel protocol work

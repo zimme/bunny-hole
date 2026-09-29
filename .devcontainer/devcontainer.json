@@ -1,5 +1,6 @@
 {
   "name": "bunny-hole",
+  "initializeCommand": ["sh", ".devcontainer/initialize.sh"],
   "dockerComposeFile": "../compose.yaml",
   "service": "development",
   "runServices": ["development"],

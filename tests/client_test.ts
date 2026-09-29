@@ -16,7 +16,7 @@ const descriptor = {
   capabilities: ["http", "https"],
 };
 
-Deno.test("client accepts only HTTPS origin URLs outside local development", () => {
+Deno.test("client accepts only HTTPS origin URLs outside development mode", () => {
   assertThrows(() => new BunnyHoleClient("http://hole.example.com"), /HTTPS/);
   assertThrows(
     () => new BunnyHoleClient("https://hole.example.com/path"),
@@ -25,6 +25,14 @@ Deno.test("client accepts only HTTPS origin URLs outside local development", () 
   assertEquals(
     new BunnyHoleClient("http://127.0.0.1:8080", fetch, true).url.origin,
     "http://127.0.0.1:8080",
+  );
+  assertThrows(
+    () => new BunnyHoleClient("http://hole.example.com", fetch, true),
+    /local management hostname/,
+  );
+  assertThrows(
+    () => new BunnyHoleClient("https://hole.example.com", fetch, true),
+    /local management hostname/,
   );
 });
 
@@ -39,6 +47,33 @@ Deno.test("client strictly validates host descriptors", async () => {
       new BunnyHoleClient(
         "https://hole.example.com",
         responder({ ...descriptor, apiVersion: 2 }),
+      ).descriptor(),
+    /incompatible/,
+  );
+  await assertRejects(
+    () =>
+      new BunnyHoleClient(
+        "http://host.test:8080",
+        responder({
+          ...descriptor,
+          name: "host.test",
+          managementUrl: "http://attacker.test:8080",
+        }),
+        true,
+      ).descriptor(),
+    /incompatible/,
+  );
+  await assertRejects(
+    () =>
+      new BunnyHoleClient(
+        "http://host.test:8080",
+        responder({
+          ...descriptor,
+          name: "host.test",
+          managementUrl: "http://host.test:8080",
+          connectorHost: "connect.example.com",
+        }),
+        true,
       ).descriptor(),
     /incompatible/,
   );
@@ -159,12 +194,18 @@ Deno.test("library connector can run again after stop", async () => {
     )(input);
   };
   const directory = await Deno.makeTempDir();
+  const trustedCaFile = `${directory}/ca-certificates.crt`;
+  await Deno.writeTextFile(
+    trustedCaFile,
+    "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----\n",
+  );
   try {
     const connector = createConnector({
       credentials,
       frpcPath: Deno.execPath(),
       workingDirectory: directory,
       stderr: "pipe",
+      trustedCaFile,
     });
     connector.stop();
     const firstRun = connector.run();

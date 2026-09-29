@@ -22,6 +22,23 @@ const forwarding = new Set([
   "x-real-ip",
 ]);
 
+// Development transport exceptions are limited to loopback and reserved test domains.
+// Public DNS names must keep production checks.
+export function isDevelopmentHostname(raw: string): boolean {
+  let hostname: string;
+  try {
+    hostname = normalizeHostname(raw);
+  } catch {
+    return raw === "::1" || raw === "[::1]";
+  }
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+  if (hostname.endsWith(".test")) return true;
+  if (/^127(?:\.[0-9]{1,3}){3}$/.test(hostname)) {
+    return hostname.split(".").every((part) => Number(part) <= 255);
+  }
+  return false;
+}
+
 export function secureRequestHeaders(
   input: Headers,
   hostname: string,

@@ -1,6 +1,6 @@
 ---
 name: bunny-deployment
-description: Work on Bunny Magic Container, CDN, release image, or credential-safe deployment configuration, including .github/workflows/deploy-bunny.yml, docs/deployment.md, and Terraform under any templates/ or deploy/ directory.
+description: Work on Bunny Magic Container, CDN, release image, and credential-safe deployment configuration.
 ---
 
 # Bunny deployment work
@@ -16,3 +16,12 @@ non-sensitive IDs, hostnames, image digests, and health status.
 Do not enable multiple regions or host replicas. Verify production containers are
 non-root, health endpoints match probe roles, dynamic traffic is not cached, and the
 deployed image is one already tested and published by the release workflow.
+
+For a consumer deployment, use the `bunny-hole-setup` skill and the copyable template.
+When changing that template, verify the provider schema, the two-stage Pull Zone
+adoption boundary, protected default-branch workflows, remote-state handling, and the
+standalone instructions copied with it.
+
+For Terraform review, check variable validation, locked remote state, sensitive plan
+handling, adoption and destruction guards, and that apply uses the reviewed revision.
+Trace bootstrap, already-adopted, and partial-failure paths.

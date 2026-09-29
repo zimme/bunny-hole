@@ -41,7 +41,7 @@ export async function runCompose(
     const client = new BunnyHoleClient(
       credentials.url,
       fetch,
-      Deno.env.get("BUNNY_HOLE_LOCAL_DEVELOPMENT") === "true",
+      Deno.env.get("BUNNY_HOLE_DEVELOPMENT") === "true",
     );
     let session = await client.session(credentials);
     const hostRoutes = desired.filter((route) => route.host === hostName);
@@ -69,7 +69,7 @@ export async function runCompose(
       session,
       transport: session.descriptor.connectorTransports[0] ?? "wss",
       signal,
-      allowInsecureTransport: Deno.env.get("BUNNY_HOLE_LOCAL_DEVELOPMENT") === "true",
+      allowInsecureTransport: Deno.env.get("BUNNY_HOLE_DEVELOPMENT") === "true",
     });
     if (!signal.aborted && code !== 0) {
       throw new ValidationError(`connector for ${hostName} stopped (${code})`);

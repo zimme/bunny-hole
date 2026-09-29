@@ -1,13 +1,8 @@
-name: bunny-hole
-
 networks:
+  engine:
   tunnel:
     internal: true
-    ipam:
-      config: [{ subnet: 10.254.252.0/24 }]
   public:
-    ipam:
-      config: [{ subnet: 10.254.253.0/24 }]
 
 services:
   docker-engine:
@@ -18,6 +13,7 @@ services:
       DOCKER_HOST: tcp://127.0.0.1:2375
       DOCKER_TLS_CERTDIR: ""
     command: [--host=tcp://0.0.0.0:2375, --tls=false]
+    networks: [engine]
     volumes:
       - .:/workspaces/bunny-hole:cached
       - development-docker-data:/home/rootless/.local/share/docker
@@ -38,43 +34,55 @@ services:
         NPM_VERSION: "11.8.0"
         GH_VERSION: "2.96.0"
         COPILOT_VERSION: "1.0.72"
+        TERRAFORM_VERSION: "1.16.2"
         DOCKER_CLI_VERSION: "5:29.6.2-1~debian.13~trixie"
         DOCKER_BUILDX_VERSION: "0.35.0-1~debian.13~trixie"
         DOCKER_COMPOSE_VERSION: "5.3.1-1~debian.13~trixie"
     init: true
     depends_on:
       docker-engine: { condition: service_healthy }
+    networks: [engine]
     environment:
+      BUNNY_HOLE_ENVIRONMENT_NAME: "${BUNNY_HOLE_ENVIRONMENT_NAME:-development}"
       BUNNY_HOLE_BIND_ADDRESS: "0.0.0.0"
       BUNNY_HOLE_TEST_HOST: docker-engine
+      CI:
       DENO_DIR: /deno-dir
       DENO_NO_PROMPT: "1"
       DENO_NO_UPDATE_CHECK: "1"
       DOCKER_HOST: tcp://docker-engine:2375
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: core.fsmonitor
+      GIT_CONFIG_VALUE_0: "false"
     volumes:
       - .:/workspaces/bunny-hole:cached
       - development-deno-cache:/deno-dir
+      - type: bind
+        source: ${BUNNY_HOLE_GIT_COMMON_DIR:?Run sh .devcontainer/initialize.sh first}
+        target: ${BUNNY_HOLE_GIT_COMMON_DIR:?Run sh .devcontainer/initialize.sh first}
     working_dir: /workspaces/bunny-hole
 
   host:
     profiles: [tunnel]
-    image: "${BUNNY_HOLE_HOST_IMAGE:-bunny-hole-host:local}"
+    image: "${BUNNY_HOLE_HOST_IMAGE:-${COMPOSE_PROJECT_NAME}-host:local}"
     build:
       context: .
       target: host-runtime
     environment:
-      BUNNY_HOLE_LOCAL_DEVELOPMENT: "true"
-      BUNNY_HOLE_PUBLIC_URL: http://host:8080
-      BUNNY_HOLE_CONNECTOR_HOST: host
+      BUNNY_HOLE_DEVELOPMENT: "true"
+      BUNNY_HOLE_PUBLIC_URL: http://host.test:8080
+      BUNNY_HOLE_CONNECTOR_HOST: host.test
       BUNNY_HOLE_CONNECTOR_PORT: "7000"
       BUNNY_HOLE_CONNECTOR_TRANSPORTS: tcp,quic
       BUNNY_HOLE_REQUEST_TIMEOUT_MS: "1000"
       BUNNY_HOLE_OWNER_PUBLIC_KEY: "${BUNNY_HOLE_OWNER_PUBLIC_KEY:-integration-harness-required}"
-    networks: [tunnel, public]
+    networks:
+      tunnel:
+        aliases: [host.test]
+      public:
+        aliases: [host.test]
     ports:
-      - "${BUNNY_HOLE_BIND_ADDRESS:-127.0.0.1}:18080:8080"
-      - "${BUNNY_HOLE_BIND_ADDRESS:-127.0.0.1}:17000:7000/tcp"
-      - "${BUNNY_HOLE_BIND_ADDRESS:-127.0.0.1}:17000:7000/udp"
+      - "${BUNNY_HOLE_BIND_ADDRESS:-127.0.0.1}:${BUNNY_HOLE_HOST_HTTP_PORT:-}:8080"
     read_only: true
     tmpfs: ["/tmp:size=16m,noexec,nosuid"]
     volumes: ["host-state:/var/lib/bunny-hole"]
@@ -88,7 +96,7 @@ services:
 
   origin:
     profiles: [tunnel]
-    image: bunny-hole-origin-fixture:local
+    image: "${COMPOSE_PROJECT_NAME}-origin-fixture:local"
     build:
       context: .
       target: fixture-runtime
@@ -97,9 +105,28 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
 
+  connector-gateway:
+    profiles: [tunnel]
+    image: "${COMPOSE_PROJECT_NAME}-tls-gateway-fixture:local"
+    build:
+      context: .
+      target: tls-gateway-runtime
+    depends_on:
+      host: { condition: service_healthy }
+    volumes:
+      - "${BUNNY_HOLE_TLS_DIRECTORY:-/tmp/bunny-hole-tls-required}:/tls:ro"
+    networks:
+      tunnel:
+      public:
+        aliases: [connector-gateway.test]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,noexec,nosuid"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
   connector:
     profiles: [tunnel]
-    image: "${BUNNY_HOLE_CONNECTOR_IMAGE:-bunny-hole-connector:local}"
+    image: "${BUNNY_HOLE_CONNECTOR_IMAGE:-${COMPOSE_PROJECT_NAME}-connector:local}"
     user: "${BUNNY_HOLE_CONNECTOR_USER:-65532:65532}"
     build:
       context: .
@@ -107,7 +134,7 @@ services:
     depends_on:
       host: { condition: service_healthy }
       origin: { condition: service_started }
-    command: [connect, --host, integration, --transport, tcp, --local-development]
+    command: [connect, --host, integration, --transport, tcp, --development]
     environment:
       BUNNY_HOLE_CONFIG: /config/config.json
     volumes:
@@ -120,5 +147,7 @@ services:
 
 volumes:
   development-deno-cache:
+    external: true
+    name: bunny-hole-development-deno-cache-v1
   development-docker-data:
   host-state:

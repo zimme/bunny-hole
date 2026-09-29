@@ -42,6 +42,7 @@ Deno 2.9.5 is pinned throughout. The complete development image is Compose-nativ
 Container-aware editors are optional adapters and add no Features.
 
 ```sh
+sh .devcontainer/initialize.sh
 docker compose up --build --detach development
 docker compose exec --user vscode development deno task validate
 docker compose down
@@ -160,6 +161,10 @@ executables, persist credentials, reconnect indefinitely, or accept an insecure
 transport. Use the CLI or connector OCI image when those lifecycle responsibilities
 should be managed for you.
 
+The matching `ca-certificates.crt` must be alongside `frpc` so the WSS endpoint
+certificate is verified. Pass `trustedCaFile` when the executable is installed elsewhere
+or a private CA is required; it must name a non-empty PEM bundle.
+
 ## Security and limits
 
 The host pins identities, uses one-use Ed25519 challenges and short-lived admission
@@ -177,6 +182,21 @@ filesystem plus a persistent state volume.
 Read [SECURITY.md](SECURITY.md), the [threat model](docs/threat-model.md), and the
 [protocol profile](docs/protocol.md) before exposing a sensitive service.
 
+## Deploy a self-hosted instance
+
+For a reviewable GitOps deployment, copy
+[`templates/bunny-deployment`](templates/bunny-deployment) into a dedicated consumer
+repository. Its pinned Terraform configuration provisions the fixed one-region,
+one-instance Magic Container topology, adopts the generated CDN Pull Zones, and then
+manages cache/WebSocket policy, exact hostnames, managed TLS, and optional existing
+Bunny DNS records through protected manual workflows. The template includes standalone
+agent instructions that keep credentials and private enrollment material human-only.
+
+Read the [deployment-template design](docs/deployment-template.md),
+[agent-assisted procedure](docs/agent-assisted-deployment.md), or the
+[manual Bunny console guide](docs/deployment.md). A live apply is never required to
+build or validate Bunny Hole itself.
+
 ## Repository map
 
 - `apps/host` — control plane, exact-host HTTP ingress, passkeys, and FRP plugin.
@@ -186,15 +206,10 @@ Read [SECURITY.md](SECURITY.md), the [threat model](docs/threat-model.md), and t
 - `deploy/kubernetes` — raw Kustomize-compatible controller manifests and examples.
 - `fixtures/origin`, `tests`, and `compose.yaml` — production-image integration path.
 
-For a complete developer orientation, read the
-[repository guide](docs/repository-guide.md) after this README and
-[AGENTS.md](AGENTS.md). It documents the request lifecycle, trust boundaries, state
-model, supported contracts, non-goals, validation layers, release path, and the rules
-for making safe changes without relying on tribal knowledge.
-
-See [deployment](docs/deployment.md), [configuration](docs/configuration.md),
-[development](docs/development.md), [architecture](docs/architecture.md), and
-[Compatible Versioning](docs/versioning.md).
+See [deployment](docs/deployment.md),
+[deployment template](docs/deployment-template.md),
+[configuration](docs/configuration.md), [development](docs/development.md),
+[architecture](docs/architecture.md), and [Compatible Versioning](docs/versioning.md).
 
 ## License
 

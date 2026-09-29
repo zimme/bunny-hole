@@ -51,9 +51,9 @@ const id = (await output("docker", [
   "--mount",
   "type=volume,destination=/var/lib/bunny-hole",
   "--publish",
-  `${bindAddress}:18081:8080`,
+  `${bindAddress}::8080`,
   "--env",
-  "BUNNY_HOLE_LOCAL_DEVELOPMENT=true",
+  "BUNNY_HOLE_DEVELOPMENT=true",
   "--env",
   "BUNNY_HOLE_PUBLIC_URL=http://127.0.0.1:8080",
   "--env",
@@ -62,10 +62,15 @@ const id = (await output("docker", [
 ])).trim();
 try {
   const user = await output("docker", ["inspect", "--format", "{{.Config.User}}", id]);
+  const binding = await output("docker", ["port", id, "8080/tcp"]);
+  const port = Number(binding.match(/:(\d+)$/)?.[1]);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`invalid host port from Docker: ${binding}`);
+  }
   const deadline = Date.now() + 20_000;
   while (true) {
     try {
-      const response = await fetch(`http://${testHost}:18081/readyz`);
+      const response = await fetch(`http://${testHost}:${port}/readyz`);
       if (response.ok) break;
     } catch {
       // Container is starting.

@@ -19,7 +19,15 @@ application data, route policy, live traffic, and released artifacts. Trust cros
 6. the connector into its configured local HTTP/HTTPS origin.
 
 Bunny is trusted to terminate public TLS, route each endpoint to the configured
-container port, and isolate the application. A host operator or compromised host can
+container port, and isolate the application. The connector verifies Bunny's WSS
+certificate before that termination; FRP does not add a second TLS layer inside the
+WebSocket stream
+([FRP WSS implementation](https://github.com/fatedier/frp/blob/v0.70.1/client/connector.go#L202-L227)).
+The `frps` connector listener accepts the CDN-forwarded plaintext WebSocket framing. It
+cannot itself establish network provenance, so deployment **must** expose port 7000 only
+through the connector CDN endpoint and never as raw public TCP. Descriptors permit only
+WSS. The FRP plugin requires a valid host-signed admission token at login and an active
+admitted session for subsequent operations. A host operator or compromised host can
 observe and alter tunneled HTTP. An application embedding the TypeScript library shares
 its process and key boundary. Kubernetes RBAC limits the controller to Secrets in its
 own namespace, but a compromised cluster administrator can read every cluster
@@ -109,6 +117,16 @@ credential.
   run only in a trusted developer context or through a restricted socket proxy.
 - Repository validation uses a separate pinned rootless Docker-in-Docker daemon and
   never mounts the host Docker socket into pull-request code.
+- The Compose fixture keeps the connector listener on a project-local network. Only the
+  host service's HTTP port is published for host-side tests, on loopback by default.
+  Services use project-local DNS aliases; host DNS changes are unnecessary. The nested
+  test daemon publishes to its own private network interface so the development
+  container can reach it, without publishing a port from the outer Docker host.
+- The explicit development switch is read from process configuration, never from a
+  request. It accepts only loopback or reserved test hostnames, and does not disable
+  management hostname or descriptor origin checks. Production deployments must leave it
+  unset; an operator who deliberately routes a reserved test hostname to a public
+  service can still expose the development transport.
 - Bunny Hole does not weaken Home Assistant, Plex, dashboards, or other application
   auth. Operators must not expose an unauthenticated administrative service merely
   because the transport is encrypted.
