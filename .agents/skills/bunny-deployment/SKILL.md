@@ -21,3 +21,7 @@ For a consumer deployment, use the `bunny-hole-setup` skill and the copyable tem
 When changing that template, verify the provider schema, the two-stage Pull Zone
 adoption boundary, protected default-branch workflows, remote-state handling, and the
 standalone instructions copied with it.
+
+For Terraform review, check variable validation, locked remote state, sensitive plan
+handling, adoption and destruction guards, and that apply uses the reviewed revision.
+Trace bootstrap, already-adopted, and partial-failure paths.
