@@ -338,10 +338,14 @@ Deno.test("passkey registration uses a bounded one-use management-origin flow", 
     );
     assertEquals(html.includes('aria-describedby="status"'), true);
     assertEquals(html.includes("<noscript>"), true);
-    const script = html.match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/i)?.[1];
-    assertEquals(typeof script, "string");
+    // This checks our exact generated template, not arbitrary HTML or a sanitizer.
+    const opening = html.split("<script>");
+    const closing = html.split("</script>");
+    assertEquals(opening.length, 2);
+    assertEquals(closing.length, 2);
+    const script = opening[1].split("</script>")[0];
     // Parse the actual generated browser code without executing a ceremony.
-    new Function(script!);
+    new Function(script);
   }
 
   const consumed = await host.handle(
