@@ -54,8 +54,43 @@ advanced controllers optional.
 
 The real usability problem is the number of lifecycle steps: create route, record its
 ID, start connector, verify origin and public readiness, stop connector, delete route,
-and verify cleanup. There is no one-command preview, route expiry, or automatic public
-hostname allocation. Suffix grants alone cannot allocate a working CDN hostname.
+and verify cleanup. There is no single temporary-tunnel command, route expiry, or
+automatic public hostname allocation. Suffix grants alone cannot allocate a working CDN
+hostname.
+
+## Random tunnel hostnames and Bunny API access
+
+A dedicated wildcard domain such as `*.tunnels.example.com` is a reasonable one-time
+operator setup for random tunnel URLs. Three separate pieces must agree: wildcard DNS
+pointing at the public CDN endpoint, the wildcard hostname registered on its Pull Zone,
+and a certificate covering that wildcard. The exact management and connector endpoints
+remain separate. Keep application routing exact: each generated hostname still maps to
+one explicitly authorized route, and unknown names fail closed.
+
+Restrict generated names to a single DNS label below the configured wildcard root:
+`abc.tunnels.example.com` matches `*.tunnels.example.com`, while
+`abc.def.tunnels.example.com` and the bare `tunnels.example.com` do not. This follows
+[TLS service-identity matching](https://www.rfc-editor.org/rfc/rfc9525.html#section-6.3).
+DNS wildcard matching must not substitute for certificate hostname validation. The
+existing exact-hostname CLI remains valid for separately configured nested hosts; the
+current suffix grant is an authorization boundary, not a certificate-coverage check.
+
+Bunny's
+[official SSL documentation](https://github.com/BunnyWay/documentation/blob/main/cdn/ssl-setup.mdx)
+confirms wildcard hostname/certificate support. A domain hosted on Bunny DNS can use
+Bunny's automatically issued and renewed wildcard certificate. With another DNS
+provider, an operator can generate and upload a wildcard certificate. This is vendor
+capability evidence, not a live acceptance test for Bunny Hole. The current deployment
+template manages exact hostnames and does not implement wildcard provisioning or a
+random-hostname tunnel command.
+
+The runtime host and connector have no Bunny account API key. The provisioning template
+can use one in its protected operator workflow. Registering individual CDN hostnames,
+DNS records, and certificates on demand would require an operator-controlled
+provisioning service, handling propagation, issuance limits, failures, ownership, and
+cleanup. Prefer the one-time wildcard setup if that capability is adopted and tested;
+ordinary agent tunnel allocation would then need only the host control API and a bounded
+hostname grant. Do not distribute the Bunny account credential to agents.
 
 ## Findings by perspective
 
@@ -82,8 +117,9 @@ host and agent; it belongs only in the human-controlled provisioning boundary.
 Admission-token expiry limits when an FRP session can start. It does not terminate
 publication at that timestamp. Routes remain durable after process exit. Cleanup can
 fail when an agent crashes or loses network access, and a replacement connector can
-publish a retained route again. A host-enforced lease is the appropriate design for a
-strict preview deadline.
+publish a retained route again. Task-owned cleanup is sufficient for the normal
+completion path. An optional host-enforced lease is appropriate when an operator
+requires a strict deadline or cleanup after an agent crash.
 
 `check` authenticates the control plane; it cannot prove the origin, FRP data plane,
 DNS, TLS, CDN policy, or viewer authorization. This review makes its scope explicit and
@@ -141,12 +177,16 @@ was performed in this review.
 
 ## Prioritized improvements
 
-1. **Preview lifecycle:** one CLI entrypoint that creates a scoped route, supervises the
-   connector, emits secret-free structured lifecycle events, and cleans up its own
-   route. Pair it with a persisted, host-enforced lease that blocks new requests and
-   sessions after expiry, bounds existing requests, and survives host/agent restarts.
-   Keep persistent routes compatible. Test expiry, cancellation, crash, reconnect,
-   replacement, clock behavior, route conflict, and failed cleanup.
+1. **Temporary tunnel lifecycle:** one CLI entrypoint that creates a task-owned route
+   with a generated ID, supervises the connector, returns its URL, and removes its route
+   on completion or cancellation. A preview is a use case, not a separate resource or
+   configuration. Start with process-owned cleanup and structured lifecycle events.
+   Random public hostnames need the one-time wildcard DNS/CDN/TLS setup described above;
+   a generated route ID alone does not make a new hostname reachable. A preconfigured
+   exact-hostname pool is another option. Keep persistent routes compatible. Test
+   cancellation, reconnect, replacement, route conflicts, and failed cleanup. An
+   optional persisted, host-enforced lease can bound exposure after a crash; it is
+   additional protection, not the definition of a temporary tunnel.
 2. **Viewer protection:** define how browser users and automated test clients
    authenticate. Do not reuse connector/owner tokens as viewer credentials or log bearer
    share links. Keep application `Authorization` semantics intact; choose and test an
@@ -163,6 +203,7 @@ was performed in this review.
    WebSockets only with an explicit tested protocol/security design if hot reload is a
    product priority.
 
-The preview and viewer-access changes introduce new public behavior and trust
+The temporary-tunnel and viewer-access changes introduce new public behavior and trust
 boundaries. They need a focused design and behavior tests rather than a convenience
-wrapper that appears to guarantee temporary or private access without enforcing it.
+wrapper that claims automatic cleanup, strict expiry, or private access without
+enforcing the corresponding guarantee.

@@ -4,6 +4,22 @@ Bunny Hole can publish a deliberately selected HTTP service from an existing dev
 machine or sandbox. It does not isolate agent code or authenticate public viewers. Local
 tests that can reach loopback do not need a public tunnel.
 
+## Consumer skill
+
+The CLI bundles a short, self-contained consumer skill matching its supported commands:
+
+```sh
+bunny-hole skill
+bunny-hole skill --output .agents/skills/bunny-hole/SKILL.md
+```
+
+The first command prints the guidance for an agent. The second creates or updates the
+selected file, creating parent directories and replacing older guidance at that path.
+Re-run it when upgrading the CLI. Choose the skill directory discovered by your agent
+tool; the CLI does not automatically edit project instructions or user settings. The
+export is offline and contains no enrollment configuration, private keys, or session
+tokens.
+
 ## One-time human setup
 
 The owner deploys one host, configures DNS/CDN/TLS for each exact public hostname, and
@@ -17,6 +33,13 @@ An exact hostname grant and a small route limit are preferable for a preview. A 
 grant permits route creation within that suffix but does not provision DNS, CDN
 hostnames, or certificates. Concurrent worktrees need distinct enrollments and public
 hostnames. A second connector with the same enrollment replaces the first.
+
+When an operator supplies a wildcard domain, restrict any chosen tunnel name to exactly
+one DNS label beneath its root. For `*.tunnels.example.com`, use
+`abc.tunnels.example.com`; reject `abc.def.tunnels.example.com` and the bare
+`tunnels.example.com` unless they have separately configured exact certificates and
+hostnames. Wildcard DNS resolution is not proof of certificate coverage. Never bypass
+TLS verification to make an uncovered name work.
 
 ## Publish a temporary HTTP preview
 

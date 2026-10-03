@@ -258,3 +258,34 @@ Deno.test("CLI enrolls, approves, inspects, and removes an isolated preview", as
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+Deno.test("consumer skill can be printed and updated without host configuration", async () => {
+  const directory = await Deno.makeTempDir();
+  const originalLog = console.log;
+  const originalFetch = globalThis.fetch;
+  try {
+    const output: string[] = [];
+    console.log = (value: unknown) => output.push(String(value));
+    globalThis.fetch = () => Promise.reject(new Error("skill export must be offline"));
+    await main(["skill"]);
+    const skill = output[0];
+    assertEquals(skill.startsWith("---\nname: bunny-hole\n"), true);
+    assertEquals(skill.includes("bunny-hole route delete ROUTE_ID"), true);
+    const path = `${directory}/project/.agents/skills/bunny-hole/SKILL.md`;
+    await main(["skill", "--output", path]);
+    assertEquals(await Deno.readTextFile(path), skill);
+    await Deno.writeTextFile(path, "older consumer guidance\n");
+    await main(["skill", "--output", path]);
+    assertEquals(await Deno.readTextFile(path), skill);
+    for (
+      const args of [["--output"], ["--output", path, "--yes"], ["--host", "preview"]]
+    ) {
+      await assertRejects(() => main(["skill", ...args]), /usage:/);
+      assertEquals(await Deno.readTextFile(path), skill);
+    }
+  } finally {
+    console.log = originalLog;
+    globalThis.fetch = originalFetch;
+    await Deno.remove(directory, { recursive: true });
+  }
+});

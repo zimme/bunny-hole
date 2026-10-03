@@ -90,8 +90,10 @@ The first passkey is bootstrapped with an offline owner key. Keep at least two p
 and store the owner key separately. Private keys and Bunny credentials must never be
 pasted into an AI conversation, committed, or supplied as command-line values.
 
-For agent testing and temporary previews, read [Agent use](docs/agent-use.md). Connector
-approval does not authenticate public viewers, and routes have no automatic expiry. The
+For agent testing and temporary tunnels, use `bunny-hole skill` or upsert project
+guidance with `bunny-hole skill --output .agents/skills/bunny-hole/SKILL.md`. Read
+[Agent use](docs/agent-use.md) for the full workflow. Connector approval does not
+authenticate public viewers, and routes have no automatic expiry. The
 [agent suitability review](docs/agent-suitability.md) compares alternatives and records
 the remaining product gaps.
 

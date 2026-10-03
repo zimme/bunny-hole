@@ -106,6 +106,15 @@ prove that FRP is connected, the origin is healthy, or public DNS/CDN/TLS works.
 the intended public URL separately. See [Agent use](agent-use.md) for temporary previews
 and cleanup.
 
+## Consumer agent guidance
+
+Use `bunny-hole skill` to print the bundled consumer instructions without a configured
+host or network access. Use `bunny-hole skill --output PATH` to upsert a skill file,
+including its parent directories; existing content at that path is replaced. For
+example, install into `.agents/skills/bunny-hole/SKILL.md` for a tool that discovers
+project skills there. The CLI does not install project skills during enrollment or
+include credentials in the export. See [Agent use](agent-use.md).
+
 ## Routes and origins
 
 Only `http` and `https` local origin routes are supported. `https` means TLS from the

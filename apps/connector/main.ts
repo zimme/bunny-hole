@@ -10,6 +10,7 @@ import {
   VERSION,
 } from "../../packages/api/mod.ts";
 import { BunnyHoleClient, type HostCredentials } from "./client.ts";
+import { AGENT_SKILL } from "./agent_skill.ts";
 import {
   defaultTrustedCaFile,
   frpcConfig,
@@ -48,6 +49,7 @@ Usage:
   bunny-hole connect [--host NAME] [--transport wss|quic|tcp|websocket]
                      [--trusted-ca-file FILE] [--development]
   bunny-hole check [--host NAME]
+  bunny-hole skill [--output PATH]     Print or export consumer SKILL.md guidance
   bunny-hole owner generate --output FILE
   bunny-hole owner passkey --owner-key FILE [--host NAME] [--name NAME]
   bunny-hole cluster prepare --url HTTPS_URL --name NAME --namespace NAMESPACE
@@ -81,6 +83,7 @@ export async function main(args: string[]): Promise<void> {
   if (["--version", "-V"].includes(args[0])) {
     return console.log(`bunny-hole ${VERSION}`);
   }
+  if (args[0] === "skill") return await exportSkill(args.slice(1));
   if (args[0] === "operator") {
     const controller = new AbortController();
     const stop = () => controller.abort();
@@ -147,6 +150,18 @@ export async function main(args: string[]): Promise<void> {
   if (group === "connect") return await connect(flagsFrom(args.slice(1)));
   if (group === "check") return await check(flagsFrom(args.slice(1)));
   throw new UsageError("unknown command; use --help");
+}
+
+async function exportSkill(args: string[]): Promise<void> {
+  if (args.length === 0) return console.log(AGENT_SKILL);
+  if (args.length !== 2 || args[0] !== "--output" || args[1].startsWith("--")) {
+    throw new UsageError("usage: bunny-hole skill [--output PATH]");
+  }
+  const output = args[1];
+  if (!output || output.includes("\0")) throw new UsageError("invalid output path");
+  await Deno.mkdir(dirname(output), { recursive: true });
+  await Deno.writeTextFile(output, AGENT_SKILL, { mode: 0o644 });
+  console.log(`Bunny Hole consumer skill written to ${output}.`);
 }
 
 async function wizard(): Promise<void> {

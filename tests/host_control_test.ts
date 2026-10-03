@@ -338,7 +338,7 @@ Deno.test("passkey registration uses a bounded one-use management-origin flow", 
     );
     assertEquals(html.includes('aria-describedby="status"'), true);
     assertEquals(html.includes("<noscript>"), true);
-    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    const script = html.match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/i)?.[1];
     assertEquals(typeof script, "string");
     // Parse the actual generated browser code without executing a ceremony.
     new Function(script!);
