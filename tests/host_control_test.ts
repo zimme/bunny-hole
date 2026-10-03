@@ -322,6 +322,27 @@ Deno.test("passkey registration uses a bounded one-use management-origin flow", 
   );
   assertEquals(page.status, 200);
   assertEquals(page.headers.get("referrer-policy"), "no-referrer");
+  for (const path of ["/_bunny/admin/passkey", "/_bunny/admin/approve"]) {
+    const accessiblePage = await host.handle(
+      new Request(`http://host.test${path}`, { headers: { host: "host.test" } }),
+    );
+    const html = await accessiblePage.text();
+    assertEquals(html.includes('<html lang="en">'), true);
+    assertEquals(
+      html.includes('role="status" aria-live="polite" aria-atomic="true"'),
+      true,
+    );
+    assertEquals(
+      html.includes('tabindex="0" aria-label="Enrollment and grant details"'),
+      true,
+    );
+    assertEquals(html.includes('aria-describedby="status"'), true);
+    assertEquals(html.includes("<noscript>"), true);
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    assertEquals(typeof script, "string");
+    // Parse the actual generated browser code without executing a ceremony.
+    new Function(script!);
+  }
 
   const consumed = await host.handle(
     request("/api/v1/admin/passkeys/registration", "POST", {

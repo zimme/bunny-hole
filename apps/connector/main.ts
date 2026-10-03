@@ -496,7 +496,7 @@ async function check(flags: Flags): Promise<void> {
   if (descriptor.identityPublicKey !== credentials.identityPublicKey) {
     throw new ValidationError("host identity changed");
   }
-  await client.session(credentials);
+  const session = await client.session(credentials);
   console.log(
     JSON.stringify(
       {
@@ -504,6 +504,8 @@ async function check(flags: Flags): Promise<void> {
         host: name,
         url: credentials.url,
         enrollmentId: credentials.enrollmentId,
+        scope: "control-plane",
+        routes: session.routes,
       },
       null,
       2,

@@ -90,6 +90,11 @@ The first passkey is bootstrapped with an offline owner key. Keep at least two p
 and store the owner key separately. Private keys and Bunny credentials must never be
 pasted into an AI conversation, committed, or supplied as command-line values.
 
+For agent testing and temporary previews, read [Agent use](docs/agent-use.md). Connector
+approval does not authenticate public viewers, and routes have no automatic expiry. The
+[agent suitability review](docs/agent-suitability.md) compares alternatives and records
+the remaining product gaps.
+
 ## Declarative local services
 
 `bunny-hole compose up` starts the current Compose project, reconciles its enrollment's

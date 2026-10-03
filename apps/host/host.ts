@@ -964,7 +964,7 @@ status.textContent='Enrollment approved. You may close this page.';`,
 
 function ceremonyPage(title: string, prepare: string, action: string): Response {
   return new Response(
-    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title></head><body><main><h1>${title}</h1><p>Verify the management hostname and the details below before continuing.</p><pre id="details"></pre><button id="continue" disabled>Continue with passkey</button><pre id="status"></pre></main><script>
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title></head><body><main><h1>${title}</h1><p>Verify the management hostname and the details below before continuing.</p><pre id="details" tabindex="0" aria-label="Enrollment and grant details"></pre><button id="continue" disabled aria-describedby="status">Continue with passkey</button><p id="status" role="status" aria-live="polite" aria-atomic="true">Loading ceremony details…</p><noscript>JavaScript is required to use a passkey. Open this link in a browser with JavaScript enabled.</noscript></main><script>
 const token=location.hash.slice(1);history.replaceState(null,'',location.pathname);
 const status=document.querySelector('#status'),details=document.querySelector('#details');
 const encode=value=>{const bytes=new Uint8Array(value);let text='';for(const byte of bytes)text+=String.fromCharCode(byte);return btoa(text).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'')};
@@ -975,8 +975,8 @@ const authentication=credential=>({id:credential.id,rawId:encode(credential.rawI
 const button=document.querySelector('#continue');let options;
 const failed=error=>{status.textContent=error instanceof Error?error.message:'Ceremony failed'};
 const prepare=async()=>{${prepare}};
-(async()=>{try{if(!token)throw new Error('This ceremony link is incomplete');options=await prepare();button.disabled=false}catch(error){failed(error)}})();
-button.onclick=async()=>{button.disabled=true;try{${action}}catch(error){failed(error)}};
+(async()=>{try{if(!token)throw new Error('This ceremony link is incomplete');options=await prepare();status.textContent='Ready. Verify the details before continuing.';button.disabled=false}catch(error){failed(error)}})();
+button.onclick=async()=>{button.disabled=true;status.textContent='Waiting for passkey verification…';try{${action}}catch(error){failed(error)}};
 </script></body></html>`,
     {
       headers: {

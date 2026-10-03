@@ -98,6 +98,14 @@ enrollment deterministically replaces the first. Stable process exit codes are `
 success, `64` invalid CLI usage, `69` connection or runtime failure, and `78` invalid
 configuration or rejected authentication.
 
+`check` prints secret-free JSON with `valid`, `host`, `url`, `enrollmentId`,
+`scope: "control-plane"`, and the admitted `routes`. Inspect those routes before
+starting a connector: `connect` publishes all of them for that enrollment. A successful
+check validates control-plane authentication and the pinned host identity; it does not
+prove that FRP is connected, the origin is healthy, or public DNS/CDN/TLS works. Verify
+the intended public URL separately. See [Agent use](agent-use.md) for temporary previews
+and cleanup.
+
 ## Routes and origins
 
 Only `http` and `https` local origin routes are supported. `https` means TLS from the
