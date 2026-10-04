@@ -47,3 +47,20 @@ jobs:
           if [ -f .env ]; then
             docker compose --profile development down --volumes --remove-orphans
           fi
+
+  windows-state:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: 2.9.5
+      - name: Install frozen dependencies
+        run: deno ci
+      - name: Test Windows configuration replacement and recovery
+        run: >-
+          deno test --allow-env --allow-read --allow-write
+          tests/session_state_test.ts tests/state_recovery_test.ts

@@ -10,11 +10,17 @@ export async function runCompose(
   command: "plan" | "sync" | "up",
   configPath: string,
   signal: AbortSignal,
+  effects: {
+    run?: typeof run;
+    capture?: typeof capture;
+    client?: (url: string, development: boolean) => BunnyHoleClient;
+    supervise?: typeof superviseConnector;
+  } = {},
 ): Promise<void> {
   const executable = Deno.env.get("BUNNY_HOLE_COMPOSE_COMMAND") ?? "docker";
   const prefix = executable === "docker" ? ["compose"] : [];
   if (command === "up") {
-    await run(executable, [
+    await (effects.run ?? run)(executable, [
       ...prefix,
       "up",
       "--detach",
@@ -23,7 +29,12 @@ export async function runCompose(
       "120",
     ]);
   }
-  const output = await capture(executable, [...prefix, "config", "--format", "json"]);
+  const output = await (effects.capture ?? capture)(executable, [
+    ...prefix,
+    "config",
+    "--format",
+    "json",
+  ]);
   const desired = routesFromCompose(JSON.parse(output));
   if (command === "plan") {
     console.log(JSON.stringify({ routes: desired }, null, 2));
@@ -38,13 +49,15 @@ export async function runCompose(
   const sessions = [];
   for (const hostName of Object.keys(state.hosts)) {
     const [, credentials] = selectHost(state, hostName);
-    const client = new BunnyHoleClient(
-      credentials.url,
-      fetch,
-      Deno.env.get("BUNNY_HOLE_DEVELOPMENT") === "true",
-    );
+    const client = (effects.client ?? ((url, development) =>
+      new BunnyHoleClient(url, fetch, development)))(
+        credentials.url,
+        Deno.env.get("BUNNY_HOLE_DEVELOPMENT") === "true",
+      );
     let session = await client.session(credentials);
-    const hostRoutes = desired.filter((route) => route.host === hostName);
+    const hostRoutes = desired.filter((route) =>
+      route.host === hostName
+    );
     const names = new Set(hostRoutes.map((route) => route.name));
     for (const existing of session.routes) {
       if (existing.name.startsWith("compose-") && !names.has(existing.name)) {
@@ -66,7 +79,7 @@ export async function runCompose(
   const controller = new AbortController();
   const combined = AbortSignal.any([signal, controller.signal]);
   const tasks = sessions.map(async ({ session, client, credentials }) => {
-    await superviseConnector({
+    await (effects.supervise ?? superviseConnector)({
       client,
       credentials,
       signal: combined,

@@ -1,5 +1,6 @@
 import { prepareOrigins } from "./origin_bridge.ts";
 import { type ChildProcess, spawn } from "node:child_process";
+import { kill as killProcess } from "node:process";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -88,7 +89,10 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
                 child?.kill("SIGTERM");
                 killTimer ??= setTimeout(() => {
                   try {
-                    child?.kill("SIGKILL");
+                    // Deno's Node compatibility marks ChildProcess.killed after
+                    // SIGTERM and refuses a second child.kill call. Signal the
+                    // owned PID directly so escalation also works in Deno.
+                    if (child?.pid) killProcess(child.pid, "SIGKILL");
                   } catch { /* Already stopped. */ }
                 }, 2_000);
               } catch {

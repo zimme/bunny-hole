@@ -54,6 +54,19 @@ Deno.test("FRP plugin rejects malformed, unknown, and replaced sessions", async 
     }, "poison-run"))).reject,
     true,
   );
+  for (
+    const input of [
+      plugin("Login", ""),
+      plugin("Login", "invalid"),
+      plugin("UnknownOperation", first.token),
+      plugin("NewProxy", first.token, { proxy_name: "missing", proxy_type: "http" }),
+      plugin("NewProxy", first.token, {
+        proxy_name: "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA.bh-rte_AAAAAAAAAAAAAAAAAAAAAAAA",
+        proxy_type: "tcp",
+      }),
+      plugin("NewProxy", first.token, { proxy_name: null, proxy_type: "http" }),
+    ]
+  ) assertEquals((await authorizer.authorize(input)).reject, true);
   const proxyName = "bh-enr_AAAAAAAAAAAAAAAAAAAAAAAA.bh-rte_AAAAAAAAAAAAAAAAAAAAAAAA";
   assertEquals(
     (await authorizer.authorize(plugin("NewProxy", first.token, {

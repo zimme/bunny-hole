@@ -101,3 +101,34 @@ instructions. Skills are guidance, not an OS boundary. Use isolated credentials 
 minimal grants, application viewer authentication, and synthetic preview data. Routes
 remain durable: task cleanup is required, and an optional host-enforced lease is a
 separate future design if exposure must end even after an agent crashes.
+
+## Coverage accountability
+
+`deno task coverage` retains the whole-suite coverage gate and raises it from 70% to 90%
+for lines, branches, and functions. A second gate inventories every TypeScript source
+file under `apps` and `packages`: a file missing from the report fails validation.
+Application totals require 95% lines, 90% branches, and 97% functions. These totals
+include entry points and platform-specific paths without exclusions. Per-file line
+floors prevent a well-tested module from hiding regressions elsewhere; new modules start
+with a 95% floor. The client, API validators, header/origin policy, host config,
+identity loader, logger, and Compose adapter/model have 100% line floors.
+
+The remaining lower per-file floors are explicit in `scripts/coverage_check.ts`. Windows
+backup/recovery paths remain visible in Linux coverage and have a separate Windows CI
+job with real filesystem replacement and injected rename-failure tests. Other gaps
+include rare operating-system I/O failures, cancellation races between adjacent
+synchronous steps, TLS bridge failure after partial response headers, and streaming the
+full 1 GiB limit. Do not suppress these paths or fabricate platform behavior to increase
+a percentage. Add a reliable behavior test when practical, then raise the corresponding
+floor. Coverage reports are not evidence of browser accessibility, a live Kubernetes
+deployment, or Bunny platform acceptance.
+
+New controller tests enumerate unchanged/changed/stale/manual routes, unknown hosts,
+invalid policy and credentials, connector exit/failure/replacement, API failure while a
+child is live, token rotation, parent cancellation, and awaited resource cleanup. Small
+optional effect interfaces keep production defaults intact while allowing deterministic
+failure sequences. Separate subprocess tests exercise real command adapters, FRP
+termination escalation, host readiness/shutdown/startup failure, and exit codes. Passkey
+tests use a local authenticator with real registration and signed assertions; malformed
+input, incorrect origins/signatures, consumed challenges, counters, and replay are
+checked against observable persisted state.

@@ -204,3 +204,11 @@ stale names, unsupported transport claims, and dependency/license changes.
 Read [correctness engineering](correctness.md) before changing security or lifecycle
 behavior. `deno task correctness:check` runs mutation witnesses in disposable copies;
 the full validation command requires those witnesses to be rejected by behavior tests.
+
+`deno task coverage` enforces a 90% whole-suite gate plus complete application source
+accounting, application line/branch/function gates, and per-file line floors. See
+[coverage accountability](correctness.md#coverage-accountability) for targets and
+visible remaining gaps. Inspect `coverage/html/index.html` and
+`coverage/application.lcov` after validation. CI also runs Windows configuration
+replacement/recovery tests with the same pinned Deno version; the complete container
+validation remains on Linux.

@@ -55,6 +55,14 @@ const mutations = [
     witness:
       "hardening: owner proof revokes passkeys and removes only revoked enrollments",
   },
+  {
+    source: "apps/connector/library.ts",
+    before: 'if (child?.pid) killProcess(child.pid, "SIGKILL");',
+    after: 'if (child?.pid) child.kill("SIGKILL"); void killProcess;',
+    test: "tests/library_boundary_test.ts",
+    witness:
+      "library cleans profiles after spawn failure, unexpected exit and cancellation",
+  },
 ];
 
 async function copy(source: string, destination: string): Promise<void> {

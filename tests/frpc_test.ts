@@ -158,3 +158,57 @@ async function waitForFile(path: string): Promise<void> {
   }
   throw new Error("fake FRPC did not start");
 }
+
+Deno.test("FRPC cancellation skips startup or escalates a child that ignores SIGTERM", async () => {
+  if (Deno.build.os === "windows") return;
+  const directory = await Deno.makeTempDir();
+  const certificate = `${directory}/ca.pem`;
+  const marker = `${directory}/ready`;
+  const script = `${directory}/child.ts`;
+  const executable = `${directory}/frpc`;
+  try {
+    for (const path of ["", "bad\0path"]) {
+      await assertRejects(() => validateTrustedCaFile(path), /path is invalid/);
+    }
+    await Deno.writeTextFile(
+      certificate,
+      "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----\n",
+    );
+    const aborted = new AbortController();
+    aborted.abort();
+    assertEquals(
+      await runFrpc({
+        executable: "absent",
+        session,
+        transport: "wss",
+        trustedCaFile: certificate,
+        signal: aborted.signal,
+      }),
+      0,
+    );
+    await Deno.writeTextFile(
+      script,
+      `Deno.addSignalListener("SIGTERM", () => {});\nawait Deno.writeTextFile(${
+        JSON.stringify(marker)
+      }, "ready");\nsetInterval(() => {}, 1000);`,
+    );
+    await Deno.writeTextFile(
+      executable,
+      `#!/bin/sh\nexec '${Deno.execPath()}' run --allow-write '${script}'\n`,
+      { mode: 0o700 },
+    );
+    const controller = new AbortController();
+    const running = runFrpc({
+      executable,
+      session,
+      transport: "wss",
+      trustedCaFile: certificate,
+      signal: controller.signal,
+    });
+    await waitForFile(marker);
+    controller.abort();
+    assertEquals(await running, 0);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});

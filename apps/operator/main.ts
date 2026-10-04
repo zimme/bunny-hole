@@ -42,14 +42,19 @@ export function shouldRestartConnector(
   return current?.fingerprint !== fingerprint;
 }
 
-export async function runOperator(signal: AbortSignal): Promise<void> {
+export async function runOperator(signal: AbortSignal, effects: {
+  kube?: Pick<KubernetesClient, "gatewayResources" | "credentials" | "close">;
+  client?: (url: string) => BunnyHoleClient;
+  run?: typeof runFrpc;
+  wait?: typeof delay;
+} = {}): Promise<void> {
   const logger = createLogger("json");
   const credentialsNamespace = Deno.env.get("BUNNY_HOLE_CREDENTIALS_NAMESPACE") ??
     "bunny-hole-system";
   if (!/^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/.test(credentialsNamespace)) {
     throw new ValidationError("invalid credentials namespace");
   }
-  const kube = await KubernetesClient.create(signal);
+  const kube = effects.kube ?? await KubernetesClient.create(signal);
   const supervisors = new Map<
     string,
     SupervisorState
@@ -74,7 +79,12 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
               host.secretName,
             );
             const desired = routes.filter((route) => route.hostRef === host.reference);
-            const session = await reconcileHost(host, credentials, desired);
+            const session = await reconcileHost(
+              host,
+              credentials,
+              desired,
+              effects.client,
+            );
             const fingerprint = connectorFingerprint(
               credentials.enrollmentId,
               session.routes,
@@ -90,7 +100,7 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
                 done: Promise.resolve(),
               };
               supervisors.set(host.reference, supervisor);
-              supervisor.done = runFrpc({
+              supervisor.done = (effects.run ?? runFrpc)({
                 executable: Deno.env.get("BUNNY_HOLE_FRPC_PATH") ??
                   "/usr/local/bin/frpc",
                 session,
@@ -144,7 +154,7 @@ export async function runOperator(signal: AbortSignal): Promise<void> {
           message: error instanceof Error ? error.message : "unknown error",
         });
       }
-      await delay(15_000, signal);
+      await (effects.wait ?? delay)(15_000, signal);
     }
   } finally {
     for (const supervisor of supervisors.values()) supervisor.controller.abort();
@@ -157,8 +167,9 @@ async function reconcileHost(
   host: HostResource,
   credentials: HostCredentials,
   desired: DesiredRoute[],
+  createClient = (url: string) => new BunnyHoleClient(url),
 ): Promise<Session> {
-  const client = new BunnyHoleClient(host.url);
+  const client = createClient(host.url);
   if (credentials.url !== client.url.href) {
     throw new ValidationError("host URL and credential disagree");
   }
@@ -230,13 +241,15 @@ export class KubernetesClient {
     this.client.close();
   }
 
-  static async create(signal?: AbortSignal): Promise<KubernetesClient> {
+  static async create(
+    signal?: AbortSignal,
+    directory = "/var/run/secrets/kubernetes.io/serviceaccount",
+  ): Promise<KubernetesClient> {
     const host = Deno.env.get("KUBERNETES_SERVICE_HOST");
     const port = Deno.env.get("KUBERNETES_SERVICE_PORT_HTTPS") ?? "443";
     if (!host) {
       throw new ValidationError("Kubernetes service environment is unavailable");
     }
-    const directory = "/var/run/secrets/kubernetes.io/serviceaccount";
     const tokenPath = join(directory, "token");
     const ca = await Deno.readTextFile(join(directory, "ca.crt"));
     return new KubernetesClient(

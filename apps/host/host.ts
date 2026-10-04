@@ -893,7 +893,7 @@ async function proxyHttp(
   });
   const requestReader = request.body?.getReader();
   let completed = false;
-  let rejectCancellation: (reason: Error) => void = () => {};
+  let rejectCancellation!: (reason: Error) => void;
   const cancellationPromise = new Promise<never>((_resolve, reject) => {
     rejectCancellation = reject;
   });
@@ -908,7 +908,7 @@ async function proxyHttp(
   if (clientCompleted) clientCompleted.then(abort, abort);
   else request.signal.addEventListener("abort", abort, { once: true });
   shutdownSignal.addEventListener("abort", abort, { once: true });
-  let rejectTimeout: (reason: Error) => void = () => {};
+  let rejectTimeout!: (reason: Error) => void;
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
     rejectTimeout = reject;
   });

@@ -45,7 +45,7 @@
     "check": "deno check apps/host/main.ts apps/connector/main.ts apps/connector/mod.ts fixtures/origin/main.ts fixtures/tls_gateway/main.ts scripts/*.ts tests/*.ts",
     "docs:check": "deno run --allow-read=. --allow-run=deno scripts/docs_check.ts",
     "test": "deno test --allow-env --allow-net --allow-read --allow-run --allow-write --coverage=coverage --clean tests",
-    "coverage": "deno coverage coverage --threshold=70",
+    "coverage": "deno run --allow-read=. --allow-write=coverage --allow-run=deno scripts/coverage_check.ts",
     "integration": "deno run --allow-env --allow-net --allow-read=. --allow-run=docker,openssl --allow-sys=uid,gid --allow-write=.tmp scripts/integration.ts",
     "build": "deno run --allow-read=. --allow-write=dist --allow-run=deno scripts/build.ts",
     "container:build": "docker build --target host-runtime -t bunny-hole-host:local . && docker build --target connector-runtime -t bunny-hole-connector:local .",
