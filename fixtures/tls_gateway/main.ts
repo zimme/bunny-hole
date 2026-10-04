@@ -5,16 +5,15 @@ const keyPath = Deno.env.get("BUNNY_HOLE_TLS_KEY_PATH") ?? "/tls/tls.key";
 if (import.meta.main) {
   const cert = await Deno.readTextFile(certificatePath);
   const key = await Deno.readTextFile(keyPath);
-  Deno.serve(
-    { hostname: "0.0.0.0", port: 7444, cert, key },
-    (request) =>
-      new Response(request.body, {
-        headers: {
-          "x-verified-origin": "true",
-          "content-type": "application/octet-stream",
-        },
-      }),
-  );
+  const origin = createServer({ cert, key }, (request, response) => {
+    response.setHeader("x-verified-origin", "true");
+    response.setHeader("content-type", "application/octet-stream");
+    request.pipe(response);
+  });
+  await new Promise<void>((resolve, reject) => {
+    origin.once("error", reject);
+    origin.listen(7444, "0.0.0.0", resolve);
+  });
   const listener = Deno.listenTls({
     hostname: "0.0.0.0",
     port,
@@ -57,3 +56,4 @@ function close(connection: Deno.Conn): void {
     // pipeTo may already have closed either side after an expected TLS or FRP failure.
   }
 }
+import { createServer } from "node:https";

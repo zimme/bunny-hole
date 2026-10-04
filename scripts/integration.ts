@@ -489,6 +489,26 @@ try {
     } host and connector images passed enrollment, routing, streaming, binary, and isolation checks`,
   );
 } catch (error) {
+  // Inspect only lifecycle fields before cleanup removes the failing containers.
+  // Bound diagnostics so a daemon failure cannot stall the validation job.
+  try {
+    const ids = (await output("docker", [...compose, "ps", "--all", "--quiet"], {
+      env: environment,
+      signal: AbortSignal.timeout(10_000),
+    })).split(/\s+/).filter(Boolean);
+    if (ids.length) {
+      console.error(
+        await output("docker", [
+          "inspect",
+          "--format",
+          "{{.Name}} status={{.State.Status}} pid={{.State.Pid}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}",
+          ...ids,
+        ], { env: environment, signal: AbortSignal.timeout(10_000) }),
+      );
+    }
+  } catch {
+    console.error("integration lifecycle diagnostics unavailable");
+  }
   console.error(
     redactLogs(
       await output("docker", [...compose, "logs", "--no-color"], {
