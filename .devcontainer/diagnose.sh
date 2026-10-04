@@ -5,7 +5,7 @@ set -uo pipefail
 collect() {
   printf '\nDiagnostics: %s\n' "$1"
   shift
-  timeout 30s "$@" || printf 'Diagnostic command failed or timed out.\n'
+  timeout --kill-after=5s 30s "$@" || printf 'Diagnostic command failed or timed out.\n'
 }
 
 collect "host memory" free -m
@@ -18,7 +18,7 @@ while IFS= read -r container; do
   collect "container lifecycle" docker inspect --format \
     '{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' \
     "$container"
-done < <(timeout 30s docker compose --profile development ps --all --quiet)
+done < <(timeout --kill-after=5s 30s docker compose --profile development ps --all --quiet)
 
 collect "development resource usage" docker compose --profile development stats --no-stream
 collect "nested Docker status" docker compose exec -T --user vscode development docker info
