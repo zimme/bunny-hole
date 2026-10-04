@@ -108,6 +108,13 @@ the container. CI also forwards `COMPOSE_PARALLEL_LIMIT=1` so nested integration
 uses one Docker engine call at a time on the hosted runner. A local agent can start the
 service directly with Compose, without running either GitHub workflow.
 
+On failure, CI and Copilot setup run `bash .devcontainer/diagnose.sh` before cleanup.
+The script collects host memory and disk availability, container exit and out-of-memory
+state, resource usage, nested Docker status, and the daemon's recent logs. Each command
+has a 30-second limit so an unresponsive daemon cannot block the remaining evidence. It
+inspects selected lifecycle fields without dumping container environments. These
+diagnostics do not retry validation or turn a failed gate into a success.
+
 ## Cache design
 
 The development Dockerfile copies `deno.json`, `deno.lock`, and the smaller

@@ -38,11 +38,9 @@ jobs:
             BUNNY_HOLE_ENVIRONMENT_NAME
             COMPOSE_PARALLEL_LIMIT
           runCmd: deno task validate
-      - name: Diagnose Dev Container startup
+      - name: Diagnose validation failure
         if: failure()
-        run: |
-          docker compose --profile development ps --all
-          docker compose --profile development logs --no-color docker-engine
+        run: bash .devcontainer/diagnose.sh
       - name: Tear down validation environment
         if: always()
         run: |
