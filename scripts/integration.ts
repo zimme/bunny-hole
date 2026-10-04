@@ -49,6 +49,15 @@ const secrets = new Set([owner.privateKey, device.privateKey]);
 await Deno.mkdir(configDirectory, { recursive: true, mode: 0o700 });
 await Deno.mkdir(tlsDirectory, { recursive: true, mode: 0o700 });
 await createTestCertificates(tlsCertificate, tlsKey, trustedCa);
+// Validation uses the isolated rootless daemon, never the host Docker socket.
+const engine = new URL(Deno.env.get("DOCKER_HOST") ?? "tcp://docker-engine:2375");
+if (
+  !["tcp:", "http:"].includes(engine.protocol) || engine.username || engine.password
+) {
+  throw new Error("Compose service integration requires the private test Docker API");
+}
+const engineAddress = (await Deno.resolveDns(engine.hostname, "A"))[0];
+const discoveryUrl = `http://${engineAddress}:${engine.port || "2375"}`;
 await Deno.writeTextFile(
   `${configDirectory}/compose.override.yaml`,
   `services:
@@ -58,8 +67,10 @@ await Deno.writeTextFile(
       BUNNY_HOLE_CONNECTOR_PORT: "7443"
       BUNNY_HOLE_CONNECTOR_TRANSPORTS: wss
   connector:
-    command: [connect, --host, integration, --transport, wss, --development]
+    command: [compose, serve, --project, ${project}]
     environment:
+      BUNNY_HOLE_DEVELOPMENT: "true"
+      DOCKER_HOST: ${discoveryUrl}
       BUNNY_HOLE_TRUSTED_CA_FILE: /tls/ca.crt
       BUNNY_HOLE_ORIGIN_CA_FILE: /tls/ca.crt
     volumes:
@@ -71,7 +82,22 @@ await Deno.writeTextFile(
         source: tls-material
         target: /tls
         read_only: true
+  origin:
+    labels:
+      dev.bunny-hole.host: integration
+      dev.bunny-hole.name: origin
+      dev.bunny-hole.hostname: tunnel.test
+      dev.bunny-hole.target-port: "3000"
+      dev.bunny-hole.allow-private-network: "true"
   connector-gateway:
+    labels:
+      dev.bunny-hole.host: integration
+      dev.bunny-hole.name: verified-origin
+      dev.bunny-hole.hostname: tls-tunnel.test
+      dev.bunny-hole.protocol: https
+      dev.bunny-hole.target-host: connector-gateway.test
+      dev.bunny-hole.target-port: "7444"
+      dev.bunny-hole.allow-private-network: "true"
     volumes:
       - type: volume
         source: tls-material
@@ -219,22 +245,7 @@ try {
   };
   const session = await client.session(externalCredentials);
   secrets.add(session.accessToken);
-  await client.createRoute(session, {
-    name: "origin",
-    protocol: "http",
-    hostname: "tunnel.test",
-    targetHost: "origin",
-    targetPort: 3000,
-    allowPrivateNetwork: true,
-  });
-  await client.createRoute(session, {
-    name: "verified-origin",
-    protocol: "https",
-    hostname: "tls-tunnel.test",
-    targetHost: "connector-gateway.test",
-    targetPort: 7444,
-    allowPrivateNetwork: true,
-  });
+  if (session.routes.length !== 0) throw new Error("fixture routes already exist");
   const connectorConfig = JSON.stringify(
     {
       version: 1,
@@ -477,6 +488,33 @@ try {
       }, bytes=${tlsBytes.length}`,
     );
   }
+  // Ordinary Compose lifecycle changes must remove and restore discovered routes.
+  await run("docker", [...compose, "stop", "origin"], { env: environment });
+  await waitFor(
+    async () => {
+      const current = await client.session(externalCredentials);
+      secrets.add(current.accessToken);
+      return current.routes.length === 1 &&
+        current.routes[0].hostname === "tls-tunnel.test";
+    },
+    30_000,
+    "Compose service did not remove the stopped origin's route",
+  );
+  const removed = await publicRequest("/stopped-origin");
+  await removed.body?.cancel();
+  if (removed.status !== 404) throw new Error("stopped origin route remained public");
+  await run("docker", [...compose, "up", "--no-build", "--detach", "origin"], {
+    env: environment,
+  });
+  await waitFor(
+    async () => {
+      const response = await publicRequest("/restored-origin");
+      await response.body?.cancel();
+      return response.ok;
+    },
+    30_000,
+    "Compose service did not restore the restarted origin's route",
+  );
   const logs = await output("docker", [...compose, "logs", "--no-color"], {
     env: environment,
   });
@@ -486,7 +524,7 @@ try {
   console.log(
     `integration: ${
       publishedImages ? "published" : "locally built"
-    } host and connector images passed enrollment, routing, streaming, binary, and isolation checks`,
+    } host and connector images passed Compose discovery, enrollment, routing, streaming, binary, and isolation checks`,
   );
 } catch (error) {
   // Inspect only lifecycle fields before cleanup removes the failing containers.

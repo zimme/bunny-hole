@@ -1,6 +1,14 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: "apps/compose/docker.ts",
+    before: 'labels["com.docker.compose.project"] !== project',
+    after: "false",
+    test: "tests/compose_service_test.ts",
+    witness:
+      "Compose service discovery is project-scoped, opt-in, bounded and replica-consistent",
+  },
+  {
     source: "apps/host/store.ts",
     before: "(OLD.status='revoked' AND NEW.status!='revoked')",
     after: "(0)",

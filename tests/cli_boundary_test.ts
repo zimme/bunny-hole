@@ -8,6 +8,8 @@ Deno.test("CLI rejects ambiguous flags, missing IDs and unsafe secret flags", as
     const args of [
       ["unknown"],
       ["compose", "bad"],
+      ["compose", "serve"],
+      ["compose", "serve", "--project", "Bad"],
       ["host", "add", "--url"],
       ["host", "add", "--url", "https://host.test", "--name", "Bad name"],
       ["host", "use"],

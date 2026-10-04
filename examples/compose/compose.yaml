@@ -1,0 +1,39 @@
+# Supply a release-tested connector image digest and a private, restricted Docker
+# API URL in your local .env. The API must permit only GET /v1.44/containers/json.
+name: home
+services:
+  assistant:
+    image: ${ASSISTANT_IMAGE:?Set the application image digest}
+    labels:
+      dev.bunny-hole.host: home
+      dev.bunny-hole.hostname: ${BUNNY_HOLE_PUBLIC_HOSTNAME:?Set the approved public hostname}
+      dev.bunny-hole.target-port: "8123"
+      dev.bunny-hole.allow-private-network: "true"
+    networks: [applications]
+
+  bunny-hole:
+    image: ${BUNNY_HOLE_CONNECTOR_IMAGE:?Set a release-tested connector image digest}
+    command: [compose, serve, --project, home]
+    user: "${BUNNY_HOLE_UID:?Set the credential-owning non-root UID}:${BUNNY_HOLE_GID:?Set its GID}"
+    environment:
+      BUNNY_HOLE_CONFIG: /config/config.json
+      DOCKER_HOST: ${BUNNY_HOLE_DOCKER_API:?Set the private restricted Docker API URL}
+    volumes:
+      - type: bind
+        source: ./.bunny-hole
+        target: /config
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [applications, discovery]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=16m,noexec,nosuid,mode=1777"]
+    stop_grace_period: 10s
+
+networks:
+  applications:
+  discovery:
+    external: true
+    name: ${BUNNY_HOLE_DISCOVERY_NETWORK:?Set the private restricted Docker API network}

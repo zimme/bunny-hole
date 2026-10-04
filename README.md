@@ -99,27 +99,43 @@ the remaining product gaps.
 
 ## Declarative local services
 
-`bunny-hole compose up` starts the current Compose project, reconciles its enrollment's
-`compose-` routes, and runs the connector. Use a separate enrollment/configuration file
-for each independently managed project: syncing a project deletes stale `compose-`
-routes from that enrollment, including routes created by another project sharing it. The
-service port must be published to loopback so the host-side connector can reach it
-without exposing it to the LAN:
+Add the connector as a service in your application's Compose stack and run ordinary
+`docker compose up -d`. Its `compose serve` command discovers running services from
+Docker labels and continuously reconciles their routes. No Bunny Hole CLI or Docker CLI
+is required on the host to keep the tunnel running. See the complete
+[Compose service example](examples/compose/compose.yaml) and
+[configuration](docs/configuration.md#compose-discovery) for credential ownership and
+Docker API access.
 
 ```yaml
+name: home
 services:
   assistant:
     image: ghcr.io/home-assistant/home-assistant:stable
-    ports: ["127.0.0.1:8123:8123"]
     labels:
       dev.bunny-hole.host: home
       dev.bunny-hole.hostname: assistant.example.com
       dev.bunny-hole.target-port: "8123"
+      dev.bunny-hole.allow-private-network: "true"
+  bunny-hole:
+    image: ${BUNNY_HOLE_CONNECTOR_IMAGE:?Set a release-tested connector image digest}
+    command: [compose, serve, --project, home]
+    environment:
+      BUNNY_HOLE_CONFIG: /config/config.json
+      DOCKER_HOST: ${BUNNY_HOLE_DOCKER_API:?Set the private restricted Docker API URL}
+    volumes: ["./.bunny-hole:/config:ro"]
+    restart: unless-stopped
 ```
 
-Run `bunny-hole compose plan` before `sync` or `up`. A connector intentionally placed
-inside a Compose network may instead set `dev.bunny-hole.target-host` to a service name
-and must also set `dev.bunny-hole.allow-private-network: "true"`.
+The service name becomes the origin target, so application ports need not be published.
+Use a separate enrollment/configuration file for each independently managed project;
+`compose-` routes are owned by that project for its enrollment. Enrollment and owner
+approval happen once before starting the service. Run only one connector for that
+identity. Never expose the Docker API publicly.
+
+The existing host-side `bunny-hole compose plan|sync|up` workflow remains available. It
+uses Compose's rendered configuration and defaults origins to loopback; publish the
+application port only on `127.0.0.1` for that workflow.
 
 ## Kubernetes
 

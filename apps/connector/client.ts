@@ -198,19 +198,26 @@ export class BunnyHoleClient {
   async createRoute(
     session: Session,
     route: Omit<Route, "id" | "enrollmentId" | "active">,
+    signal?: AbortSignal,
   ): Promise<Route> {
     return parseRoute(
       await this.request("/api/v1/routes", {
         method: "POST",
+        signal,
         headers: { authorization: `Bearer ${session.accessToken}` },
         body: JSON.stringify(route),
       }),
     );
   }
 
-  async deleteRoute(session: Session, routeId: string): Promise<void> {
+  async deleteRoute(
+    session: Session,
+    routeId: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     await this.request(`/api/v1/routes/${encodeURIComponent(routeId)}`, {
       method: "DELETE",
+      signal,
       headers: { authorization: `Bearer ${session.accessToken}` },
     }, true);
   }

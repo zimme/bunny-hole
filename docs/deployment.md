@@ -200,6 +200,13 @@ read-only, use a read-only root filesystem, drop all capabilities, set
 contains the Bunny Hole CLI, pinned `frpc`, and the pinned public CA bundle used to
 verify the connector WSS endpoint; it does not contain the host.
 
+For a service managed by the application's own stack, use `compose serve --project
+NAME`
+with a private restricted Docker API endpoint. It discovers labels and reconciles
+running services without invoking Docker or requiring a host-side Bunny Hole process.
+See the [complete example](../examples/compose/compose.yaml). Enrollment/approval still
+precede runtime; the connector has no owner or Bunny account credential.
+
 The `bunny-hole compose plan|sync|up` adapter derives routes only from explicit
 `dev.bunny-hole.*` labels. See [configuration](configuration.md#compose-discovery). It
 is an opt-in reconciler, not a transparent Docker socket proxy. Access to the Docker

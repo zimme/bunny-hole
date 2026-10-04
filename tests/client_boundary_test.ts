@@ -314,9 +314,13 @@ Deno.test("route requests carry admission only to the management origin and prop
   });
   assertEquals(await client.createRoute(session, route), route);
   await client.deleteRoute(session, route.id);
+  await assertRejects(() => client.createRoute(session, route, controller.signal));
+  await assertRejects(() => client.deleteRoute(session, route.id, controller.signal));
   await assertRejects(() => client.session(credentials, controller.signal));
   assert(calls.every((call) => call.redirect === "error"));
   assertEquals(calls[0].token, "Bearer token");
   assertEquals(calls[1].method, "DELETE");
-  assertEquals(calls[2].token, null);
+  assertEquals(calls[2].token, "Bearer token");
+  assertEquals(calls[3].method, "DELETE");
+  assertEquals(calls[4].token, null);
 });

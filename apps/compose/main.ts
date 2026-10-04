@@ -54,24 +54,11 @@ export async function runCompose(
         credentials.url,
         Deno.env.get("BUNNY_HOLE_DEVELOPMENT") === "true",
       );
-    let session = await client.session(credentials);
     const hostRoutes = desired.filter((route) =>
       route.host === hostName
     );
-    const names = new Set(hostRoutes.map((route) => route.name));
-    for (const existing of session.routes) {
-      if (existing.name.startsWith("compose-") && !names.has(existing.name)) {
-        await client.deleteRoute(session, existing.id);
-      }
-    }
-    for (const route of hostRoutes) {
-      const existing = session.routes.find((item) => item.name === route.name);
-      if (existing && sameRoute(existing, route)) continue;
-      if (existing) await client.deleteRoute(session, existing.id);
-      await client.createRoute(session, route);
-    }
+    const session = await reconcileComposeHost(client, credentials, hostRoutes, signal);
     if (hostRoutes.length > 0) {
-      session = await client.session(credentials);
       sessions.push({ hostName, session, client, credentials });
     }
   }
@@ -94,6 +81,29 @@ export async function runCompose(
     controller.abort();
     await Promise.allSettled(tasks);
   }
+}
+
+export async function reconcileComposeHost(
+  client: BunnyHoleClient,
+  credentials: import("../connector/client.ts").HostCredentials,
+  desired: ComposeRoute[],
+  signal?: AbortSignal,
+): Promise<import("../connector/client.ts").Session> {
+  const session = await client.session(credentials, signal);
+  const names = new Set(desired.map((route) => route.name));
+  for (const existing of session.routes) {
+    if (existing.name.startsWith("compose-") && !names.has(existing.name)) {
+      await client.deleteRoute(session, existing.id, signal);
+    }
+  }
+  for (const route of desired) {
+    const existing = session.routes.find((item) => item.name === route.name);
+    if (existing && sameRoute(existing, route)) continue;
+    if (existing) await client.deleteRoute(session, existing.id, signal);
+    const { host: _host, ...body } = route;
+    await client.createRoute(session, body, signal);
+  }
+  return desired.length > 0 ? await client.session(credentials, signal) : session;
 }
 
 function sameRoute(route: Route, desired: ComposeRoute): boolean {

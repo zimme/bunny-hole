@@ -129,7 +129,14 @@ permission for arbitrary destinations.
 
 ## Compose discovery
 
-Run the connector adapter with access to the Docker API and labels on opted-in services:
+There are two execution modes. `bunny-hole compose plan|sync|up` runs on the host and
+uses `docker compose config --format json`. `compose serve --project NAME` runs inside
+the connector image as a normal Compose service. It polls the Docker Engine container
+list every five seconds, filtered by the exact `com.docker.compose.project` label, and
+also verifies that label locally. It ignores stopped containers, one-off jobs, and
+unlabeled services. It requires a Docker Engine API supporting v1.44.
+
+Label opted-in services:
 
 ```yaml
 labels:
@@ -146,6 +153,35 @@ The service port must be published to host loopback when the adapter uses the de
 `dev.bunny-hole.target-host` and `dev.bunny-hole.allow-private-network: "true"`. The
 adapter reconciles only labeled routes and never treats arbitrary public request data as
 a destination.
+
+In service mode, an omitted `target-host` becomes the Compose service name. Explicit
+private-network consent is required for that name. Identical replicas collapse into one
+service route; inconsistent replica labels, duplicate names/hostnames, malformed
+responses, and unknown configured hosts fail closed. No arbitrary container discovery is
+used as an origin. Healthy connections stay alive when routes and identity are
+unchanged; a changed route restarts the owned connector after awaiting its cleanup.
+Failed processes are retried on the next cycle. Discovery/configuration failures stop
+owned connectors until reconciliation succeeds. Shutdown cancels Docker/control requests
+and awaits connector termination. Stopping the service does not delete durable routes;
+removing an application's labels or stopping its container removes its managed routes on
+the next successful cycle.
+
+`DOCKER_HOST` selects the discovery endpoint: `unix:///var/run/docker.sock` by default,
+or an explicit `http://`, `https://`, or `tcp://` endpoint. The controller sends only
+filtered `GET /v1.44/containers/json` requests, with a five-second deadline and 4 MiB
+response limit. Use a private restricted proxy permitting only this endpoint; do not
+publish its port or mount a Docker socket into the connector by default. Direct socket
+access grants control of the daemon even when the mount is read-only. The protected
+connector state is reloaded each cycle so credential replacement is observed. Host
+aliases must use distinct enrollments to preserve one active connector per enrollment.
+
+The [complete service example](../examples/compose/compose.yaml) starts with ordinary
+`docker compose up -d`. It requires a release-tested image digest, a private Docker API
+URL, and a pre-approved mode-`0600` credential file readable by the configured non-root
+UID. Local Compose file-backed secrets do not enforce Unix ownership/mode overrides;
+keep credentials in the protected read-only directory instead. The new service
+entrypoint requires an image built from this change or the next released minor version;
+the existing 1.0.0 image does not include it.
 
 One Compose project owns all `compose-` routes for its enrollment. Sync removes any such
 routes absent from the current project, even when another project created them. Use

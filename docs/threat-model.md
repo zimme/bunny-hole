@@ -116,7 +116,13 @@ credential.
   route's traffic. Compromise requires rotating the enrollment key and application
   credentials.
 - A Docker socket grants daemon/host-root-equivalent control. The Compose adapter must
-  run only in a trusted developer context or through a restricted socket proxy.
+  run only in a trusted developer context or through a restricted socket proxy. The
+  in-stack service requires a private discovery endpoint, issues only a filtered
+  container-list GET, and validates project scope again locally. A read-only socket
+  mount does not restrict Docker API operations. Keep the proxy private and restrict its
+  allowed method/path; protect connector credentials separately from Docker labels.
+  Conflicting replicas, malformed declarations, or discovery failures stop owned
+  connectors. Host aliases cannot reuse an enrollment within the service controller.
 - Repository validation uses a separate pinned rootless Docker-in-Docker daemon and
   never mounts the host Docker socket into pull-request code.
 - The Compose fixture keeps the connector listener on a project-local network. Only the

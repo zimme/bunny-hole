@@ -162,3 +162,17 @@ termination escalation, host readiness/shutdown/startup failure, and exit codes.
 tests use a local authenticator with real registration and signed assertions; malformed
 input, incorrect origins/signatures, consumed challenges, counters, and replay are
 checked against observable persisted state.
+
+## Compose service controller cases
+
+The in-stack controller shares the existing route parser and reconciler. Project scope
+is enforced by both the Docker query and local label validation; a mutation witness
+removing local scope checking must fail. Service tests cover foreign projects,
+unlabeled/stopped/one-off containers, malformed/oversized responses, replica conflicts,
+duplicate route names/hostnames, unknown hosts, and explicit private-network consent.
+Success, unchanged credentials with fresh sessions, changed routes, deletion, discovery
+failure, invalid/replaced credentials, process failure/exit, parent cancellation, and
+awaited cleanup are checked with deterministic reconciliation cycles. API calls remain
+bounded and accept the parent's abort signal. Production-image integration uses real
+Docker labels and the compiled service entrypoint to establish the FRP/WSS tunnel. No
+owner/private key, Docker response, or admission token is emitted in error logs.
