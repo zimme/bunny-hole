@@ -513,9 +513,18 @@ Deno.test("host bounds simultaneous control uploads and cancels every reader on 
       "control requests temporarily unavailable",
     );
     host.shutdown();
-    assertEquals(
-      (await Promise.all(pending)).map((response) => response.status),
-      Array(32).fill(400),
-    );
-    assertEquals(cancelled, 32);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const statuses = await Promise.race([
+        Promise.all(pending).then((responses) => responses.map((r) => r.status)),
+        new Promise((resolve) => {
+          deadline = setTimeout(() => resolve("shutdown stalled"), 100);
+        }),
+      ]);
+      assertEquals(statuses, Array(32).fill(400));
+      assertEquals(cancelled, 32);
+    } finally {
+      clearTimeout(deadline);
+      await Promise.all(pending);
+    }
   }));

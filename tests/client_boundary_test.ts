@@ -75,12 +75,19 @@ Deno.test("credential parser accepts exactly its schema and rejects origin trick
   assertEquals(parseHostCredentials(credentials), credentials);
 });
 
-Deno.test("client rejects every malformed descriptor shape and unsupported capability", async () => {
+Deno.test("client accepts a pinned descriptor and rejects malformed shapes, origin mismatches and unsupported capabilities", async () => {
+  assertEquals(
+    (await new BunnyHoleClient(credentials.url, responder(descriptor)).descriptor())
+      .connectorTransports,
+    ["wss"],
+  );
   for (
     const value of [
       null,
       {},
       { ...descriptor, extra: true },
+      { ...descriptor, apiVersion: 2 },
+      { ...descriptor, managementUrl: "https://attacker.test" },
       { ...descriptor, managementUrl: "bad" },
       { ...descriptor, managementUrl: "https://hole.example.com/path" },
       { ...descriptor, name: "other.example.com" },
@@ -96,6 +103,24 @@ Deno.test("client rejects every malformed descriptor shape and unsupported capab
     await assertRejects(() =>
       new BunnyHoleClient(credentials.url, responder(value)).descriptor()
     );
+  }
+  for (
+    const changes of [
+      { managementUrl: "http://attacker.test:8080" },
+      { connectorHost: "connect.example.com" },
+    ]
+  ) {
+    await assertRejects(() =>
+      new BunnyHoleClient(
+        "http://host.test:8080",
+        responder({
+          ...descriptor,
+          name: "host.test",
+          managementUrl: "http://host.test:8080",
+          ...changes,
+        }),
+        true,
+      ).descriptor(), /incompatible/);
   }
 });
 
@@ -166,7 +191,12 @@ Deno.test("challenge validation stops before signing or admitting invalid respon
   }
 });
 
-Deno.test("session validation rejects expiry, identity, route ownership and unknown fields", async () => {
+Deno.test("session validation accepts owned routes and rejects expiry, identity, ownership and unknown fields", async () => {
+  const client = new BunnyHoleClient(credentials.url, (input) =>
+    Promise.resolve(
+      json(String(input).endsWith("challenge") ? challenge() : admitted()),
+    ));
+  assertEquals((await client.session(credentials)).routes, [route]);
   for (
     const value of [
       null,
@@ -182,6 +212,9 @@ Deno.test("session validation rejects expiry, identity, route ownership and unkn
         descriptor: { ...descriptor, identityPublicKey: device.publicKey },
       },
       ...[{ ...route, extra: true }, { ...route, active: "true" }, {
+        ...route,
+        targetPort: 0,
+      }, {
         ...route,
         enrollmentId: "enr_BBBBBBBBBBBBBBBBBBBBBBBB",
       }, { ...route, targetHost: "service" }].map((bad) => ({
@@ -222,6 +255,13 @@ Deno.test("control response reader bounds streams, cancels oversized bodies and 
   assertEquals(cancelled, true);
   for (
     const response of [
+      new Response("{}", { headers: { "content-type": "text/plain" } }),
+      new Response("{}", {
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(1024 * 1024 + 1),
+        },
+      }),
       new Response("{", { headers: { "content-type": "application/json" } }),
       new Response(new Uint8Array([255]), {
         headers: { "content-type": "application/json" },

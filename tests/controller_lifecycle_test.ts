@@ -50,7 +50,10 @@ class Control extends BunnyHoleClient {
   }
   override session(): Promise<Session> {
     this.calls.push("session");
-    return Promise.resolve(session([...this.routes]));
+    return Promise.resolve({
+      ...session([...this.routes]),
+      accessToken: `token-${this.calls.length}`,
+    });
   }
   override deleteRoute(_session: Session, id: string): Promise<void> {
     this.calls.push(`delete:${id}`);
@@ -384,6 +387,7 @@ Deno.test("Kubernetes resource and Secret readers reject failures and reload rot
   try {
     await Deno.writeTextFile(tokenPath, "first\n");
     assertEquals(await kube.gatewayResources(), []);
+    assertEquals(authorization, Array(4).fill("Bearer first"));
     await Deno.writeTextFile(tokenPath, "second");
     response = Response.json({ items: [1] });
     assertEquals(await kube.gatewayResources(), [1, 1, 1, 1]);

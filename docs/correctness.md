@@ -102,6 +102,36 @@ minimal grants, application viewer authentication, and synthetic preview data. R
 remain durable: task cleanup is required, and an optional host-enforced lease is a
 separate future design if exposure must end even after an agent crashes.
 
+## Test selection
+
+Keep one owner for each behavior and its case matrix. Remove repeated fixtures when
+another test asserts the same contract; preserve distinct failure cases and boundary
+checks. A smaller count of test registrations is not itself an improvement. Do not
+combine unrelated contracts into a single long scenario or remove assertions merely
+because another test executes the same lines.
+
+The suite retains these complementary layers:
+
+| Layer                         | Responsibility                                                                                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit and model tests          | Parser boundaries, grants, exhaustive state transitions, independent enrollment sequences, configuration, and validation tooling                    |
+| Component integration         | Signed host/client exchanges, passkeys, SQLite persistence, TLS trust, streaming, revocation/replacement, cancellation, reconciliation, and cleanup |
+| Subprocess and platform tests | Command exit codes, process ownership and termination, host startup/shutdown, and Windows configuration recovery                                    |
+| Production-image integration  | Real FRP/WSS transport, public routing, overlapping binary streams, request isolation, disconnect/restart, and packaged runtime behavior            |
+| Mutation witnesses            | Selected security controls must be necessary for their behavior tests to pass                                                                       |
+
+Duplicate descriptor/session validation now lives in the client boundary matrices;
+identity validation and permissions share the identity fixture; cookie and origin cases
+share the policy matrices. The Kubernetes reader test owns token rotation, and the
+operator reconciliation test uses fresh admission tokens while checking unchanged and
+changed routes. Control-reader saturation and bounded shutdown share one test and its
+mutation witness. These consolidations retain the original negative cases rather than
+replacing them with coverage-only evidence.
+
+Browser accessibility, actual Bunny endpoint configuration, live Kubernetes behavior,
+and backup restoration still require the operator acceptance checks above. No suite
+provides 100% confidence in all environments or future changes.
+
 ## Coverage accountability
 
 `deno task coverage` retains the whole-suite coverage gate and raises it from 70% to 90%

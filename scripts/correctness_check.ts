@@ -43,8 +43,9 @@ const mutations = [
     source: "apps/host/host.ts",
     before: "for (const request of this.#controlRequests) request.abort();",
     after: "for (const request of this.#controlRequests) void request;",
-    test: "tests/hardening_test.ts",
-    witness: "hardening: shutdown cancels unfinished control uploads",
+    test: "tests/host_boundary_test.ts",
+    witness:
+      "host bounds simultaneous control uploads and cancels every reader on shutdown",
   },
   {
     source: "apps/host/host.ts",

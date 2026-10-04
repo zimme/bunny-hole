@@ -3,7 +3,7 @@ import { HostStore } from "../apps/host/store.ts";
 import { loadHostConfig } from "../apps/host/config.ts";
 import { generateKeyPair, sign, verificationPhrase } from "../packages/api/auth.ts";
 import { compileRoutes, desiredRoutes } from "../apps/operator/model.ts";
-import { hostResources, KubernetesClient } from "../apps/operator/main.ts";
+import { hostResources } from "../apps/operator/main.ts";
 import {
   type ConnectorEvent,
   type ConnectorState,
@@ -92,32 +92,6 @@ Deno.test("hardening: unsupported policy isolates the affected host", () => {
     result.routes.filter((item) => item.hostRef === "infra/other").length,
     1,
   );
-});
-
-Deno.test("hardening: service account rotation is observed on the next request", async () => {
-  const path = await Deno.makeTempFile();
-  const client = Deno.createHttpClient({});
-  const seen: string[] = [];
-  try {
-    const kube = new KubernetesClient(
-      new URL("https://kube.example.com"),
-      path,
-      client,
-      ((_url, init) => {
-        seen.push(new Headers(init?.headers).get("authorization")!);
-        return Promise.resolve(new Response(JSON.stringify({ items: [] })));
-      }) as typeof fetch,
-    );
-    await Deno.writeTextFile(path, "first");
-    await kube.gatewayResources();
-    await Deno.writeTextFile(path, "second");
-    await kube.gatewayResources();
-    assertEquals(seen.slice(0, 4), Array(4).fill("Bearer first"));
-    assertEquals(seen.slice(4), Array(4).fill("Bearer second"));
-  } finally {
-    client.close();
-    await Deno.remove(path);
-  }
 });
 
 Deno.test("hardening: connector transition table rejects every illegal state event pair", () => {
@@ -260,39 +234,6 @@ Deno.test("hardening: concurrent approval links do not invalidate each other", a
       }),
     );
     assertEquals(await options.json(), { error: "no passkeys are registered" });
-  } finally {
-    host.shutdown();
-    store[Symbol.dispose]();
-  }
-});
-
-Deno.test("hardening: shutdown cancels unfinished control uploads", async () => {
-  const { host, store } = await fixture();
-  try {
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("{"));
-      },
-    });
-    const pending = host.handle(
-      new Request("http://host.test/api/v1/admin/owner/challenge", {
-        method: "POST",
-        headers: { host: "host.test", "content-type": "application/json" },
-        body: stream,
-      }),
-    );
-    await new Promise((r) => setTimeout(r, 5));
-    host.shutdown();
-    let deadline: ReturnType<typeof setTimeout> | undefined;
-    const result = await Promise.race([
-      pending.then((response) => response.status),
-      new Promise((resolve) => {
-        deadline = setTimeout(() => resolve("shutdown stalled"), 100);
-      }),
-    ]);
-    clearTimeout(deadline);
-    await pending;
-    assertEquals(result, 400);
   } finally {
     host.shutdown();
     store[Symbol.dispose]();

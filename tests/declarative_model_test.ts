@@ -1,32 +1,5 @@
-import { routesFromCompose } from "../apps/compose/model.ts";
 import { desiredRoutes } from "../apps/operator/model.ts";
 import { assert, assertEquals, assertThrows } from "./assert.ts";
-
-Deno.test("Compose labels produce a loopback route by default", () => {
-  assertEquals(
-    routesFromCompose({
-      services: {
-        home: {
-          labels: {
-            "dev.bunny-hole.host": "home-host",
-            "dev.bunny-hole.hostname": "home.example.com",
-            "dev.bunny-hole.target-port": "8123",
-          },
-        },
-        database: {},
-      },
-    }),
-    [{
-      host: "home-host",
-      name: "compose-project-home",
-      protocol: "http",
-      hostname: "home.example.com",
-      targetHost: "127.0.0.1",
-      targetPort: 8123,
-      allowPrivateNetwork: false,
-    }],
-  );
-});
 
 Deno.test("Gateway API resources bind a route to an annotated Bunny Hole host", () => {
   const routes = desiredRoutes([

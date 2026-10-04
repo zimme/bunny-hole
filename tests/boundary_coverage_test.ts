@@ -1,6 +1,5 @@
 import { routesFromCompose } from "../apps/compose/model.ts";
 import { loadHostConfig, redactedHostConfig } from "../apps/host/config.ts";
-import { loadOrCreateIdentity } from "../apps/host/identity.ts";
 import {
   defaultStatePath,
   loadState,
@@ -48,7 +47,7 @@ Deno.test("API parsers reject malformed, oversized and wrong-type boundary input
   for (const value of [null, "", "HTTP", "tcp"]) {
     assertThrows(() => parseProtocol(value));
   }
-  for (const prefix of ["", "A", "x", "ab.*", "a".repeat(17)]) {
+  for (const prefix of ["", "A", "x", "ab.*", "enr|.*", "a".repeat(17)]) {
     assertThrows(() => createId(prefix));
     assertThrows(() => parseId("enr_AAAAAAAAAAAAAAAAAAAAAAAA", prefix));
   }
@@ -65,6 +64,7 @@ Deno.test("API parsers reject malformed, oversized and wrong-type boundary input
       "a.".repeat(128),
     ]
   ) assertThrows(() => normalizeHostname(value));
+  assertEquals(normalizeHostname("HOME.Example.com."), "home.example.com");
   for (const value of ["", "!", "A", "===="]) {
     assertThrows(() => decodeBase64Url(value));
   }
@@ -98,6 +98,16 @@ Deno.test("origin and header policy rejects unsafe framing and preserves applica
       "http://localhost/#x",
     ]
   ) assertThrows(() => validateOrigin(origin, true));
+  for (
+    const origin of [
+      "http://home.internal:8123",
+      "http://127.999.999.999:8123",
+      "http://[::2]:8123",
+    ]
+  ) {
+    assertThrows(() => validateOrigin(origin, false));
+  }
+  assertEquals(validateOrigin("http://127.1:8123", false).hostname, "127.0.0.1");
   assertEquals(validateOrigin("https://[::1]:443", false).hostname, "[::1]");
   for (
     const [host, permitted] of [
@@ -125,13 +135,16 @@ Deno.test("origin and header policy rejects unsafe framing and preserves applica
     () => assertHeaderLimits(new Headers({ a: "x".repeat(32768) })),
     /limit/,
   );
-  const cookies = new Headers({
-    connection: "Set-Cookie, X-Dynamic",
-    "x-dynamic": "secret",
-    "set-cookie": "session=secret",
-    server: "private",
-  });
+  const cookies = new Headers({ "x-dynamic": "secret", server: "private" });
+  cookies.append("set-cookie", "first=1; HttpOnly");
+  cookies.append("set-cookie", "second=2; Secure");
+  assertEquals(secureResponseHeaders(cookies).getSetCookie(), [
+    "first=1; HttpOnly",
+    "second=2; Secure",
+  ]);
+  cookies.set("connection", "Set-Cookie, X-Dynamic");
   const filtered = secureResponseHeaders(cookies);
+  assertEquals(filtered.get("cache-control"), "no-store");
   assertEquals(filtered.getSetCookie(), []);
   assertEquals(filtered.get("x-dynamic"), null);
   assertEquals(filtered.get("server"), null);
@@ -143,6 +156,13 @@ Deno.test("origin and header policy rejects unsafe framing and preserves applica
 
 Deno.test("signature contexts and malformed key material fail closed", async () => {
   const pair = await generateKeyPair();
+  const signature = await sign(pair.privateKey, "session", ["a", "b"]);
+  assertEquals(await verify(pair.publicKey, "session", ["a", "b"], signature), true);
+  assertEquals(
+    await verify(pair.publicKey, "approve-enrollment", ["a", "b"], signature),
+    false,
+  );
+  assertEquals(await verify(pair.publicKey, "session", ["a", "c"], signature), false);
   for (const purpose of ["", "UPPER", "a".repeat(65), "a\0b"]) {
     await assertRejects(() => sign(pair.privateKey, purpose, ["a"]), /context/);
     assertEquals(await verify(pair.publicKey, purpose, ["a"], "A".repeat(86)), false);
@@ -292,6 +312,15 @@ Deno.test("Compose rejects invalid declarations and produces deterministic expli
   assertEquals(routes[0].targetHost, "::1");
   assertEquals(routes[0].protocol, "https");
   assertEquals(routes[1].allowPrivateNetwork, true);
+  assertEquals(routes[2], {
+    host: "home",
+    name: "compose-preview-z",
+    protocol: "http",
+    hostname: "app.test",
+    targetHost: "127.0.0.1",
+    targetPort: 443,
+    allowPrivateNetwork: false,
+  });
   assert(routes.every((route) => route.hostname === "app.test"));
 });
 
@@ -344,36 +373,6 @@ Deno.test("connector state rejects invalid defaults, names, versions and excess 
     for (const key of Object.keys(credentials) as (keyof typeof credentials)[]) {
       assertEquals(selected[key], credentials[key]);
     }
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
-});
-
-Deno.test("host identity rejects malformed and mismatched key files", async () => {
-  const directory = await Deno.makeTempDir();
-  const path = `${directory}/identity.json`;
-  try {
-    const first = await loadOrCreateIdentity(path);
-    assertEquals(await loadOrCreateIdentity(path), first);
-    for (
-      const value of [null, {}, { ...first, publicKey: "AA" }, {
-        ...first,
-        privateKey: "AA",
-      }]
-    ) {
-      await Deno.writeTextFile(path, JSON.stringify(value), { mode: 0o600 });
-      await assertRejects(() => loadOrCreateIdentity(path), /identity file/);
-      assertEquals(await Deno.readTextFile(path), JSON.stringify(value));
-    }
-    await Deno.writeTextFile(
-      path,
-      JSON.stringify({
-        ...first,
-        ...(await generateKeyPair()),
-        publicKey: first.publicKey,
-      }),
-    );
-    await assertRejects(() => loadOrCreateIdentity(path), /does not match/);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
