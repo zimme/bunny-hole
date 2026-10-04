@@ -107,6 +107,17 @@ Copilot session, run commands with `docker compose exec -T --user vscode develop
 start the service with `docker compose up --build --detach development` if it is no
 longer running.
 
+## Correctness evidence
+
+Read `docs/correctness.md` before changing protocol, authorization, persistence, or
+lifecycle behavior. Enumerate applicable input, identity, time, lifecycle, concurrency,
+partial-effect, and exposure cases before implementation. Map each to a behavior test or
+an enforced invariant. Security changes must maintain a mutation witness in
+`scripts/correctness_check.ts`. CI runs those witnesses; a control change that outgrows
+its witness must replace the witness, not remove the gate. Never claim coverage alone
+proves correctness. Prefer explicit state/event transitions and one owner for effects,
+with awaited cleanup and bounded cancellation.
+
 ## Completion
 
 Run focused tests, then `deno task validate` in the development service. Review the diff

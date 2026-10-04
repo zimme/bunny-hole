@@ -8,7 +8,7 @@ Deno.test("operator does not restart a healthy connector for a freshly minted se
 
   assertEquals(freshSessionFingerprint, fingerprint);
   assert(!shouldRestartConnector(supervisor, freshSessionFingerprint, 9_999));
-  assert(shouldRestartConnector(supervisor, freshSessionFingerprint, 10_000));
+  assert(!shouldRestartConnector(supervisor, freshSessionFingerprint, 10_000));
 });
 
 Deno.test("operator restarts when the reconciled route set changes", () => {

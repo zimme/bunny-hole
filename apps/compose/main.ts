@@ -1,5 +1,5 @@
 import { BunnyHoleClient } from "../connector/client.ts";
-import { runFrpc } from "../connector/frpc.ts";
+import { superviseConnector } from "../connector/supervisor.ts";
 import { loadState, selectHost } from "../connector/state.ts";
 import { routesFromCompose } from "./model.ts";
 import { ValidationError } from "../../packages/api/mod.ts";
@@ -59,22 +59,28 @@ export async function runCompose(
     }
     if (hostRoutes.length > 0) {
       session = await client.session(credentials);
-      sessions.push({ hostName, session });
+      sessions.push({ hostName, session, client, credentials });
     }
   }
   if (command === "sync") return;
-  await Promise.all(sessions.map(async ({ hostName, session }) => {
-    const code = await runFrpc({
+  const controller = new AbortController();
+  const combined = AbortSignal.any([signal, controller.signal]);
+  const tasks = sessions.map(async ({ session, client, credentials }) => {
+    await superviseConnector({
+      client,
+      credentials,
+      signal: combined,
       executable: Deno.env.get("BUNNY_HOLE_FRPC_PATH") ?? "frpc",
-      session,
       transport: session.descriptor.connectorTransports[0] ?? "wss",
-      signal,
       allowInsecureTransport: Deno.env.get("BUNNY_HOLE_DEVELOPMENT") === "true",
     });
-    if (!signal.aborted && code !== 0) {
-      throw new ValidationError(`connector for ${hostName} stopped (${code})`);
-    }
-  }));
+  });
+  try {
+    await Promise.all(tasks);
+  } finally {
+    controller.abort();
+    await Promise.allSettled(tasks);
+  }
 }
 
 function sameRoute(route: Route, desired: ComposeRoute): boolean {

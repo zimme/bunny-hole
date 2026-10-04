@@ -168,3 +168,12 @@ and constrains it through the authorization plugin; it does not claim to formall
 FRP. Public WebSocket and L4 features are absent even though FRP has primitives for
 them, because their ingress, authorization, backpressure, abuse, and Bunny endpoint
 semantics need separate complete designs and tests.
+
+## Hardening controls
+
+HTTPS origin TLS now verifies chains and target hostnames in a connector-owned bridge.
+Passkeys can be revoked using a fresh offline-owner proof. Enrollment verification
+phrases encode 64 bits. Control uploads have bounded concurrency and read deadlines and
+are cancelled on shutdown. Central Kubernetes credentials require explicit Gateway
+namespace delegation. Read [correctness engineering](correctness.md) for executable
+mutation witnesses, retention, and deployment-specific acceptance requirements.

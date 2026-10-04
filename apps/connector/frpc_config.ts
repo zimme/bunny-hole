@@ -53,22 +53,10 @@ function proxyConfig(route: Route, token: string): string[] {
   ];
   if (route.hostname) lines.push(`customDomains = [${toml(route.hostname)}]`);
   if (route.protocol === "https") {
-    lines.push(
-      "[proxies.plugin]",
-      'type = "http2https"',
-      `localAddr = ${toml(`${formatHost(route.targetHost)}:${route.targetPort}`)}`,
-    );
-  } else {
-    lines.push(
-      `localIP = ${toml(route.targetHost)}`,
-      `localPort = ${route.targetPort}`,
-    );
+    throw new Error("HTTPS routes require a verified origin bridge");
   }
+  lines.push(`localIP = ${toml(route.targetHost)}`, `localPort = ${route.targetPort}`);
   return lines;
-}
-
-function formatHost(host: string): string {
-  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
 function toml(value: string): string {

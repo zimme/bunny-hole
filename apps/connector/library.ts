@@ -1,3 +1,4 @@
+import { prepareOrigins } from "./origin_bridge.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,6 +15,8 @@ export interface ConnectorOptions {
   stderr?: "inherit" | "pipe";
   /** PEM roots used to verify the connector WSS endpoint. */
   trustedCaFile?: string;
+  /** Optional private roots for HTTPS local origins; never disables verification. */
+  originCaFile?: string;
 }
 
 export interface ConnectorHandle {
@@ -58,53 +61,70 @@ export function createConnector(options: ConnectorOptions): ConnectorHandle {
         await validateTrustedCaFile(trustedCaFile);
         const session = await client.session(options.credentials, runSignal);
         if (runController.signal.aborted || signal?.aborted) return 0;
-        const directory = await mkdtemp(
-          join(options.workingDirectory ?? tmpdir(), "bunny-hole-library-"),
-        );
+        const origins = await prepareOrigins(session, options.originCaFile);
         try {
-          const path = join(directory, "frpc.toml");
-          await writeFile(
-            path,
-            frpcConfig(session, options.transport ?? "wss", false, trustedCaFile),
-            {
-              mode: 0o600,
-              flag: "wx",
-            },
+          const directory = await mkdtemp(
+            join(options.workingDirectory ?? tmpdir(), "bunny-hole-library-"),
           );
-          if (runController.signal.aborted || signal?.aborted) return 0;
-          const abort = () => {
-            try {
-              child?.kill("SIGTERM");
-            } catch {
-              // The process may already have exited.
-            }
-          };
-          runController.signal.addEventListener("abort", abort, { once: true });
-          signal?.addEventListener("abort", abort, { once: true });
           try {
+            const path = join(directory, "frpc.toml");
+            await writeFile(
+              path,
+              frpcConfig(
+                origins.session,
+                options.transport ?? "wss",
+                false,
+                trustedCaFile,
+              ),
+              {
+                mode: 0o600,
+                flag: "wx",
+              },
+            );
             if (runController.signal.aborted || signal?.aborted) return 0;
-            child = spawn(options.frpcPath, ["-c", path], {
-              stdio: ["ignore", "inherit", options.stderr ?? "inherit"],
-              windowsHide: true,
-            });
-            if (runController.signal.aborted || signal?.aborted) abort();
-            return await new Promise<number>((resolve, reject) => {
-              child!.once("error", reject);
-              child!.once("exit", (code, exitSignal) => {
-                if (exitSignal && !runController.signal.aborted && !signal?.aborted) {
-                  reject(new Error(`frpc stopped by ${exitSignal}`));
-                } else {
-                  resolve(code ?? 0);
-                }
+            let killTimer: ReturnType<typeof setTimeout> | undefined;
+            const abort = () => {
+              try {
+                child?.kill("SIGTERM");
+                killTimer ??= setTimeout(() => {
+                  try {
+                    child?.kill("SIGKILL");
+                  } catch { /* Already stopped. */ }
+                }, 2_000);
+              } catch {
+                // The process may already have exited.
+              }
+            };
+            runController.signal.addEventListener("abort", abort, { once: true });
+            signal?.addEventListener("abort", abort, { once: true });
+            try {
+              if (runController.signal.aborted || signal?.aborted) return 0;
+              child = spawn(options.frpcPath, ["-c", path], {
+                stdio: ["ignore", "inherit", options.stderr ?? "inherit"],
+                windowsHide: true,
               });
-            });
+              if (runController.signal.aborted || signal?.aborted) abort();
+              return await new Promise<number>((resolve, reject) => {
+                child!.once("error", reject);
+                child!.once("exit", (code, exitSignal) => {
+                  if (exitSignal && !runController.signal.aborted && !signal?.aborted) {
+                    reject(new Error(`frpc stopped by ${exitSignal}`));
+                  } else {
+                    resolve(runSignal.aborted ? 0 : code ?? 0);
+                  }
+                });
+              });
+            } finally {
+              clearTimeout(killTimer);
+              child = undefined;
+              runController.signal.removeEventListener("abort", abort);
+              signal?.removeEventListener("abort", abort);
+            }
           } finally {
-            child = undefined;
-            runController.signal.removeEventListener("abort", abort);
-            signal?.removeEventListener("abort", abort);
+            await rm(directory, { recursive: true, force: true });
           }
         } finally {
-          await rm(directory, { recursive: true, force: true });
+          await origins.close();
         }
       } catch (error) {
         if (runSignal.aborted) return 0;

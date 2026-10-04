@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bunny Hole control API
-  version: 0.1.0
+  version: 1.0.0
   description: Version 1 enrollment, administration, session, and HTTP route API.
 servers:
   - url: https://manage.hole.example
@@ -50,6 +50,13 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PublicEnrollment" }
         "404": { description: Unknown enrollment }
+    delete:
+      operationId: purgeRevokedEnrollment
+      description: Requires an offline-owner proof for purge-enrollment bound to enrollment ID.
+      responses:
+        "204": { description: Revoked enrollment and associated audit data removed }
+        "400": { description: Enrollment must already be revoked }
+        "403": { description: Invalid owner proof }
   /api/v1/enrollments/{enrollmentId}/approve:
     parameters:
       - $ref: "#/components/parameters/EnrollmentId"
@@ -168,6 +175,26 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { description: Unknown or not owned by this enrollment }
+  /api/v1/admin/passkeys:
+    get:
+      operationId: listOwnerPasskeys
+      description: Requires an offline-owner proof for list-passkeys.
+      responses:
+        "200": { description: Public credential IDs and names }
+        "403": { description: Invalid owner proof }
+  /api/v1/admin/passkeys/{credentialId}:
+    parameters:
+      - name: credentialId
+        in: path
+        required: true
+        schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,1024}$" }
+    delete:
+      operationId: revokeOwnerPasskey
+      description: Requires an offline-owner proof for revoke-passkey bound to credential ID.
+      responses:
+        "204": { description: Credential revoked }
+        "403": { description: Invalid owner proof }
+        "404": { description: Unknown credential }
   /api/v1/admin/passkeys/registration/flows:
     post:
       operationId: createPasskeyRegistrationFlow
@@ -198,7 +225,14 @@ paths:
               required: [purpose]
               properties:
                 purpose:
-                  enum: [approve-enrollment, revoke-enrollment, create-passkey-flow]
+                  enum: [
+                    approve-enrollment,
+                    revoke-enrollment,
+                    create-passkey-flow,
+                    list-passkeys,
+                    revoke-passkey,
+                    purge-enrollment,
+                  ]
       responses:
         "200": { description: One-use 60-second challenge for an allowed owner purpose }
   /api/v1/admin/passkeys/registration/options:

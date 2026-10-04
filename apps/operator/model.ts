@@ -29,6 +29,51 @@ interface GatewayBinding {
   listeners: Listener[];
 }
 
+/** A failed resource suspends only its referenced host; no partial policy is applied. */
+export function compileRoutes(resources: unknown[]): {
+  routes: DesiredRoute[];
+  blockedHosts: Set<string>;
+  errors: string[];
+} {
+  const records = resources.filter(isRecord);
+  const gateways: Record<string, unknown>[] = [];
+  const blockedHosts = new Set<string>();
+  const errors: string[] = [];
+  for (const resource of records.filter((item) => item.kind === "Gateway")) {
+    try {
+      gatewayBindings([
+        resource,
+        ...records.filter((item) => item.kind === "ReferenceGrant"),
+      ]);
+      gateways.push(resource);
+    } catch {
+      errors.push("invalid Gateway");
+    }
+  }
+  const routes: DesiredRoute[] = [];
+  const other = records.filter((item) =>
+    item.kind !== "Gateway" && item.kind !== "HTTPRoute"
+  );
+  for (const route of records.filter((item) => item.kind === "HTTPRoute")) {
+    try {
+      routes.push(...desiredRoutes([...other, ...gateways, route]));
+    } catch {
+      errors.push("invalid HTTPRoute");
+      if (!isRecord(route.spec) || !isRecord(route.metadata)) continue;
+      const parents = Array.isArray(route.spec.parentRefs) ? route.spec.parentRefs : [];
+      for (const parent of parents.filter(isRecord)) {
+        for (const gateway of gatewayBindings([...other, ...gateways])) {
+          if (
+            parent.name === gateway.name &&
+            (parent.namespace ?? namespaceOf(route.metadata)) === gateway.namespace
+          ) blockedHosts.add(gateway.hostRef);
+        }
+      }
+    }
+  }
+  return { routes, blockedHosts, errors };
+}
+
 /** Compiles the deliberately small, whole-hostname Gateway API profile. */
 export function desiredRoutes(resources: unknown[]): DesiredRoute[] {
   const records = resources.filter(isRecord);
@@ -114,6 +159,25 @@ function gatewayBindings(resources: Record<string, unknown>[]): GatewayBinding[]
       : {};
     const host = annotations["bunny-hole.dev/host"];
     if (typeof host !== "string") continue;
+    const hostRef = qualify(namespace, host);
+    const [hostNamespace, hostName, extra] = hostRef.split("/");
+    if (!hostNamespace || !hostName || extra) {
+      throw new ValidationError("invalid host reference");
+    }
+    if (
+      hostNamespace !== namespace &&
+      !hasGrant(
+        resources,
+        namespace,
+        hostNamespace,
+        "Gateway",
+        "bunny-hole.dev",
+        "BunnyHoleHost",
+        hostName,
+      )
+    ) {
+      throw new ValidationError("cross-namespace host requires ReferenceGrant");
+    }
     const declaredListeners = Array.isArray(resource.spec.listeners)
       ? resource.spec.listeners
       : [];
@@ -127,7 +191,7 @@ function gatewayBindings(resources: Record<string, unknown>[]): GatewayBinding[]
     const listeners = declaredListeners.flatMap(parseListener);
     if (listeners.length === 0) continue;
     output.push({
-      hostRef: qualify(namespace, host),
+      hostRef,
       namespace,
       name: resource.metadata.name,
       listeners,
@@ -178,7 +242,7 @@ function parseListener(value: unknown): Listener[] {
 }
 
 function attachedGateway(
-  resources: Record<string, unknown>[],
+  _resources: Record<string, unknown>[],
   gateways: GatewayBinding[],
   spec: Record<string, unknown>,
   routeNamespace: string,
@@ -198,10 +262,6 @@ function attachedGateway(
       candidate.namespace === gatewayNamespace && candidate.name === raw.name
     );
     if (!gateway) continue;
-    if (
-      routeNamespace !== gatewayNamespace &&
-      !hasParentGrant(resources, routeNamespace, gatewayNamespace, gateway.name)
-    ) continue;
     for (const listener of gateway.listeners) {
       if (
         (raw.sectionName === undefined || raw.sectionName === listener.name) &&
@@ -242,23 +302,6 @@ function hasBackendGrant(
     "",
     "Service",
     service,
-  );
-}
-
-function hasParentGrant(
-  resources: Record<string, unknown>[],
-  fromNamespace: string,
-  toNamespace: string,
-  gateway: string,
-): boolean {
-  return hasGrant(
-    resources,
-    fromNamespace,
-    toNamespace,
-    "HTTPRoute",
-    "gateway.networking.k8s.io",
-    "Gateway",
-    gateway,
   );
 }
 

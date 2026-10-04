@@ -198,3 +198,9 @@ Install the Conventional Commit hook with `deno task hooks:install`. Add behavio
 at the nearest boundary, run focused checks while iterating, then run the complete
 Compose-native validation. Review the final diff for credentials, generated artifacts,
 stale names, unsupported transport claims, and dependency/license changes.
+
+## Correctness gates
+
+Read [correctness engineering](correctness.md) before changing security or lifecycle
+behavior. `deno task correctness:check` runs mutation witnesses in disposable copies;
+the full validation command requires those witnesses to be rejected by behavior tests.

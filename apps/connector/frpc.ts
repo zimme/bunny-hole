@@ -1,3 +1,4 @@
+import { prepareOrigins } from "./origin_bridge.ts";
 import { dirname, join } from "node:path";
 import type { Session } from "./client.ts";
 import { frpcConfig } from "./frpc_config.ts";
@@ -12,6 +13,7 @@ export interface FrpcOptions {
   signal?: AbortSignal;
   allowInsecureTransport?: boolean;
   trustedCaFile?: string;
+  originCaFile?: string;
 }
 
 export const TRUSTED_CA_FILE_NAME = "ca-certificates.crt";
@@ -54,12 +56,17 @@ export async function runFrpc(options: FrpcOptions): Promise<number> {
     : undefined;
   if (trustedCaFile) await validateTrustedCaFile(trustedCaFile);
   const directory = await Deno.makeTempDir({ prefix: "bunny-hole-frpc-" });
+  let origins: Awaited<ReturnType<typeof prepareOrigins>> | undefined;
   try {
+    origins = await prepareOrigins(
+      options.session,
+      options.originCaFile ?? Deno.env.get("BUNNY_HOLE_ORIGIN_CA_FILE"),
+    );
     const configPath = join(directory, "frpc.toml");
     await Deno.writeTextFile(
       configPath,
       frpcConfig(
-        options.session,
+        origins.session,
         options.transport,
         options.allowInsecureTransport,
         trustedCaFile,
@@ -67,9 +74,15 @@ export async function runFrpc(options: FrpcOptions): Promise<number> {
       { mode: 0o600, createNew: true },
     );
     let child: Deno.ChildProcess | undefined;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
     const stop = () => {
       try {
         child?.kill("SIGTERM");
+        killTimer ??= setTimeout(() => {
+          try {
+            child?.kill("SIGKILL");
+          } catch { /* Already stopped. */ }
+        }, 2_000);
       } catch {
         // Already stopped.
       }
@@ -84,11 +97,17 @@ export async function runFrpc(options: FrpcOptions): Promise<number> {
         stderr: "inherit",
       }).spawn();
       if (options.signal?.aborted) stop();
-      return (await child.status).code;
+      const status = await child.status;
+      return options.signal?.aborted ? 0 : status.code;
     } finally {
+      clearTimeout(killTimer);
       options.signal?.removeEventListener("abort", stop);
     }
   } finally {
-    await Deno.remove(directory, { recursive: true });
+    try {
+      await origins?.close();
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
   }
 }

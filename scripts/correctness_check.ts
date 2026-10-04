@@ -1,0 +1,118 @@
+/** Mutation witnesses ensure the security tests actually detect weakened controls. */
+const mutations = [
+  {
+    source: "apps/host/store.ts",
+    before: "(OLD.status='revoked' AND NEW.status!='revoked')",
+    after: "(0)",
+    test: "tests/enrollment_invariants_test.ts",
+    witness:
+      "enrollment invariants: SQLite rejects impossible states and revoked resurrection",
+  },
+  {
+    source: "apps/connector/supervisor.ts",
+    before: "  stopped: {\n    start: null,",
+    after: '  stopped: {\n    start: "authenticating",',
+    test: "tests/hardening_test.ts",
+    witness:
+      "hardening: connector transition table rejects every illegal state event pair",
+  },
+  {
+    source: "apps/connector/origin_bridge.ts",
+    before: "rejectUnauthorized: true",
+    after: "rejectUnauthorized: false",
+    test: "tests/origin_bridge_test.ts",
+    witness: "HTTPS origins verify certificate trust and hostname while streaming",
+  },
+  {
+    source: "apps/operator/main.ts",
+    before: "if (namespace !== credentialsNamespace) continue;",
+    after: "if (false) continue;",
+    test: "tests/hardening_test.ts",
+    witness:
+      "hardening: Gateway attachment and host delegation use separate boundaries",
+  },
+  {
+    source: "apps/operator/model.ts",
+    before: '"Gateway",\n        "bunny-hole.dev",',
+    after: '"HTTPRoute",\n        "bunny-hole.dev",',
+    test: "tests/hardening_test.ts",
+    witness:
+      "hardening: Gateway attachment and host delegation use separate boundaries",
+  },
+  {
+    source: "apps/host/host.ts",
+    before: "for (const request of this.#controlRequests) request.abort();",
+    after: "for (const request of this.#controlRequests) void request;",
+    test: "tests/hardening_test.ts",
+    witness: "hardening: shutdown cancels unfinished control uploads",
+  },
+  {
+    source: "apps/host/host.ts",
+    before:
+      'await this.requireOwnerProof(request, "revoke-passkey", [passkeyPath[1]]);',
+    after: "void request;",
+    test: "tests/hardening_test.ts",
+    witness:
+      "hardening: owner proof revokes passkeys and removes only revoked enrollments",
+  },
+];
+
+async function copy(source: string, destination: string): Promise<void> {
+  await Deno.mkdir(destination, { recursive: true });
+  for await (const entry of Deno.readDir(source)) {
+    if (
+      [".git", ".env", ".tmp", "node_modules", "dist", "coverage"].includes(entry.name)
+    ) continue;
+    if (entry.isDirectory) {
+      await copy(`${source}/${entry.name}`, `${destination}/${entry.name}`);
+    } else if (entry.isFile) {
+      await Deno.copyFile(`${source}/${entry.name}`, `${destination}/${entry.name}`);
+    }
+  }
+}
+
+for (const mutation of mutations) {
+  const source = await Deno.readTextFile(mutation.source);
+  if (source.split(mutation.before).length !== 2) {
+    throw new Error(
+      `Update mutation witness for ${mutation.source}; expected exactly one boundary`,
+    );
+  }
+  const directory = await Deno.makeTempDir({
+    dir: "/tmp",
+    prefix: "bunny-hole-mutation-",
+  });
+  try {
+    await copy(".", directory);
+    await Deno.writeTextFile(
+      `${directory}/${mutation.source}`,
+      source.replace(mutation.before, mutation.after),
+    );
+    const result = await new Deno.Command("deno", {
+      args: [
+        "test",
+        "--cached-only",
+        "--allow-env",
+        "--allow-net",
+        "--allow-read",
+        "--allow-run",
+        "--allow-write",
+        "--filter",
+        mutation.witness,
+        mutation.test,
+      ],
+      cwd: directory,
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    const output = new TextDecoder().decode(result.stdout);
+    if (result.success || !output.includes("1 failed")) {
+      throw new Error(
+        `Security test did not reject mutation of ${mutation.source}; fix the behavior test or update the witness`,
+      );
+    }
+    console.log(`mutation rejected: ${mutation.source}`);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+}

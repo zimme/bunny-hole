@@ -3,11 +3,23 @@ const certificatePath = Deno.env.get("BUNNY_HOLE_TLS_CERT_PATH") ?? "/tls/tls.cr
 const keyPath = Deno.env.get("BUNNY_HOLE_TLS_KEY_PATH") ?? "/tls/tls.key";
 
 if (import.meta.main) {
+  const cert = await Deno.readTextFile(certificatePath);
+  const key = await Deno.readTextFile(keyPath);
+  Deno.serve(
+    { hostname: "0.0.0.0", port: 7444, cert, key },
+    (request) =>
+      new Response(request.body, {
+        headers: {
+          "x-verified-origin": "true",
+          "content-type": "application/octet-stream",
+        },
+      }),
+  );
   const listener = Deno.listenTls({
     hostname: "0.0.0.0",
     port,
-    cert: await Deno.readTextFile(certificatePath),
-    key: await Deno.readTextFile(keyPath),
+    cert,
+    key,
   });
   while (true) {
     try {

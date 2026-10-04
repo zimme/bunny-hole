@@ -39,9 +39,9 @@ new public key → pending (15 minutes) → active → revoked
 
 1. A device or cluster generates an Ed25519 pair locally.
 2. `POST /api/v1/enrollments` sends its name, kind, and public key.
-3. The host returns an enrollment ID and a five-word verification phrase. Creation is
-   globally rate-limited to 30 attempts per minute and capped at 1,024 non-revoked
-   enrollments.
+3. The host returns an enrollment ID and a sixteen-word verification phrase encoding 64
+   bits. Creation is globally rate-limited to 30 attempts per minute and capped at 1,024
+   non-revoked enrollments.
 4. The owner verifies the phrase and approves an explicit grant with a passkey or the
    offline owner key.
 
@@ -201,3 +201,29 @@ host port. A non-loopback `target-host` label needs explicit private-network con
 Kubernetes resolves only `Service` backends; cross-namespace backends need a matching
 `ReferenceGrant`. Neither adapter accepts a viewer-selected URL, raw Service discovery,
 nor arbitrary Docker-socket inspection.
+
+## Version 1.0 hardening
+
+Control-body reads have a five-second deadline and a global ceiling of 32 simultaneous
+readers; shutdown cancels them. Multiple bounded approval flows may coexist for one
+pending enrollment, and approval still atomically requires its pending state.
+
+Owner recovery proofs support `list-passkeys`, `revoke-passkey`, and `purge-enrollment`.
+The list purpose signs host identity and challenge. Revocation and purge additionally
+sign the credential or enrollment ID. `GET /api/v1/admin/passkeys` returns only IDs and
+names. `DELETE /api/v1/admin/passkeys/{credentialId}` removes that passkey;
+`DELETE /api/v1/enrollments/{enrollmentId}` removes only a revoked enrollment and its
+related audit records. All require a fresh one-use owner proof. Purged public keys may
+later enroll as new pending identities; they are never automatically approved.
+
+HTTPS local origins pass through a connector-owned loopback bridge using certificate
+chain and hostname verification. FRP's unverified `http2https` plugin is never selected.
+Private origins may use an explicitly configured CA bundle. Unknown or mismatched
+certificates return an origin failure. The bridge preserves streaming, application
+headers, cookies, and redirects, and closes when its connector stops.
+
+The Kubernetes controller accepts BunnyHoleHost definitions only in its configured
+credentials namespace. Gateways elsewhere require a ReferenceGrant from Gateway in that
+namespace to the exact BunnyHoleHost in the credentials namespace. Route-to-Gateway
+attachment follows allowedRoutes; cross-namespace Service backends still require their
+own ReferenceGrant. Invalid resource policy suspends only its affected host.

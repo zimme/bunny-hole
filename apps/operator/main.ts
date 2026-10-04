@@ -9,7 +9,7 @@ import { runFrpc } from "../connector/frpc.ts";
 import { createLogger } from "../../packages/api/logger.ts";
 import type { Route } from "../../packages/api/mod.ts";
 import { isRecord, ValidationError } from "../../packages/api/mod.ts";
-import { type DesiredRoute, desiredRoutes } from "./model.ts";
+import { compileRoutes, type DesiredRoute } from "./model.ts";
 
 interface HostResource {
   reference: string;
@@ -20,8 +20,8 @@ interface HostResource {
 
 interface SupervisorState {
   fingerprint: string;
-  renewAt: number;
   controller: AbortController;
+  done: Promise<void>;
 }
 
 export function connectorFingerprint(
@@ -35,102 +35,122 @@ export function connectorFingerprint(
 }
 
 export function shouldRestartConnector(
-  current: Pick<SupervisorState, "fingerprint" | "renewAt"> | undefined,
+  current: Pick<SupervisorState, "fingerprint"> | undefined,
   fingerprint: string,
-  now: number,
+  _now?: number,
 ): boolean {
-  return current?.fingerprint !== fingerprint || now >= (current?.renewAt ?? 0);
+  return current?.fingerprint !== fingerprint;
 }
 
 export async function runOperator(signal: AbortSignal): Promise<void> {
   const logger = createLogger("json");
-  const kube = await KubernetesClient.create();
   const credentialsNamespace = Deno.env.get("BUNNY_HOLE_CREDENTIALS_NAMESPACE") ??
     "bunny-hole-system";
   if (!/^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/.test(credentialsNamespace)) {
     throw new ValidationError("invalid credentials namespace");
   }
+  const kube = await KubernetesClient.create(signal);
   const supervisors = new Map<
     string,
     SupervisorState
   >();
-  while (!signal.aborted) {
-    try {
-      const resources = await kube.gatewayResources();
-      const routes = desiredRoutes(resources);
-      const hosts = hostResources(resources);
-      for (const host of hosts) {
-        try {
-          const credentials = await kube.credentials(
-            credentialsNamespace,
-            host.secretName,
-          );
-          const desired = routes.filter((route) => route.hostRef === host.reference);
-          const session = await reconcileHost(host, credentials, desired);
-          const fingerprint = connectorFingerprint(
-            credentials.enrollmentId,
-            session.routes,
-          );
-          const current = supervisors.get(host.reference);
-          if (shouldRestartConnector(current, fingerprint, Date.now())) {
-            current?.controller.abort();
-            const controller = new AbortController();
-            const supervisor = {
-              fingerprint,
-              renewAt: Date.parse(session.expiresAt) - 60_000,
-              controller,
-            };
-            supervisors.set(host.reference, supervisor);
-            runFrpc({
-              executable: Deno.env.get("BUNNY_HOLE_FRPC_PATH") ??
-                "/usr/local/bin/frpc",
-              session,
-              transport: host.transport,
-              signal: controller.signal,
-            }).then((code) => {
-              if (supervisors.get(host.reference) === supervisor) {
-                supervisors.delete(host.reference);
-              }
-              logger.warn("operator_connector_stopped", { host: host.reference, code });
-            }).catch((error) => {
-              if (supervisors.get(host.reference) === supervisor) {
-                supervisors.delete(host.reference);
-              }
-              logger.error("operator_connector_failed", {
-                host: host.reference,
-                message: error instanceof Error ? error.message : "unknown error",
+  try {
+    while (!signal.aborted) {
+      try {
+        const resources = await kube.gatewayResources();
+        const compiled = compileRoutes(resources);
+        const routes = compiled.routes;
+        const hosts = hostResources(resources, credentialsNamespace);
+        for (const error of compiled.errors) {
+          logger.warn("operator_resource_rejected", { reason: error });
+        }
+        for (const host of hosts) {
+          try {
+            if (compiled.blockedHosts.has(host.reference)) {
+              throw new ValidationError("host has invalid route policy");
+            }
+            const credentials = await kube.credentials(
+              credentialsNamespace,
+              host.secretName,
+            );
+            const desired = routes.filter((route) => route.hostRef === host.reference);
+            const session = await reconcileHost(host, credentials, desired);
+            const fingerprint = connectorFingerprint(
+              credentials.enrollmentId,
+              session.routes,
+            );
+            const current = supervisors.get(host.reference);
+            if (shouldRestartConnector(current, fingerprint, Date.now())) {
+              current?.controller.abort();
+              await current?.done;
+              const controller = new AbortController();
+              const supervisor = {
+                fingerprint,
+                controller,
+                done: Promise.resolve(),
+              };
+              supervisors.set(host.reference, supervisor);
+              supervisor.done = runFrpc({
+                executable: Deno.env.get("BUNNY_HOLE_FRPC_PATH") ??
+                  "/usr/local/bin/frpc",
+                session,
+                transport: host.transport,
+                signal: controller.signal,
+              }).then((code) => {
+                if (supervisors.get(host.reference) === supervisor) {
+                  supervisors.delete(host.reference);
+                }
+                logger.warn("operator_connector_stopped", {
+                  host: host.reference,
+                  code,
+                });
+              }).catch((error) => {
+                if (supervisors.get(host.reference) === supervisor) {
+                  supervisors.delete(host.reference);
+                }
+                logger.error("operator_connector_failed", {
+                  host: host.reference,
+                  message: error instanceof Error ? error.message : "unknown error",
+                });
               });
+            }
+            logger.info("operator_reconciled", {
+              host: host.reference,
+              routes: desired.length,
+            });
+          } catch (error) {
+            const failed = supervisors.get(host.reference);
+            failed?.controller.abort();
+            await failed?.done;
+            supervisors.delete(host.reference);
+            logger.error("operator_host_failed", {
+              host: host.reference,
+              message: error instanceof Error ? error.message : "unknown error",
             });
           }
-          logger.info("operator_reconciled", {
-            host: host.reference,
-            routes: desired.length,
-          });
-        } catch (error) {
-          supervisors.get(host.reference)?.controller.abort();
-          supervisors.delete(host.reference);
-          logger.error("operator_host_failed", {
-            host: host.reference,
-            message: error instanceof Error ? error.message : "unknown error",
-          });
         }
-      }
-      for (const [reference, supervisor] of supervisors) {
-        if (!hosts.some((host) => host.reference === reference)) {
-          supervisor.controller.abort();
-          supervisors.delete(reference);
+        for (const [reference, supervisor] of supervisors) {
+          if (!hosts.some((host) => host.reference === reference)) {
+            supervisor.controller.abort();
+            await supervisor.done;
+            supervisors.delete(reference);
+          }
         }
+      } catch (error) {
+        for (const supervisor of supervisors.values()) supervisor.controller.abort();
+        await Promise.allSettled([...supervisors.values()].map((item) => item.done));
+        supervisors.clear();
+        logger.error("operator_reconcile_failed", {
+          message: error instanceof Error ? error.message : "unknown error",
+        });
       }
-    } catch (error) {
-      for (const supervisor of supervisors.values()) supervisor.controller.abort();
-      supervisors.clear();
-      logger.error("operator_reconcile_failed", {
-        message: error instanceof Error ? error.message : "unknown error",
-      });
+      await delay(15_000, signal);
     }
-    await delay(15_000, signal);
+  } finally {
+    for (const supervisor of supervisors.values()) supervisor.controller.abort();
+    await Promise.allSettled([...supervisors.values()].map((item) => item.done));
+    kube.close();
   }
-  for (const supervisor of supervisors.values()) supervisor.controller.abort();
 }
 
 async function reconcileHost(
@@ -166,7 +186,10 @@ function sameRoute(route: Route, desired: DesiredRoute): boolean {
     route.allowPrivateNetwork === desired.allowPrivateNetwork;
 }
 
-function hostResources(resources: unknown[]): HostResource[] {
+export function hostResources(
+  resources: unknown[],
+  credentialsNamespace: string,
+): HostResource[] {
   const output: HostResource[] = [];
   for (const value of resources) {
     if (
@@ -176,6 +199,7 @@ function hostResources(resources: unknown[]): HostResource[] {
     const namespace = typeof value.metadata.namespace === "string"
       ? value.metadata.namespace
       : "default";
+    if (namespace !== credentialsNamespace) continue;
     if (
       typeof value.metadata.name !== "string" || typeof value.spec.url !== "string" ||
       !isRecord(value.spec.credentialsSecretRef) ||
@@ -193,26 +217,34 @@ function hostResources(resources: unknown[]): HostResource[] {
   return output;
 }
 
-class KubernetesClient {
-  private constructor(
+export class KubernetesClient {
+  constructor(
     private base: URL,
-    private token: string,
+    private tokenPath: string,
     private client: Deno.HttpClient,
+    private fetcher: typeof fetch = fetch,
+    private signal?: AbortSignal,
   ) {}
 
-  static async create(): Promise<KubernetesClient> {
+  close(): void {
+    this.client.close();
+  }
+
+  static async create(signal?: AbortSignal): Promise<KubernetesClient> {
     const host = Deno.env.get("KUBERNETES_SERVICE_HOST");
     const port = Deno.env.get("KUBERNETES_SERVICE_PORT_HTTPS") ?? "443";
     if (!host) {
       throw new ValidationError("Kubernetes service environment is unavailable");
     }
     const directory = "/var/run/secrets/kubernetes.io/serviceaccount";
-    const token = (await Deno.readTextFile(join(directory, "token"))).trim();
+    const tokenPath = join(directory, "token");
     const ca = await Deno.readTextFile(join(directory, "ca.crt"));
     return new KubernetesClient(
       new URL(`https://${formatHost(host)}:${port}`),
-      token,
+      tokenPath,
       Deno.createHttpClient({ caCerts: [ca] }),
+      fetch,
+      signal,
     );
   }
 
@@ -261,10 +293,15 @@ class KubernetesClient {
     return await response.json();
   }
 
-  private raw(path: string): Promise<Response> {
-    return fetch(new URL(path, this.base), {
+  private async raw(path: string): Promise<Response> {
+    const token = (await Deno.readTextFile(this.tokenPath)).trim();
+    if (!token) throw new ValidationError("service account token unavailable");
+    return this.fetcher(new URL(path, this.base), {
       client: this.client,
-      headers: { authorization: `Bearer ${this.token}` },
+      signal: this.signal
+        ? AbortSignal.any([this.signal, AbortSignal.timeout(10_000)])
+        : AbortSignal.timeout(10_000),
+      headers: { authorization: `Bearer ${token}` },
     });
   }
 }

@@ -54,6 +54,7 @@ export class Host {
   >();
   #ownerChallenges = new Map<string, { purpose: string; expiresAt: number }>();
   #inFlight = 0;
+  #controlRequests = new Set<AbortController>();
   #publicRequests = new Set<AbortController>();
   #enrollmentAttempts: number[] = [];
 
@@ -74,6 +75,7 @@ export class Host {
   shutdown(): void {
     this.#accepting = false;
     this.#frpReady = false;
+    for (const request of this.#controlRequests) request.abort();
     for (const request of this.#publicRequests) request.abort();
     this.#publicRequests.clear();
   }
@@ -87,7 +89,7 @@ export class Host {
       }
       if (url.pathname === "/internal/frp/plugin") {
         if (!isLoopback(info?.remoteAddr)) return json({ error: "not found" }, 404);
-        const body = await readJson(request, 64 * 1024);
+        const body = await this.readJson(request, 64 * 1024);
         return json(
           await this.#frp.authorize({
             op: url.searchParams.get("op"),
@@ -106,12 +108,19 @@ export class Host {
       if (
         url.pathname === "/api/v1/admin/owner/challenge" && request.method === "POST"
       ) {
-        const body = await readJson(request);
+        const body = await this.readJson(request);
         if (!isRecord(body)) throw new ValidationError("invalid owner challenge");
         assertOnlyKeys(body, ["purpose"]);
         const purpose = body.purpose;
         if (
-          !["approve-enrollment", "revoke-enrollment", "create-passkey-flow"].includes(
+          ![
+            "approve-enrollment",
+            "revoke-enrollment",
+            "create-passkey-flow",
+            "revoke-passkey",
+            "purge-enrollment",
+            "list-passkeys",
+          ].includes(
             String(purpose),
           )
         ) throw new ValidationError("invalid owner challenge");
@@ -130,7 +139,7 @@ export class Host {
         url.pathname === "/api/v1/admin/passkeys/registration/flows" &&
         request.method === "POST"
       ) {
-        const body = await readJson(request);
+        const body = await this.readJson(request);
         if (!isRecord(body)) throw new ValidationError("invalid registration request");
         assertOnlyKeys(body, ["name"]);
         const name = parseName(body.name);
@@ -152,7 +161,7 @@ export class Host {
         url.pathname === "/api/v1/admin/passkeys/registration/options" &&
         request.method === "POST"
       ) {
-        const body = await readJson(request);
+        const body = await this.readJson(request);
         if (!isRecord(body)) throw new ValidationError("invalid registration request");
         assertOnlyKeys(body, ["flowToken"]);
         const flow = this.registrationFlow(body, false);
@@ -162,7 +171,7 @@ export class Host {
         url.pathname === "/api/v1/admin/passkeys/registration" &&
         request.method === "POST"
       ) {
-        const body = await readJson(request);
+        const body = await this.readJson(request);
         if (!isRecord(body) || !isRecord(body.response)) {
           throw new ValidationError("invalid registration response");
         }
@@ -179,7 +188,7 @@ export class Host {
         url.pathname === "/api/v1/admin/enrollment-approvals" &&
         request.method === "POST"
       ) {
-        const body = await readJson(request);
+        const body = await this.readJson(request);
         if (!isRecord(body)) throw new ValidationError("invalid approval request");
         assertOnlyKeys(body, ["enrollmentId", "grants"]);
         const enrollmentId = parseId(body.enrollmentId, "enr");
@@ -189,12 +198,6 @@ export class Host {
         }
         const grants = validateGrant(body.grants);
         this.cleanFlows();
-        for (const [token, flow] of this.#approvalFlows) {
-          if (flow.enrollmentId === enrollmentId) {
-            this.#approvalFlows.delete(token);
-            this.store.deleteAdminChallenges(`authenticate:${token}`);
-          }
-        }
         if (this.#approvalFlows.size >= 128) {
           throw new ValidationError("too many active approval flows");
         }
@@ -212,7 +215,7 @@ export class Host {
         url.pathname === "/api/v1/admin/enrollment-approvals/options" &&
         request.method === "POST"
       ) {
-        const body = await readJson(request);
+        const body = await this.readJson(request);
         if (!isRecord(body)) throw new ValidationError("invalid approval request");
         assertOnlyKeys(body, ["flowToken"]);
         const flow = this.approvalFlow(body, false);
@@ -226,7 +229,7 @@ export class Host {
         url.pathname === "/api/v1/admin/enrollment-approvals/complete" &&
         request.method === "POST"
       ) {
-        const body = await readJson(request);
+        const body = await this.readJson(request);
         if (!isRecord(body) || !isRecord(body.response)) {
           throw new ValidationError("invalid authentication response");
         }
@@ -247,6 +250,30 @@ export class Host {
       }
       if (url.pathname === "/_bunny/admin/approve" && request.method === "GET") {
         return approvalPage();
+      }
+      if (url.pathname === "/api/v1/admin/passkeys" && request.method === "GET") {
+        await this.requireOwnerProof(request, "list-passkeys", []);
+        return json({
+          passkeys: this.store.listPasskeys().map(({ id, name }) => ({ id, name })),
+        });
+      }
+      const passkeyPath = url.pathname.match(
+        /^\/api\/v1\/admin\/passkeys\/([A-Za-z0-9_-]{1,1024})$/,
+      );
+      if (passkeyPath && request.method === "DELETE") {
+        await this.requireOwnerProof(request, "revoke-passkey", [passkeyPath[1]]);
+        return this.store.deletePasskey(passkeyPath[1])
+          ? new Response(null, { status: 204 })
+          : json({ error: "not found" }, 404);
+      }
+      const purgePath = url.pathname.match(
+        /^\/api\/v1\/enrollments\/(enr_[A-Za-z0-9_-]{24})$/,
+      );
+      if (purgePath && request.method === "DELETE") {
+        await this.requireOwnerProof(request, "purge-enrollment", [purgePath[1]]);
+        return this.store.purgeEnrollment(purgePath[1])
+          ? new Response(null, { status: 204 })
+          : json({ error: "revoked enrollment required" }, 400);
       }
       if (url.pathname === "/api/v1/enrollments" && request.method === "POST") {
         return await this.createEnrollment(request);
@@ -324,6 +351,25 @@ export class Host {
     };
   }
 
+  private async readJson(request: Request, limit?: number): Promise<unknown> {
+    if (!this.#accepting) throw new ValidationError("host is stopping");
+    if (this.#controlRequests.size >= LIMITS.maxControlRequests) {
+      throw new ValidationError("control requests temporarily unavailable");
+    }
+    const controller = new AbortController();
+    this.#controlRequests.add(controller);
+    const signal = AbortSignal.any([
+      request.signal,
+      controller.signal,
+      AbortSignal.timeout(LIMITS.controlTimeoutMs),
+    ]);
+    try {
+      return await readJson(request, limit, signal);
+    } finally {
+      this.#controlRequests.delete(controller);
+    }
+  }
+
   private async createEnrollment(request: Request): Promise<Response> {
     const now = Date.now();
     this.store.pruneExpiredEnrollments(new Date(now).toISOString());
@@ -334,7 +380,7 @@ export class Host {
       this.#enrollmentAttempts.length >= LIMITS.maxEnrollmentAttemptsPerMinute
     ) throw new ValidationError("enrollment temporarily unavailable");
     this.#enrollmentAttempts.push(now);
-    const body = await readJson(request);
+    const body = await this.readJson(request);
     if (!isRecord(body) || !["device", "cluster"].includes(String(body.kind))) {
       throw new ValidationError("invalid enrollment");
     }
@@ -371,7 +417,7 @@ export class Host {
     parseId(id, "enr");
     const enrollment = this.store.getEnrollment(id);
     if (!enrollment) return json({ error: "not found" }, 404);
-    const body = await readJson(request);
+    const body = await this.readJson(request);
     if (!isRecord(body)) throw new ValidationError("invalid approval");
     assertOnlyKeys(body, ["grants"]);
     const grants = validateGrant(body.grants);
@@ -388,7 +434,7 @@ export class Host {
 
   private async revokeEnrollment(request: Request, id: string): Promise<Response> {
     parseId(id, "enr");
-    const body = await readJson(request);
+    const body = await this.readJson(request);
     if (!isRecord(body)) throw new ValidationError("invalid revocation request");
     assertOnlyKeys(body, []);
     await this.requireOwnerProof(request, "revoke-enrollment", [id]);
@@ -397,7 +443,7 @@ export class Host {
   }
 
   private async createSessionChallenge(request: Request): Promise<Response> {
-    const body = await readJson(request);
+    const body = await this.readJson(request);
     if (!isRecord(body)) throw new ValidationError("invalid challenge request");
     assertOnlyKeys(body, ["enrollmentId"]);
     const enrollment = this.requireActiveEnrollment(parseId(body.enrollmentId, "enr"));
@@ -415,7 +461,7 @@ export class Host {
   }
 
   private async createSession(request: Request): Promise<Response> {
-    const body = await readJson(request);
+    const body = await this.readJson(request);
     if (!isRecord(body)) throw new ValidationError("invalid session request");
     assertOnlyKeys(body, ["enrollmentId", "challengeId", "signature"]);
     const enrollmentId = parseId(body.enrollmentId, "enr");
@@ -545,7 +591,7 @@ export class Host {
 
   private async createRoute(request: Request): Promise<Response> {
     const enrollment = await this.authenticate(request);
-    const body = await readJson(request);
+    const body = await this.readJson(request);
     if (!isRecord(body)) throw new ValidationError("invalid route");
     assertOnlyKeys(body, [
       "name",
@@ -673,7 +719,11 @@ export class Host {
   }
 }
 
-async function readJson(request: Request, limit = 128 * 1024): Promise<unknown> {
+async function readJson(
+  request: Request,
+  limit = 128 * 1024,
+  signal?: AbortSignal,
+): Promise<unknown> {
   if (
     (request.headers.get("content-type") ?? "").split(";", 1)[0].trim()
       .toLowerCase() !== "application/json"
@@ -685,25 +735,38 @@ async function readJson(request: Request, limit = 128 * 1024): Promise<unknown> 
   ) throw new ValidationError("request body too large");
   if (!request.body) throw new ValidationError("request body required");
   const reader = request.body.getReader();
+  const abort = () => {
+    reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
   const chunks: Uint8Array[] = [];
   let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > limit) {
-      await reader.cancel();
-      throw new ValidationError("request body too large");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new ValidationError("request body too large");
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    if (signal?.aborted) {
+      throw new ValidationError("control request cancelled or timed out");
+    }
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    reader.releaseLock();
   }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
 }
 
 function assertOnlyKeys(value: Record<string, unknown>, allowed: string[]): void {
@@ -951,7 +1014,17 @@ function approvalPage(): Response {
     "Approve a Bunny Hole enrollment",
     `
 const value=await post('/api/v1/admin/enrollment-approvals/options',{flowToken:token});
-details.textContent=JSON.stringify({enrollment:value.enrollment,grants:value.grants},null,2);
+const enrollment=value.enrollment;const grants=value.grants;
+details.textContent=[
+'Enrollment: '+enrollment.name,
+'Identity: '+enrollment.id,
+'Verification phrase: '+enrollment.verificationPhrase,
+'Exact hostnames: '+(grants.exactHostnames.join(', ')||'None'),
+'Hostname suffixes: '+(grants.hostnameSuffixes.join(', ')||'None'),
+'Origin protocols: '+grants.protocols.join(', '),
+'Maximum routes: '+grants.maxRoutes,
+'Public viewers do not need Bunny Hole credentials. Your application must protect private content.'
+].join('\\n');
 const options=value.options;options.challenge=decode(options.challenge);
 options.allowCredentials=(options.allowCredentials||[]).map(item=>({...item,id:decode(item.id)}));
 return options;`,
@@ -964,7 +1037,7 @@ status.textContent='Enrollment approved. You may close this page.';`,
 
 function ceremonyPage(title: string, prepare: string, action: string): Response {
   return new Response(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title></head><body><main><h1>${title}</h1><p>Verify the management hostname and the details below before continuing.</p><pre id="details" tabindex="0" aria-label="Enrollment and grant details"></pre><button id="continue" disabled aria-describedby="status">Continue with passkey</button><p id="status" role="status" aria-live="polite" aria-atomic="true">Loading ceremony details…</p><noscript>JavaScript is required to use a passkey. Open this link in a browser with JavaScript enabled.</noscript></main><script>
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><style>body{font-family:system-ui;max-width:48rem;margin:1rem auto;padding:0 1rem}pre{white-space:pre-wrap;overflow-wrap:anywhere}button{min-height:44px;padding:.5rem 1rem}</style></head><body><main><h1>${title}</h1><p>Verify the management hostname and the details below before continuing.</p><pre id="details" tabindex="0" aria-label="Enrollment and grant details"></pre><button id="continue" disabled aria-describedby="status">Continue with passkey</button><p id="status" role="status" aria-live="polite" aria-atomic="true">Loading ceremony details…</p><noscript>JavaScript is required to use a passkey. Open this link in a browser with JavaScript enabled.</noscript></main><script>
 const token=location.hash.slice(1);history.replaceState(null,'',location.pathname);
 const status=document.querySelector('#status'),details=document.querySelector('#details');
 const encode=value=>{const bytes=new Uint8Array(value);let text='';for(const byte of bytes)text+=String.fromCharCode(byte);return btoa(text).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'')};
@@ -976,13 +1049,13 @@ const button=document.querySelector('#continue');let options;
 const failed=error=>{status.textContent=error instanceof Error?error.message:'Ceremony failed'};
 const prepare=async()=>{${prepare}};
 (async()=>{try{if(!token)throw new Error('This ceremony link is incomplete');options=await prepare();status.textContent='Ready. Verify the details before continuing.';button.disabled=false}catch(error){failed(error)}})();
-button.onclick=async()=>{button.disabled=true;status.textContent='Waiting for passkey verification…';try{${action}}catch(error){failed(error)}};
+button.onclick=async()=>{button.disabled=true;status.textContent='Waiting for passkey verification…';try{${action}}catch(error){failed(error);if(error?.name==='NotAllowedError'||error?.name==='AbortError'){button.disabled=false;status.textContent='Passkey verification cancelled. You can try again.'}else{status.textContent+=' Request a new ceremony link from the CLI.'}}};
 </script></body></html>`,
     {
       headers: {
         "content-type": "text/html; charset=utf-8",
         "content-security-policy":
-          "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+          "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
         "cache-control": "no-store",
         "referrer-policy": "no-referrer",
         "x-content-type-options": "nosniff",

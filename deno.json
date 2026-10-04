@@ -1,6 +1,6 @@
 {
   "name": "@zimme/bunny-hole",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "exports": "./apps/connector/mod.ts",
   "license": "MIT",
   "publish": {
@@ -11,10 +11,13 @@
       "apps/connector/frpc_config.ts",
       "apps/connector/library.ts",
       "apps/connector/mod.ts",
-      "packages/api"
+      "packages/api",
+      "apps/connector/origin_bridge.ts"
     ]
   },
-  "workspace": ["fixtures/origin"],
+  "workspace": [
+    "fixtures/origin"
+  ],
   "lock": {
     "path": "./deno.lock",
     "frozen": true
@@ -56,21 +59,38 @@
     "validate": "deno run --allow-env --allow-net --allow-read=. --allow-run=deno,docker,git,terraform --allow-write=coverage,dist,/tmp scripts/validate.ts",
     "devcontainer:up": "sh .devcontainer/initialize.sh && docker compose up --build --detach development",
     "devcontainer:exec": "deno run --allow-run=docker scripts/development_exec.ts",
-    "devcontainer:down": "docker compose down"
+    "devcontainer:down": "docker compose down",
+    "correctness:check": "deno run --allow-env --allow-read=. --allow-write=/tmp --allow-run=deno scripts/correctness_check.ts"
   },
   "fmt": {
     "lineWidth": 88,
     "proseWrap": "always",
-    "exclude": ["coverage", "dist"]
+    "exclude": [
+      "coverage",
+      "dist"
+    ]
   },
   "lint": {
     "rules": {
-      "tags": ["recommended"],
-      "include": ["ban-untagged-todo"]
+      "tags": [
+        "recommended"
+      ],
+      "include": [
+        "ban-untagged-todo"
+      ]
     },
-    "exclude": ["coverage", "dist"]
+    "exclude": [
+      "coverage",
+      "dist"
+    ]
   },
   "test": {
-    "include": ["tests"]
+    "include": [
+      "tests"
+    ]
+  },
+  "compilerOptions": {
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true
   }
 }

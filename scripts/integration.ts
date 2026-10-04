@@ -61,6 +61,7 @@ await Deno.writeTextFile(
     command: [connect, --host, integration, --transport, wss, --development]
     environment:
       BUNNY_HOLE_TRUSTED_CA_FILE: /tls/ca.crt
+      BUNNY_HOLE_ORIGIN_CA_FILE: /tls/ca.crt
     volumes:
       - type: volume
         source: connector-config
@@ -171,9 +172,9 @@ try {
   await crossHostControl.body?.cancel();
   const enrollment = await client.enroll("integration", "device", device.publicKey);
   const grant = validateGrant({
-    exactHostnames: ["tunnel.test"],
+    exactHostnames: ["tunnel.test", "tls-tunnel.test"],
     hostnameSuffixes: [],
-    protocols: ["http"],
+    protocols: ["http", "https"],
     maxRoutes: 2,
   });
   const ownerChallengeResponse = await managementFetch(
@@ -224,6 +225,14 @@ try {
     hostname: "tunnel.test",
     targetHost: "origin",
     targetPort: 3000,
+    allowPrivateNetwork: true,
+  });
+  await client.createRoute(session, {
+    name: "verified-origin",
+    protocol: "https",
+    hostname: "tls-tunnel.test",
+    targetHost: "connector-gateway.test",
+    targetPort: 7444,
     allowPrivateNetwork: true,
   });
   const connectorConfig = JSON.stringify(
@@ -452,6 +461,22 @@ try {
       `POST / HTTP/1.1\r\nHost: tunnel.test\r\nContent-Length: 1073741825\r\nConnection: close\r\n\r\n`,
     ) !== 413
   ) throw new Error("oversized declared body was accepted");
+  const tlsOrigin = await fixtureRequest("/binary", "tls-tunnel.test", {
+    method: "POST",
+    body: new Uint8Array([0, 1, 255]),
+  });
+  const tlsBytes = [...await tlsOrigin.bytes()];
+  if (
+    tlsOrigin.status !== 200 ||
+    tlsOrigin.headers.get("x-verified-origin") !== "true" ||
+    String(tlsBytes) !== "0,1,255"
+  ) {
+    throw new Error(
+      `verified HTTPS origin failed: status=${tlsOrigin.status}, marker=${
+        tlsOrigin.headers.get("x-verified-origin")
+      }, bytes=${tlsBytes.length}`,
+    );
+  }
   const logs = await output("docker", [...compose, "logs", "--no-color"], {
     env: environment,
   });

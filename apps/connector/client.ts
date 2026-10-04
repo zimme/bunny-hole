@@ -222,6 +222,9 @@ export class BunnyHoleClient {
   ): Promise<unknown> {
     const response = await this.fetcher(new URL(path, this.url), {
       ...init,
+      signal: init.signal
+        ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)])
+        : AbortSignal.timeout(30_000),
       redirect: "error",
       headers: { "content-type": "application/json", ...init.headers },
     });

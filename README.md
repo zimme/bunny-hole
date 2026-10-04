@@ -224,6 +224,14 @@ See [deployment](docs/deployment.md),
 [configuration](docs/configuration.md), [development](docs/development.md),
 [architecture](docs/architecture.md), and [Compatible Versioning](docs/versioning.md).
 
+## Security hardening and correctness
+
+Version 1.0.0 verifies HTTPS origin certificates, enforces Kubernetes namespace
+delegation, supports owner passkey revocation, and bounds control-request cleanup. Read
+[migration steps](docs/configuration.md#hardening-migration-to-100) before upgrading.
+[Correctness engineering](docs/correctness.md) describes state transitions, mutation
+witnesses, agent requirements, and the remaining operator acceptance checks.
+
 ## License
 
 [MIT](LICENSE)

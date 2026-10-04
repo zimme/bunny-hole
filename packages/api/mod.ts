@@ -1,8 +1,10 @@
 /** Public Bunny Hole control-plane API model. */
 export const API_VERSION = 1;
-export const VERSION = "0.1.0";
+export const VERSION = "1.0.0";
 
 export const LIMITS = Object.freeze({
+  maxControlRequests: 32,
+  controlTimeoutMs: 5_000,
   maxBodyBytes: 1024 * 1024 * 1024,
   maxHeaderBytes: 32_768,
   maxHeaders: 100,

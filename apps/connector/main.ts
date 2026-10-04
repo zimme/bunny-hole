@@ -1,3 +1,4 @@
+import { superviseConnector } from "./supervisor.ts";
 import { dirname, join } from "node:path";
 import { generateKeyPair, sign } from "../../packages/api/auth.ts";
 import {
@@ -11,12 +12,7 @@ import {
 } from "../../packages/api/mod.ts";
 import { BunnyHoleClient, type HostCredentials } from "./client.ts";
 import { AGENT_SKILL } from "./agent_skill.ts";
-import {
-  defaultTrustedCaFile,
-  frpcConfig,
-  runFrpc,
-  validateTrustedCaFile,
-} from "./frpc.ts";
+import { defaultTrustedCaFile, validateTrustedCaFile } from "./frpc.ts";
 import {
   defaultStatePath,
   loadState,
@@ -51,6 +47,9 @@ Usage:
   bunny-hole check [--host NAME]
   bunny-hole skill [--output PATH]     Print or export consumer SKILL.md guidance
   bunny-hole owner generate --output FILE
+  bunny-hole owner passkey-list --owner-key FILE [--host NAME]
+  bunny-hole owner passkey-revoke ID --owner-key FILE [--host NAME]
+  bunny-hole enrollment purge ID --owner-key FILE [--host NAME]
   bunny-hole owner passkey --owner-key FILE [--host NAME] [--name NAME]
   bunny-hole cluster prepare --url HTTPS_URL --name NAME --namespace NAMESPACE
                                --secret-name NAME > cluster-enrollment.yaml
@@ -140,6 +139,15 @@ export async function main(args: string[]): Promise<void> {
   }
   if (group === "owner" && command === "generate") {
     return await generateOwner(flagsFrom(rest));
+  }
+  if (group === "owner" && command === "passkey-list") {
+    return await ownerOperation("list-passkeys", undefined, flagsFrom(rest));
+  }
+  if (group === "owner" && command === "passkey-revoke") {
+    return await ownerOperation("revoke-passkey", rest[0], flagsFrom(rest.slice(1)));
+  }
+  if (group === "enrollment" && command === "purge") {
+    return await ownerOperation("purge-enrollment", rest[0], flagsFrom(rest.slice(1)));
   }
   if (group === "owner" && command === "passkey") {
     return await addPasskey(flagsFrom(rest));
@@ -270,7 +278,7 @@ async function approveEnrollment(id: string | undefined, flags: Flags): Promise<
   if (!isRecord(ownerValue) || typeof ownerValue.privateKey !== "string") {
     throw new ValidationError("invalid owner key file");
   }
-  const pendingResponse = await fetch(
+  const pendingResponse = await controlFetch(
     new URL(`/api/v1/enrollments/${encodeURIComponent(id)}`, credentials.url),
   );
   const pending: unknown = await pendingResponse.json();
@@ -287,7 +295,7 @@ async function approveEnrollment(id: string | undefined, flags: Flags): Promise<
     canonicalGrant(grants),
     challenge,
   ]);
-  const response = await fetch(
+  const response = await controlFetch(
     new URL(`/api/v1/enrollments/${encodeURIComponent(id)}/approve`, credentials.url),
     {
       method: "POST",
@@ -303,6 +311,58 @@ async function approveEnrollment(id: string | undefined, flags: Flags): Promise<
   console.log(`Enrollment ${id} approved.`);
 }
 
+function controlFetch(input: string | URL, init: RequestInit = {}): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    redirect: "error",
+    signal: init.signal
+      ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)])
+      : AbortSignal.timeout(30_000),
+  });
+}
+
+async function ownerOperation(
+  purpose: "list-passkeys" | "revoke-passkey" | "purge-enrollment",
+  id: string | undefined,
+  flags: Flags,
+): Promise<void> {
+  if (purpose !== "list-passkeys" && (!id || !/^[A-Za-z0-9_-]{1,1024}$/.test(id))) {
+    throw new UsageError("valid credential ID is required");
+  }
+  const keyPath = required(flags, "owner-key");
+  await assertPrivateFile(keyPath);
+  const owner: unknown = JSON.parse(await Deno.readTextFile(keyPath));
+  if (!isRecord(owner) || typeof owner.privateKey !== "string") {
+    throw new ValidationError("invalid owner key file");
+  }
+  const [, credentials] = selectHost(
+    await loadState(configPath(flags)),
+    optionalString(flags, "host"),
+  );
+  const challenge = await ownerChallenge(credentials.url, purpose);
+  const signature = await sign(owner.privateKey, purpose, [
+    credentials.identityPublicKey,
+    ...(id ? [id] : []),
+    challenge,
+  ]);
+  const path = purpose === "purge-enrollment"
+    ? `/api/v1/enrollments/${id}`
+    : `/api/v1/admin/passkeys${id ? `/${id}` : ""}`;
+  const response = await controlFetch(new URL(path, credentials.url), {
+    method: purpose === "list-passkeys" ? "GET" : "DELETE",
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
+    headers: {
+      "x-bunny-hole-owner-challenge": challenge,
+      "x-bunny-hole-owner-signature": signature,
+    },
+  });
+  if (!response.ok) throw new ValidationError("owner operation failed");
+  if (purpose === "list-passkeys") {
+    console.log(JSON.stringify(await response.json(), null, 2));
+  } else console.log(`${purpose} completed.`);
+}
+
 async function revokeEnrollment(id: string | undefined, flags: Flags): Promise<void> {
   if (!id) throw new UsageError("enrollment ID is required");
   const ownerKeyPath = required(flags, "owner-key");
@@ -314,7 +374,7 @@ async function revokeEnrollment(id: string | undefined, flags: Flags): Promise<v
   const state = await loadState(configPath(flags));
   const [, credentials] = selectHost(state, optionalString(flags, "host"));
   const challenge = await ownerChallenge(credentials.url, "revoke-enrollment");
-  const response = await fetch(
+  const response = await controlFetch(
     new URL(`/api/v1/enrollments/${encodeURIComponent(id)}/revoke`, credentials.url),
     {
       method: "POST",
@@ -342,7 +402,7 @@ async function approveWithPasskey(
   const state = await loadState(configPath(flags));
   const [, credentials] = selectHost(state, optionalString(flags, "host"));
   const grants = validateGrant(JSON.parse(await Deno.readTextFile(grantPath)));
-  const response = await fetch(
+  const response = await controlFetch(
     new URL("/api/v1/admin/enrollment-approvals", credentials.url),
     {
       method: "POST",
@@ -382,13 +442,22 @@ function validateCeremonyUrl(value: string, hostUrl: string, path: string): URL 
 
 async function ownerChallenge(
   hostUrl: string,
-  purpose: "approve-enrollment" | "revoke-enrollment" | "create-passkey-flow",
+  purpose:
+    | "approve-enrollment"
+    | "revoke-enrollment"
+    | "create-passkey-flow"
+    | "revoke-passkey"
+    | "purge-enrollment"
+    | "list-passkeys",
 ): Promise<string> {
-  const response = await fetch(new URL("/api/v1/admin/owner/challenge", hostUrl), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ purpose }),
-  });
+  const response = await controlFetch(
+    new URL("/api/v1/admin/owner/challenge", hostUrl),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose }),
+    },
+  );
   const value: unknown = await response.json();
   if (
     !response.ok || !isRecord(value) ||
@@ -459,44 +528,16 @@ async function connect(flags: Flags): Promise<void> {
   const stop = () => controller.abort();
   Deno.addSignalListener("SIGINT", stop);
   Deno.addSignalListener("SIGTERM", stop);
-  let delay = 500;
   try {
-    while (!controller.signal.aborted) {
-      const started = Date.now();
-      let stage = "session acquisition";
-      try {
-        const session = await client.session(credentials, controller.signal);
-        stage = "FRP process";
-        const code = await runFrpc({
-          executable,
-          session,
-          transport,
-          signal: controller.signal,
-          allowInsecureTransport: development,
-          trustedCaFile,
-        });
-        if (!controller.signal.aborted) {
-          console.error(`connector stopped with code ${code}; reconnecting`);
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          const category = error instanceof Deno.errors.PermissionDenied
-            ? "permission denied"
-            : error instanceof Deno.errors.NotFound
-            ? "missing dependency"
-            : error instanceof ValidationError
-            ? "invalid response"
-            : error instanceof Error
-            ? error.name
-            : "runtime error";
-          console.error(`connector ${stage} failed (${category}); reconnecting`);
-        }
-      }
-      if (controller.signal.aborted) break;
-      if (Date.now() - started >= 60_000) delay = 500;
-      await abortableDelay(jitter(delay), controller.signal);
-      delay = Math.min(delay * 2, 30_000);
-    }
+    await superviseConnector({
+      client,
+      credentials,
+      signal: controller.signal,
+      executable,
+      transport,
+      allowInsecureTransport: development,
+      trustedCaFile,
+    });
   } finally {
     Deno.removeSignalListener("SIGINT", stop);
     Deno.removeSignalListener("SIGTERM", stop);
@@ -553,7 +594,7 @@ async function addPasskey(flags: Flags): Promise<void> {
   const [, credentials] = selectHost(state, optionalString(flags, "host"));
   const passkeyName = optionalString(flags, "name") ?? deviceName();
   const challenge = await ownerChallenge(credentials.url, "create-passkey-flow");
-  const response = await fetch(
+  const response = await controlFetch(
     new URL("/api/v1/admin/passkeys/registration/flows", credentials.url),
     {
       method: "POST",
@@ -726,34 +767,9 @@ async function assertPrivateFile(path: string): Promise<void> {
   }
 }
 
-function jitter(delay: number): number {
-  const random = crypto.getRandomValues(new Uint32Array(1))[0] / 0xffff_ffff;
-  return Math.round(delay * (0.8 + random * 0.4));
-}
-
 function standardBase64(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
 }
-
-async function abortableDelay(delay: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return;
-  await new Promise<void>((resolve) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const finish = () => {
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-      signal.removeEventListener("abort", finish);
-      resolve();
-    };
-    timer = setTimeout(finish, delay);
-    signal.addEventListener("abort", finish, { once: true });
-    if (signal.aborted) finish();
-  });
-}
-
-export { frpcConfig };

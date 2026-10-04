@@ -50,6 +50,20 @@ export class HostStore implements Disposable {
       CREATE INDEX IF NOT EXISTS routes_hostname ON routes(hostname);
       CREATE UNIQUE INDEX IF NOT EXISTS routes_hostname_unique ON routes(hostname);
       CREATE INDEX IF NOT EXISTS challenges_expiry ON challenges(expires_at);
+      CREATE TRIGGER IF NOT EXISTS enrollment_insert_valid
+      BEFORE INSERT ON enrollments
+      WHEN NEW.status NOT IN ('pending','active','revoked') OR
+        (NEW.status='pending' AND NEW.expires_at IS NULL) OR
+        (NEW.status='active' AND NEW.expires_at IS NOT NULL)
+      BEGIN SELECT RAISE(ABORT, 'invalid enrollment state'); END;
+      CREATE TRIGGER IF NOT EXISTS enrollment_transition_valid
+      BEFORE UPDATE ON enrollments
+      WHEN NEW.status NOT IN ('pending','active','revoked') OR
+        (NEW.status='pending' AND NEW.expires_at IS NULL) OR
+        (NEW.status='active' AND NEW.expires_at IS NOT NULL) OR
+        (OLD.status='revoked' AND NEW.status!='revoked') OR
+        (OLD.status='active' AND NEW.status='pending')
+      BEGIN SELECT RAISE(ABORT, 'invalid enrollment transition'); END;
     `);
   }
 
@@ -259,6 +273,9 @@ export class HostStore implements Disposable {
     this.#db.prepare(
       "INSERT INTO audit_events (at,actor,action,subject,details) VALUES (?,?,?,?,?)",
     ).run(new Date().toISOString(), actor, action, subject, JSON.stringify(details));
+    this.#db.prepare("DELETE FROM audit_events WHERE at < ?").run(
+      new Date(Date.now() - 90 * 24 * 60 * 60_000).toISOString(),
+    );
     this.#db.exec(`DELETE FROM audit_events WHERE id < COALESCE(
       (SELECT id FROM audit_events ORDER BY id DESC LIMIT 1 OFFSET 9999), 0
     )`);
@@ -307,6 +324,32 @@ export class HostStore implements Disposable {
       deviceType: String(row.device_type),
       backedUp: Number(row.backed_up) === 1,
     }));
+  }
+
+  deletePasskey(id: string): boolean {
+    const result = this.#db.prepare("DELETE FROM passkeys WHERE id=?").run(id);
+    if (result.changes) this.audit("owner", "passkey.revoked", id, {});
+    return result.changes === 1;
+  }
+
+  purgeEnrollment(id: string): boolean {
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.#db.prepare(
+        "DELETE FROM enrollments WHERE id=? AND status='revoked'",
+      ).run(id);
+      if (result.changes) {
+        this.#db.prepare("DELETE FROM audit_events WHERE actor=? OR subject=?").run(
+          id,
+          id,
+        );
+      }
+      this.#db.exec("COMMIT");
+      return result.changes === 1;
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   savePasskey(value: {

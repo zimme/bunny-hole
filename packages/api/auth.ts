@@ -137,7 +137,9 @@ export async function verificationPhrase(publicKey: string): Promise<string> {
     "opal",
     "pine",
   ];
-  return [...digest.subarray(0, 5)].map((byte) => words[byte & 15]).join("-");
+  return [...digest.subarray(0, 8)].flatMap((
+    byte,
+  ) => [words[byte >>> 4], words[byte & 15]]).join("-");
 }
 
 function signedMessage(purpose: string, fields: string[]): Uint8Array {

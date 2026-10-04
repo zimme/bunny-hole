@@ -23,6 +23,7 @@ const steps: [string, string[]][] = [
   ["deno", ["task", "commits:check"]],
   ["deno", ["task", "test"]],
   ["deno", ["task", "coverage"]],
+  ["deno", ["task", "correctness:check"]],
   ["deno", ["task", "integration"]],
   ["deno", ["task", "build"]],
   ["deno", ["task", "container:smoke"]],

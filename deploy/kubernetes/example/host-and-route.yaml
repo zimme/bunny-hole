@@ -37,3 +37,19 @@ spec:
     - backendRefs:
         - name: home-assistant
           port: 8123
+
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: home-gateway-publication
+  namespace: bunny-hole-system
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: home
+  to:
+    - group: bunny-hole.dev
+      kind: BunnyHoleHost
+      name: home
