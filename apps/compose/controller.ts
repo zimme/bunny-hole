@@ -3,7 +3,7 @@ import { abortableDelay } from "../connector/supervisor.ts";
 import { runFrpc } from "../connector/frpc.ts";
 import { loadState } from "../connector/state.ts";
 import { ValidationError } from "../../packages/api/mod.ts";
-import { reconcileComposeHost } from "./main.ts";
+import { reconcileComposeHost } from "./reconcile.ts";
 import { dockerContainers, routesFromContainers, validateProject } from "./docker.ts";
 
 export async function serveCompose(

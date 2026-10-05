@@ -16,6 +16,16 @@ await run("deno", [
   "--frozen",
   ...permissions,
   "--output",
+  "dist/bunny-hole-compose",
+  "apps/compose/main.ts",
+]);
+await run("deno", [
+  "compile",
+  "--config",
+  "deno.runtime.json",
+  "--frozen",
+  ...permissions,
+  "--output",
   "dist/bunny-hole",
   "apps/connector/main.ts",
 ]);

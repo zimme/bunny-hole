@@ -129,12 +129,18 @@ permission for arbitrary destinations.
 
 ## Compose discovery
 
-There are two execution modes. `bunny-hole compose plan|sync|up` runs on the host and
-uses `docker compose config --format json`. `compose serve --project NAME` runs inside
-the connector image as a normal Compose service. It polls the Docker Engine container
-list every five seconds, filtered by the exact `com.docker.compose.project` label, and
-also verifies that label locally. It ignores stopped containers, one-off jobs, and
-unlabeled services. It requires a Docker Engine API supporting v1.44.
+Compose is managed exclusively by the in-stack controller. Select
+`/usr/local/bin/bunny-hole-compose` as the connector image's entrypoint with an empty
+`command`, set `BUNNY_HOLE_COMPOSE_PROJECT` to the exact Compose project name, and set
+`BUNNY_HOLE_CONFIG` to the protected connector state path (default
+`/config/config.json`). The controller accepts no command-line arguments. Start and stop
+the stack with ordinary Docker Compose commands; no `bunny-hole compose` CLI commands
+are supported.
+
+The controller polls the Docker Engine container list every five seconds, filtered by
+the exact `com.docker.compose.project` label, and also verifies that label locally. It
+ignores stopped containers, one-off jobs, and unlabeled services. It requires a Docker
+Engine API supporting v1.44.
 
 Label opted-in services:
 
@@ -144,27 +150,21 @@ labels:
   dev.bunny-hole.name: compose-home-assistant
   dev.bunny-hole.hostname: home.example.com
   dev.bunny-hole.protocol: http
-  dev.bunny-hole.target-host: 127.0.0.1
+  dev.bunny-hole.allow-private-network: "true"
   dev.bunny-hole.target-port: "8123"
 ```
 
-The service port must be published to host loopback when the adapter uses the default
-`127.0.0.1`. To connect through a private container network instead, set an explicit
-`dev.bunny-hole.target-host` and `dev.bunny-hole.allow-private-network: "true"`. The
-adapter reconciles only labeled routes and never treats arbitrary public request data as
-a destination.
-
-In service mode, an omitted `target-host` becomes the Compose service name. Explicit
-private-network consent is required for that name. Identical replicas collapse into one
-service route; inconsistent replica labels, duplicate names/hostnames, malformed
-responses, and unknown configured hosts fail closed. No arbitrary container discovery is
-used as an origin. Healthy connections stay alive when routes and identity are
-unchanged; a changed route restarts the owned connector after awaiting its cleanup.
-Failed processes are retried on the next cycle. Discovery/configuration failures stop
-owned connectors until reconciliation succeeds. Shutdown cancels Docker/control requests
-and awaits connector termination. Stopping the service does not delete durable routes;
-removing an application's labels or stopping its container removes its managed routes on
-the next successful cycle.
+An omitted `target-host` becomes the Compose service name. Explicit private-network
+consent is required for that name. Identical replicas collapse into one service route;
+inconsistent replica labels, duplicate names/hostnames, malformed responses, and unknown
+configured hosts fail closed. No arbitrary container discovery is used as an origin.
+Healthy connections stay alive when routes and identity are unchanged; a changed route
+restarts the owned connector after awaiting its cleanup. Failed processes are retried on
+the next cycle. Discovery/configuration failures stop owned connectors until
+reconciliation succeeds. Shutdown cancels Docker/control requests and awaits connector
+termination. Stopping the service does not delete durable routes; removing an
+application's labels or stopping its container removes its managed routes on the next
+successful cycle.
 
 `DOCKER_HOST` selects the discovery endpoint: `unix:///var/run/docker.sock` by default,
 or an explicit `http://`, `https://`, or `tcp://` endpoint. The controller sends only
@@ -179,16 +179,23 @@ The [complete service example](../examples/compose/compose.yaml) starts with ord
 `docker compose up -d`. It requires a release-tested image digest, a private Docker API
 URL, and a pre-approved mode-`0600` credential file readable by the configured non-root
 UID. Local Compose file-backed secrets do not enforce Unix ownership/mode overrides;
-keep credentials in the protected read-only directory instead. The new service
-entrypoint requires an image built from this change or the next released minor version;
-the existing 1.0.0 image does not include it.
+keep credentials in the protected read-only directory instead. The dedicated controller
+entrypoint requires an image built from this change or the next major release; the
+existing 1.0.0 image does not include it.
 
-One Compose project owns all `compose-` routes for its enrollment. Sync removes any such
-routes absent from the current project, even when another project created them. Use
-separate enrollment/configuration files for independently managed projects. Named hosts
-in one configuration file are all reconciled; hosts with no labeled services have their
-stale `compose-` routes removed. This also respects the one-active-connector limit per
-enrollment.
+Migration: remove `bunny-hole compose plan|sync|up` invocations and
+`BUNNY_HOLE_COMPOSE_COMMAND`. Add the controller service from the example and replace
+startup with `docker compose up -d`. For the former `compose serve` service, replace its
+command with the dedicated entrypoint and environment configuration. Route
+reconciliation follows running containers rather than a rendered host-side Compose
+model. Set explicit private-network consent for service-name origins.
+
+One Compose project owns all `compose-` routes for its enrollment. Reconciliation
+removes any such routes absent from the current project, even when another project
+created them. Use separate enrollment/configuration files for independently managed
+projects. Named hosts in one configuration file are all reconciled; hosts with no
+labeled services have their stale `compose-` routes removed. This also respects the
+one-active-connector limit per enrollment.
 
 ## Kubernetes GitOps
 

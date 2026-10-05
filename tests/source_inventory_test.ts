@@ -3,5 +3,6 @@
 import "../apps/host/main.ts";
 import "../apps/connector/mod.ts";
 import "../apps/compose/main.ts";
+import "../apps/compose/reconcile.ts";
 import "../apps/operator/main.ts";
 import "../packages/api/logger.ts";

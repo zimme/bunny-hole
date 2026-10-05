@@ -8,8 +8,7 @@ Deno.test("CLI rejects ambiguous flags, missing IDs and unsafe secret flags", as
     const args of [
       ["unknown"],
       ["compose", "bad"],
-      ["compose", "serve"],
-      ["compose", "serve", "--project", "Bad"],
+      ...["plan", "sync", "up", "serve"].map((command) => ["compose", command]),
       ["host", "add", "--url"],
       ["host", "add", "--url", "https://host.test", "--name", "Bad name"],
       ["host", "use"],
@@ -32,6 +31,7 @@ Deno.test("CLI rejects ambiguous flags, missing IDs and unsafe secret flags", as
     await main(["--help"]);
     await main(["--version"]);
     assert(output[0].includes("Usage:"));
+    assert(!output[0].includes("bunny-hole compose"));
     assert(output[1].startsWith("bunny-hole "));
   } finally {
     console.log = original;

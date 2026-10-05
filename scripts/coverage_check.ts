@@ -8,6 +8,7 @@ type Counts = Record<Metric, { found: number; hit: number }>;
 // exceptional-I/O gaps; they are not coverage exclusions.
 const lineFloors: Record<string, number> = {
   "apps/compose/main.ts": 100,
+  "apps/compose/reconcile.ts": 100,
   "apps/compose/model.ts": 100,
   "apps/connector/agent_skill.ts": 100,
   "apps/connector/client.ts": 100,

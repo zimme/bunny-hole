@@ -50,6 +50,9 @@ RUN deno compile --config deno.runtime.json --frozen \
     && deno compile --config deno.runtime.json --frozen \
       --allow-env --allow-net --allow-read --allow-write --allow-run --allow-sys \
       --output /out/bunny-hole apps/connector/main.ts \
+    && deno compile --config deno.runtime.json --frozen \
+      --allow-env --allow-net --allow-read --allow-write --allow-run --allow-sys \
+      --output /out/bunny-hole-compose apps/compose/main.ts \
     && deno compile --config deno.runtime.json --frozen --allow-env=PORT --allow-net \
       --output /out/origin fixtures/origin/main.ts \
     && deno compile --config deno.runtime.json --frozen \
@@ -74,6 +77,7 @@ ENTRYPOINT ["/usr/local/bin/bunny-hole-host"]
 
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS connector-runtime
 COPY --from=builder --chown=nonroot:nonroot /out/bunny-hole /usr/local/bin/bunny-hole
+COPY --from=builder --chown=nonroot:nonroot /out/bunny-hole-compose /usr/local/bin/bunny-hole-compose
 COPY --from=frp --chown=nonroot:nonroot /out/frpc /usr/local/bin/frpc
 COPY --from=trust --chown=nonroot:nonroot /out/ca-certificates.crt /usr/local/bin/ca-certificates.crt
 COPY --from=trust --chown=nonroot:nonroot /out/MOZILLA-CA-LICENSE.txt /usr/share/licenses/mozilla-ca/MPL-2.0.txt

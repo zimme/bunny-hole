@@ -45,8 +45,6 @@ Usage:
   bunny-hole connect [--host NAME] [--transport wss|quic|tcp|websocket]
                      [--trusted-ca-file FILE] [--development]
   bunny-hole check [--host NAME]
-  bunny-hole compose plan | sync | up
-  bunny-hole compose serve --project NAME
   bunny-hole skill [--output PATH]     Print or export consumer SKILL.md guidance
   bunny-hole owner generate --output FILE
   bunny-hole owner passkey-list --owner-key FILE [--host NAME]
@@ -92,34 +90,6 @@ export async function main(args: string[]): Promise<void> {
     Deno.addSignalListener("SIGTERM", stop);
     try {
       return await (await import("../operator/main.ts")).runOperator(
-        controller.signal,
-      );
-    } finally {
-      Deno.removeSignalListener("SIGINT", stop);
-      Deno.removeSignalListener("SIGTERM", stop);
-    }
-  }
-  if (args[0] === "compose") {
-    const command = args[1];
-    if (!["plan", "sync", "up", "serve"].includes(command)) {
-      throw new UsageError("compose command must be plan, sync, up, or serve");
-    }
-    const flags = flagsFrom(args.slice(2));
-    const controller = new AbortController();
-    const stop = () => controller.abort();
-    Deno.addSignalListener("SIGINT", stop);
-    Deno.addSignalListener("SIGTERM", stop);
-    try {
-      if (command === "serve") {
-        return await (await import("../compose/controller.ts")).serveCompose(
-          required(flags, "project"),
-          configPath(flags),
-          controller.signal,
-        );
-      }
-      return await (await import("../compose/main.ts")).runCompose(
-        command as "plan" | "sync" | "up",
-        configPath(flags),
         controller.signal,
       );
     } finally {

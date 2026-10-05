@@ -196,16 +196,15 @@ model. Reconciliation creates missing routes, replaces changed managed routes, a
 deletes only stale routes carrying that adapter's prefix (`compose-` or `k8s-`). Manual
 routes are preserved.
 
-The host-side Compose adapter defaults targets to `127.0.0.1`, requiring services to
-publish only a loopback host port. Its in-stack `compose serve` controller instead reads
-running Docker container labels for one explicit project and defaults targets to the
-Compose service name, requiring explicit private-network consent. It preserves manual
-routes and awaits the previous connector before replacing it. Invalid discovery or
-configuration stops its owned connections; each successful cycle removes stale managed
-routes and observes replaced credentials. A non-loopback `target-host` label needs
-explicit private-network consent. Kubernetes resolves only `Service` backends;
-cross-namespace backends need a matching `ReferenceGrant`. Neither adapter accepts a
-viewer-selected URL, raw Service discovery, nor arbitrary Docker-socket inspection.
+The in-stack Compose controller reads running Docker container labels for one explicit
+project and defaults targets to the Compose service name, requiring explicit
+private-network consent. It preserves manual routes and awaits the previous connector
+before replacing it. Invalid discovery or configuration stops its owned connections;
+each successful cycle removes stale managed routes and observes replaced credentials. A
+non-loopback `target-host` label needs explicit private-network consent. Kubernetes
+resolves only `Service` backends; cross-namespace backends need a matching
+`ReferenceGrant`. Neither adapter accepts a viewer-selected URL, raw Service discovery,
+nor arbitrary Docker-socket inspection.
 
 ## Version 1.0 hardening
 

@@ -56,8 +56,9 @@ if (
 ) {
   throw new Error("Compose service integration requires the private test Docker API");
 }
-const engineAddress = (await Deno.resolveDns(engine.hostname, "A"))[0];
-const discoveryUrl = `http://${engineAddress}:${engine.port || "2375"}`;
+// The outer daemon IP may overlap nested Docker subnets. Reach the daemon in its
+// own network namespace instead of routing back through its outer container IP.
+const discoveryUrl = `http://docker-discovery.test:${engine.port || "2375"}`;
 await Deno.writeTextFile(
   `${configDirectory}/compose.override.yaml`,
   `services:
@@ -67,8 +68,11 @@ await Deno.writeTextFile(
       BUNNY_HOLE_CONNECTOR_PORT: "7443"
       BUNNY_HOLE_CONNECTOR_TRANSPORTS: wss
   connector:
-    command: [compose, serve, --project, ${project}]
+    entrypoint: [/usr/local/bin/bunny-hole-compose]
+    command: []
+    extra_hosts: ["docker-discovery.test:host-gateway"]
     environment:
+      BUNNY_HOLE_COMPOSE_PROJECT: ${project}
       BUNNY_HOLE_DEVELOPMENT: "true"
       DOCKER_HOST: ${discoveryUrl}
       BUNNY_HOLE_TRUSTED_CA_FILE: /tls/ca.crt
@@ -284,6 +288,8 @@ try {
   await run("docker", [
     ...compose,
     "run",
+    "--entrypoint",
+    "/usr/local/bin/bunny-hole",
     "--rm",
     "--no-deps",
     "connector",

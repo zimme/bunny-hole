@@ -141,7 +141,7 @@ Application totals require 95% lines, 90% branches, and 97% functions. These tot
 include entry points and platform-specific paths without exclusions. Per-file line
 floors prevent a well-tested module from hiding regressions elsewhere; new modules start
 with a 95% floor. The client, API validators, header/origin policy, host config,
-identity loader, logger, and Compose adapter/model have 100% line floors.
+identity loader, logger, and Compose entrypoint/reconciler/model have 100% line floors.
 
 The remaining lower per-file floors are explicit in `scripts/coverage_check.ts`. Windows
 backup/recovery paths remain visible in Linux coverage and have a separate Windows CI
@@ -157,7 +157,7 @@ New controller tests enumerate unchanged/changed/stale/manual routes, unknown ho
 invalid policy and credentials, connector exit/failure/replacement, API failure while a
 child is live, token rotation, parent cancellation, and awaited resource cleanup. Small
 optional effect interfaces keep production defaults intact while allowing deterministic
-failure sequences. Separate subprocess tests exercise real command adapters, FRP
+failure sequences. Separate subprocess tests exercise controller entrypoints, FRP
 termination escalation, host readiness/shutdown/startup failure, and exit codes. Passkey
 tests use a local authenticator with real registration and signed assertions; malformed
 input, incorrect origins/signatures, consumed challenges, counters, and replay are
@@ -176,3 +176,8 @@ awaited cleanup are checked with deterministic reconciliation cycles. API calls 
 bounded and accept the parent's abort signal. Production-image integration uses real
 Docker labels and the compiled service entrypoint to establish the FRP/WSS tunnel. No
 owner/private key, Docker response, or admission token is emitted in error logs.
+
+The Compose controller entrypoint accepts only environment configuration, rejects CLI
+arguments and invalid project names, and owns signal registration/removal. Entrypoint
+tests cover startup failure, configuration defaults, exception cleanup, and bounded
+shutdown. The user-facing CLI rejects every removed Compose subcommand.

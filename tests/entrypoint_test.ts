@@ -17,6 +17,17 @@ function freePort(): number {
   return port;
 }
 Deno.test("entrypoints report usage, configuration, connection and healthcheck exit codes", async () => {
+  for (const args of [[], ["serve"]]) {
+    const result = await command("apps/compose/main.ts", args, {
+      BUNNY_HOLE_COMPOSE_PROJECT: "",
+    }).output();
+    assertEquals(result.code, 1);
+    assert(
+      new TextDecoder().decode(result.stderr).includes(
+        "Compose controller startup failed",
+      ),
+    );
+  }
   for (
     const [args, expected] of [[["unknown"], 64], [[
       "host",

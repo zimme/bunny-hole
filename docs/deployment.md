@@ -197,21 +197,19 @@ Pin the controller manifest to the published connector digest by replacing
 The connector OCI works with Docker, Compose, and Podman. Mount its protected state file
 read-only, use a read-only root filesystem, drop all capabilities, set
 `no-new-privileges`, and run as the file-owning non-root UID. The connector image
-contains the Bunny Hole CLI, pinned `frpc`, and the pinned public CA bundle used to
-verify the connector WSS endpoint; it does not contain the host.
+contains the Bunny Hole CLI, dedicated Compose controller, pinned `frpc`, and the pinned
+public CA bundle used to verify the connector WSS endpoint; it does not contain the
+host.
 
-For a service managed by the application's own stack, use `compose serve --project
-NAME`
-with a private restricted Docker API endpoint. It discovers labels and reconciles
-running services without invoking Docker or requiring a host-side Bunny Hole process.
-See the [complete example](../examples/compose/compose.yaml). Enrollment/approval still
-precede runtime; the connector has no owner or Bunny account credential.
-
-The `bunny-hole compose plan|sync|up` adapter derives routes only from explicit
-`dev.bunny-hole.*` labels. See [configuration](configuration.md#compose-discovery). It
-is an opt-in reconciler, not a transparent Docker socket proxy. Access to the Docker
-socket is equivalent to host-root access; prefer a restricted socket proxy or run
-`plan`/`sync` from a trusted local CLI.
+For a service managed by the application's own stack, select the image's dedicated
+`/usr/local/bin/bunny-hole-compose` entrypoint, clear its default command, and set
+`BUNNY_HOLE_COMPOSE_PROJECT` and `BUNNY_HOLE_CONFIG`. Use a private restricted Docker
+API endpoint. It discovers labels and reconciles running services without invoking
+Docker or requiring a host-side Bunny Hole process. See the
+[complete example](../examples/compose/compose.yaml). Enrollment/approval still precede
+runtime; the controller has no owner or Bunny account credential. The Bunny Hole CLI has
+no Compose commands. Docker socket access grants daemon control; use a private proxy
+restricted to the documented GET endpoint.
 
 ## Operations and cost
 

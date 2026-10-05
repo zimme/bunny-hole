@@ -100,9 +100,9 @@ the remaining product gaps.
 ## Declarative local services
 
 Add the connector as a service in your application's Compose stack and run ordinary
-`docker compose up -d`. Its `compose serve` command discovers running services from
-Docker labels and continuously reconciles their routes. No Bunny Hole CLI or Docker CLI
-is required on the host to keep the tunnel running. See the complete
+`docker compose up -d`. Its dedicated controller entrypoint discovers running services
+from Docker labels and continuously reconciles their routes. No Bunny Hole CLI or Docker
+CLI is required on the host to keep the tunnel running. See the complete
 [Compose service example](examples/compose/compose.yaml) and
 [configuration](docs/configuration.md#compose-discovery) for credential ownership and
 Docker API access.
@@ -119,9 +119,11 @@ services:
       dev.bunny-hole.allow-private-network: "true"
   bunny-hole:
     image: ${BUNNY_HOLE_CONNECTOR_IMAGE:?Set a release-tested connector image digest}
-    command: [compose, serve, --project, home]
+    entrypoint: ["/usr/local/bin/bunny-hole-compose"]
+    command: []
     environment:
       BUNNY_HOLE_CONFIG: /config/config.json
+      BUNNY_HOLE_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-home}
       DOCKER_HOST: ${BUNNY_HOLE_DOCKER_API:?Set the private restricted Docker API URL}
     volumes: ["./.bunny-hole:/config:ro"]
     restart: unless-stopped
@@ -132,10 +134,6 @@ Use a separate enrollment/configuration file for each independently managed proj
 `compose-` routes are owned by that project for its enrollment. Enrollment and owner
 approval happen once before starting the service. Run only one connector for that
 identity. Never expose the Docker API publicly.
-
-The existing host-side `bunny-hole compose plan|sync|up` workflow remains available. It
-uses Compose's rendered configuration and defaults origins to loopback; publish the
-application port only on `127.0.0.1` for that workflow.
 
 ## Kubernetes
 

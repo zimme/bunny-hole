@@ -42,7 +42,7 @@
     "fmt:check": "deno fmt --check",
     "spellcheck": "deno run --allow-env --allow-sys=homedir,uid --allow-read cspell lint --config cspell.json --gitignore --dot --no-progress .",
     "lint": "deno lint",
-    "check": "deno check apps/host/main.ts apps/connector/main.ts apps/connector/mod.ts fixtures/origin/main.ts fixtures/tls_gateway/main.ts scripts/*.ts tests/*.ts",
+    "check": "deno check apps/compose/main.ts apps/host/main.ts apps/connector/main.ts apps/connector/mod.ts fixtures/origin/main.ts fixtures/tls_gateway/main.ts scripts/*.ts tests/*.ts",
     "docs:check": "deno run --allow-read=. --allow-run=deno scripts/docs_check.ts",
     "test": "deno test --allow-env --allow-net --allow-read --allow-run --allow-write --coverage=coverage --clean tests",
     "coverage": "deno run --allow-read=. --allow-write=coverage --allow-run=deno scripts/coverage_check.ts",

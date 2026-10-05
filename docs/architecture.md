@@ -6,8 +6,9 @@ Container, Docker, Kubernetes, and upstream FRP documentation.
 ## Chosen architecture
 
 Bunny Hole combines a small Deno control/HTTP plane with unmodified FRP 0.70.1 for the
-multiplexed tunnel. The host OCI contains `bunny-hole-host` and `frps`; connector OCI
-and native bundles contain `bunny-hole` and `frpc`.
+multiplexed tunnel. The host OCI contains `bunny-hole-host` and `frps`; the connector
+OCI contains `bunny-hole`, the dedicated `bunny-hole-compose` controller, and `frpc`.
+Native connector bundles contain `bunny-hole` and `frpc`.
 
 ```mermaid
 flowchart LR

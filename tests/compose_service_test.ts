@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import { dockerContainers, routesFromContainers } from "../apps/compose/docker.ts";
 import { serveCompose } from "../apps/compose/controller.ts";
+import { main as composeMain } from "../apps/compose/main.ts";
 import { BunnyHoleClient, type Session } from "../apps/connector/client.ts";
 import { saveState } from "../apps/connector/state.ts";
 import { generateKeyPair } from "../packages/api/auth.ts";
@@ -19,6 +20,50 @@ const labels = {
 function container(changes = {}, state = "running") {
   return { State: state, Labels: { ...labels, ...changes } };
 }
+
+Deno.test("Compose entrypoint uses environment configuration and cleans signal listeners on failure", async () => {
+  const project = Deno.env.get("BUNNY_HOLE_COMPOSE_PROJECT");
+  const config = Deno.env.get("BUNNY_HOLE_CONFIG");
+  try {
+    Deno.env.delete("BUNNY_HOLE_COMPOSE_PROJECT");
+    await assertRejects(() => composeMain([], serveCompose), /project/);
+    Deno.env.set("BUNNY_HOLE_COMPOSE_PROJECT", "home");
+    await assertRejects(() => composeMain(["serve"]), /arguments/);
+    Deno.env.set("BUNNY_HOLE_CONFIG", "");
+    await assertRejects(() => composeMain([]), /config path/);
+    for (const path of [undefined, "/protected/config.json"]) {
+      if (path === undefined) Deno.env.delete("BUNNY_HOLE_CONFIG");
+      else Deno.env.set("BUNNY_HOLE_CONFIG", path);
+      await composeMain([], (name, configPath, signal) => {
+        assertEquals(name, "home");
+        assertEquals(configPath, path ?? "/config/config.json");
+        assertEquals(signal.aborted, false);
+        return Promise.resolve();
+      });
+    }
+    await assertRejects(
+      () => composeMain([], () => Promise.reject(new Error("startup failure"))),
+      /startup failure/,
+    );
+    await composeMain(
+      [],
+      (_name, _path, signal) =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("shutdown timed out")), 1000);
+          signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve();
+          }, { once: true });
+          Deno.kill(Deno.pid, "SIGTERM");
+        }),
+    );
+  } finally {
+    if (project === undefined) Deno.env.delete("BUNNY_HOLE_COMPOSE_PROJECT");
+    else Deno.env.set("BUNNY_HOLE_COMPOSE_PROJECT", project);
+    if (config === undefined) Deno.env.delete("BUNNY_HOLE_CONFIG");
+    else Deno.env.set("BUNNY_HOLE_CONFIG", config);
+  }
+});
 
 Deno.test("Compose service discovery is project-scoped, opt-in, bounded and replica-consistent", () => {
   const route = routesFromContainers([container(), container()], "home")[0];

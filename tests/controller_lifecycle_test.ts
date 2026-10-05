@@ -1,8 +1,7 @@
-import { runCompose } from "../apps/compose/main.ts";
+import { reconcileComposeHost } from "../apps/compose/reconcile.ts";
 import { hostResources, KubernetesClient, runOperator } from "../apps/operator/main.ts";
 import { compileRoutes, desiredRoutes } from "../apps/operator/model.ts";
 import { BunnyHoleClient, type Session } from "../apps/connector/client.ts";
-import { saveState } from "../apps/connector/state.ts";
 import { generateKeyPair } from "../packages/api/auth.ts";
 import type { Route } from "../packages/api/mod.ts";
 import { assert, assertEquals, assertRejects, assertThrows } from "./assert.ts";
@@ -75,150 +74,39 @@ class Control extends BunnyHoleClient {
     return Promise.resolve(result);
   }
 }
-const model = {
-  services: {
-    app: {
-      labels: {
-        "dev.bunny-hole.host": "home",
-        "dev.bunny-hole.name": "app",
-        "dev.bunny-hole.hostname": "app.test",
-        "dev.bunny-hole.target-port": "3000",
-      },
-    },
-  },
-};
-
-Deno.test("Compose plan is credential-free and sync preserves manual and unchanged routes", async () => {
-  const directory = await Deno.makeTempDir();
-  const path = `${directory}/state.json`;
-  const original = console.log;
-  const lines: string[] = [];
-  console.log = (value: unknown) => lines.push(String(value));
-  try {
-    const signal = new AbortController().signal;
-    await runCompose("plan", "/absent", signal, {
-      capture: () => Promise.resolve(JSON.stringify(model)),
-      client: () => {
-        throw new Error("plan must not authenticate");
-      },
-    });
-    assertEquals(JSON.parse(lines[0]).routes[0].name, "compose-app");
-    await saveState({ version: 1, hosts: { home: credentials } }, path);
-    const client = new Control([{ ...baseRoute }, {
-      ...baseRoute,
-      name: "compose-app",
-      id: "rte_BBBBBBBBBBBBBBBBBBBBBBBB",
-    }, { ...baseRoute, name: "compose-stale", id: "rte_DDDDDDDDDDDDDDDDDDDDDDDD" }]);
-    await runCompose("sync", path, signal, {
-      capture: () => Promise.resolve(JSON.stringify(model)),
-      client: () => client,
-    });
-    assertEquals(client.calls, [
-      "session",
-      "delete:rte_DDDDDDDDDDDDDDDDDDDDDDDD",
-      "session",
-    ]);
-    assertEquals(client.routes.map((route) => route.name), ["manual", "compose-app"]);
-    client.routes[1].targetPort = 4000;
-    client.calls = [];
-    await runCompose("sync", path, signal, {
-      capture: () => Promise.resolve(JSON.stringify(model)),
-      client: () => client,
-    });
-    assertEquals(client.calls, [
-      "session",
-      "delete:rte_BBBBBBBBBBBBBBBBBBBBBBBB",
-      "create:compose-app",
-      "session",
-    ]);
-    assertEquals(client.routes[1].targetPort, 3000);
-    await assertRejects(
-      () =>
-        runCompose("sync", path, signal, {
-          capture: () =>
-            Promise.resolve(
-              JSON.stringify({
-                services: {
-                  app: {
-                    labels: {
-                      ...model.services.app.labels,
-                      "dev.bunny-hole.host": "missing",
-                    },
-                  },
-                },
-              }),
-            ),
-        }),
-      /not configured/,
-    );
-  } finally {
-    console.log = original;
-    await Deno.remove(directory, { recursive: true });
-  }
-});
-
-Deno.test("Compose up awaits cancellation of every connector and does not connect empty hosts", async () => {
-  const directory = await Deno.makeTempDir();
-  const path = `${directory}/state.json`;
-  try {
-    await saveState(
-      { version: 1, hosts: { home: credentials, unused: credentials } },
-      path,
-    );
-    const commands: string[][] = [];
-    let stopped = false;
-    await runCompose("up", path, new AbortController().signal, {
-      run: (_command, args) => {
-        commands.push(args);
-        return Promise.resolve();
-      },
-      capture: () => Promise.resolve(JSON.stringify(model)),
-      client: () => new Control(),
-      supervise: (options) => {
-        stopped = options.signal.aborted;
-        return Promise.resolve();
-      },
-    });
-    assertEquals(commands[0].slice(-3), ["--wait", "--wait-timeout", "120"]);
-    assertEquals(stopped, false);
-    let calls = 0;
-    let cleaned = false;
-    const twoHosts = {
-      services: {
-        ...model.services,
-        other: {
-          labels: {
-            ...model.services.app.labels,
-            "dev.bunny-hole.host": "unused",
-            "dev.bunny-hole.name": "other",
-            "dev.bunny-hole.hostname": "other.test",
-          },
-        },
-      },
-    };
-    await assertRejects(() =>
-      runCompose("up", path, new AbortController().signal, {
-        run: () => Promise.resolve(),
-        capture: () => Promise.resolve(JSON.stringify(twoHosts)),
-        client: () => new Control(),
-        supervise: (options) => {
-          calls++;
-          if (calls === 1) return Promise.reject(new Error("child failed"));
-          return new Promise<void>((resolve) =>
-            options.signal.addEventListener("abort", () => {
-              queueMicrotask(() => {
-                cleaned = true;
-                resolve();
-              });
-            }, { once: true })
-          );
-        },
-      }), /child failed/);
-    assertEquals(calls, 2);
-    assertEquals(cleaned, true);
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
+Deno.test("Compose reconciliation preserves manual and unchanged routes and replaces changed routes", async () => {
+  const signal = new AbortController().signal;
+  const desired = {
+    host: "home",
+    name: "compose-app",
+    protocol: baseRoute.protocol,
+    hostname: baseRoute.hostname,
+    targetHost: baseRoute.targetHost,
+    targetPort: baseRoute.targetPort,
+    allowPrivateNetwork: false,
+  };
+  const client = new Control([{ ...baseRoute }, {
+    ...baseRoute,
+    name: "compose-app",
+    id: "rte_BBBBBBBBBBBBBBBBBBBBBBBB",
+  }, { ...baseRoute, name: "compose-stale", id: "rte_DDDDDDDDDDDDDDDDDDDDDDDD" }]);
+  await reconcileComposeHost(client, credentials, [desired], signal);
+  assertEquals(client.calls, [
+    "session",
+    "delete:rte_DDDDDDDDDDDDDDDDDDDDDDDD",
+    "session",
+  ]);
+  assertEquals(client.routes.map((route) => route.name), ["manual", "compose-app"]);
+  client.routes[1].targetPort = 4000;
+  client.calls = [];
+  await reconcileComposeHost(client, credentials, [desired], signal);
+  assertEquals(client.calls, [
+    "session",
+    "delete:rte_BBBBBBBBBBBBBBBBBBBBBBBB",
+    "create:compose-app",
+    "session",
+  ]);
+  assertEquals(client.routes[1].targetPort, 3000);
 });
 
 const hostResource = {
@@ -479,43 +367,6 @@ Deno.test("Gateway policy rejects ambiguous attachments and unsupported listener
     }]),
     [],
   );
-});
-
-Deno.test("Compose command adapters report process failures and decode plan output", async () => {
-  if (Deno.build.os === "windows") return;
-  const directory = await Deno.makeTempDir();
-  const executable = `${directory}/compose`;
-  const previous = Deno.env.get("BUNNY_HOLE_COMPOSE_COMMAND");
-  const original = console.log;
-  const lines: string[] = [];
-  Deno.env.set("BUNNY_HOLE_COMPOSE_COMMAND", executable);
-  console.log = (value: unknown) => lines.push(String(value));
-  try {
-    await Deno.writeTextFile(
-      executable,
-      `#!/bin/sh\nprintf '%s' '${JSON.stringify(model)}'\n`,
-      { mode: 0o700 },
-    );
-    await runCompose("plan", "/absent", new AbortController().signal);
-    assertEquals(JSON.parse(lines[0]).routes.length, 1);
-    await Deno.writeTextFile(
-      executable,
-      "#!/bin/sh\necho 'configuration rejected' >&2\nexit 7\n",
-    );
-    await assertRejects(
-      () => runCompose("plan", "/absent", new AbortController().signal),
-      /configuration rejected/,
-    );
-    await assertRejects(
-      () => runCompose("up", "/absent", new AbortController().signal),
-      /failed \(7\)/,
-    );
-  } finally {
-    console.log = original;
-    if (previous === undefined) Deno.env.delete("BUNNY_HOLE_COMPOSE_COMMAND");
-    else Deno.env.set("BUNNY_HOLE_COMPOSE_COMMAND", previous);
-    await Deno.remove(directory, { recursive: true });
-  }
 });
 
 Deno.test("operator API failure and shutdown await a live connector and close the HTTP client", async () => {
