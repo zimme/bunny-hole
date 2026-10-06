@@ -107,8 +107,8 @@ checks. The CI workflow uses the same action and service with `deno task validat
 its `runCmd` to execute the full gate. The action forwards GitHub's `CI` variable into
 the container. CI also forwards `COMPOSE_PARALLEL_LIMIT=1` so nested integration startup
 uses one Docker engine call at a time on the hosted runner. A local agent can start the
-service directly with Compose, without running either GitHub workflow. The workflows
-set `COMPOSE_BAKE=false` on the runner because the Dev Container CLI generates its
+service directly with Compose, without running either GitHub workflow. The workflows set
+`COMPOSE_BAKE=false` on the runner because the Dev Container CLI generates its
 Dockerfile outside the checkout, which Bake refuses without additional filesystem
 entitlements. The normal Compose builder uses the same Dockerfile and toolchain.
 
