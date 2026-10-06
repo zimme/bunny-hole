@@ -9,12 +9,14 @@ services:
     profiles: [development]
     image: docker:29.6.2-dind-rootless@sha256:212a9e782c7119fd6a212beaab6b7665a29b663d894d0f6201710c89575ad0ae
     privileged: true
+    entrypoint: [sh, /docker-engine.sh]
     environment:
       DOCKER_HOST: tcp://127.0.0.1:2375
       DOCKER_TLS_CERTDIR: ""
     command: [--host=tcp://0.0.0.0:2375, --tls=false]
     networks: [engine]
     volumes:
+      - ./.devcontainer/docker-engine.sh:/docker-engine.sh:ro
       - .:/workspaces/bunny-hole:cached
       - development-docker-data:/home/rootless/.local/share/docker
     healthcheck:

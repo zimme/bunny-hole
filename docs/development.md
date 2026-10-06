@@ -81,8 +81,12 @@ Container adapter runs it during startup; GitHub workflows run it before
 This keeps same-named Git worktrees in separate projects, each with its own rootless
 Docker daemon data and host state. It also mounts the Git common directory at its
 original path, so linked worktrees can run tracked-file, secret, and commit checks
-inside the container. Docker selects network ranges and published host ports to avoid
-collisions. Inside a Compose project, services resolve `host.test`,
+inside the container. Before entering RootlessKit, the nested daemon selects a private
+address pool disjoint from its outer connected routes. This prevents a nested fixture IP
+from capturing responses to a development client's Docker API requests. Its default
+bridge and project networks use that pool; startup fails if no safe pool is available or
+a route cannot be parsed. Docker selects project subnets and published host ports within
+that isolation. Inside a Compose project, services resolve `host.test`,
 `connector-gateway.test`, and `origin` through Docker's project-local DNS. Nothing needs
 to be added to the developer machine's `/etc/hosts`. From the host machine, use
 `docker compose --profile tunnel port host 8080` to find the loopback-bound HTTP port.
