@@ -1,10 +1,56 @@
 import {
   assertComVerBump,
+  assertReleaseHistory,
   compareComVer,
+  compareReleaseVersion,
   hasBreakingChange,
+  npmReleaseChannel,
   parseComVer,
+  parseReleaseVersion,
 } from "../scripts/comver.ts";
 import { assertEquals, assertThrows } from "./assert.ts";
+
+Deno.test("Bunny Hole release candidates extend ComVer without changing stable policy", () => {
+  const parse = parseReleaseVersion;
+  assertEquals(parse("1.0.0-rc.1").candidate, 1n);
+  assertEquals(compareReleaseVersion(parse("1.0.0-rc.9"), parse("1.0.0-rc.10")), -1);
+  assertEquals(compareReleaseVersion(parse("1.0.0-rc.10"), parse("1.0.0")), -1);
+  assertEquals(npmReleaseChannel("1.0.0-rc.1"), "rc");
+  assertEquals(npmReleaseChannel("1.0.0"), "latest");
+  for (
+    const invalid of [
+      "1.0.1-rc.1",
+      "1.0.0-RC.1",
+      "1.0.0-rc.0",
+      "1.0.0-rc.01",
+      "1.0.0-beta.1",
+      "1.0.0-rc.1+build",
+    ]
+  ) {
+    assertThrows(() => parse(invalid));
+  }
+  assertReleaseHistory(parse("1.0.0-rc.1"), [], false);
+  assertReleaseHistory(parse("1.0.0-rc.2"), [parse("1.0.0-rc.1")], false);
+  assertReleaseHistory(parse("1.0.0"), [parse("1.0.0-rc.2")], false);
+  assertReleaseHistory(parse("1.1.0-rc.1"), [parse("1.0.0")], false);
+  assertReleaseHistory(parse("2.0.0-rc.1"), [parse("1.0.0")], true);
+  assertReleaseHistory(parse("1.1.0"), [parse("1.0.0"), parse("1.1.0-rc.1")], false);
+  for (
+    const [version, previous, breaking] of [
+      ["1.0.0-rc.2", [], false],
+      ["1.0.0-rc.3", ["1.0.0-rc.1"], false],
+      ["1.0.0-rc.1", ["1.0.0-rc.1"], false],
+      ["1.0.0-rc.2", ["1.0.0"], false],
+      ["1.1.0-rc.1", ["1.0.0"], true],
+      ["2.0.0-rc.1", ["1.0.0"], false],
+      ["1.0.0", ["1.1.0-rc.1"], false],
+    ] as const
+  ) {
+    assertThrows(() =>
+      assertReleaseHistory(parse(version), previous.map(parse), breaking)
+    );
+  }
+});
 
 Deno.test("ComVer requires a zero patch component and canonical numbers", () => {
   assertEquals(parseComVer("2.7.0"), {

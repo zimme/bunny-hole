@@ -1,6 +1,6 @@
 {
   "name": "@zimme/bunny-hole",
-  "version": "1.0.0",
+  "version": "1.0.0-rc.1",
   "exports": "./apps/connector/mod.ts",
   "license": "MIT",
   "publish": {
@@ -39,6 +39,7 @@
     "package:build": "deno run --allow-read=.,/tmp --allow-run=deno,npm,tar --allow-write=dist,/tmp scripts/build_npm_package.ts",
     "release:check": "deno run --allow-read=. --allow-run=git scripts/release_check.ts",
     "release:artifacts": "deno run --allow-net=github.com,objects.githubusercontent.com,release-assets.githubusercontent.com,curl.se,www.mozilla.org --allow-read=. --allow-write=dist,/tmp --allow-run=deno,tar,unzip scripts/build_release_artifacts.ts",
+    "release:deployment-template": "deno run --allow-env=RELEASE_TAG,RELEASE_COMMIT,RELEASE_REPOSITORY,HOST_DIGEST,CONNECTOR_DIGEST,LOG_STREAM,LOG_TOKENS --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=tar scripts/build_deployment_archive.ts",
     "release:publish-package": "deno run --allow-env=RELEASE_TAG --allow-net=jsr.io,registry.npmjs.org --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=deno,git,npm,tar scripts/publish_package.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",

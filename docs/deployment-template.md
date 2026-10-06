@@ -7,6 +7,27 @@ publish a documented repository schema that creates a complete Magic Container
 application, both CDN policies, custom hostnames, TLS, and DNS from a dashboard “deploy
 from repository” flow.
 
+The shortest consumer path uses the deployment archive from the exact published release,
+rather than a source checkout:
+
+```sh
+version=1.0.0-rc.1 # Select this only for explicitly approved RC evaluation.
+archive="bunny-hole-deployment-${version}.tar.gz"
+gh release download "$version" --repo zimme/bunny-hole --pattern "$archive"
+gh attestation verify "$archive" --repo zimme/bunny-hole
+mkdir my-bunny-deployment
+tar -xzf "$archive" -C my-bunny-deployment --strip-components=1
+cd my-bunny-deployment
+bash scripts/setup.sh
+```
+
+The archive is attested by the release workflow after testing the published images. Its
+`release.json` records the release commit and both image digests; its public example
+already uses that exact host version/digest. Customize public application/backend inputs
+and, for an approved RC evaluation only, explicitly set `allow_release_candidate=true`.
+Stable versions need no opt-in. Private release verification, account protections,
+backend setup, credentials, DNS review, and restore readiness remain prerequisites.
+
 Run `deno task deployment:scaffold ../my-bunny-deployment` from a Bunny Hole checkout to
 copy the entire checked template, including hidden workflows, agent guidance, shared
 deployment scripts, and offline guard tests. It refuses an existing destination. In the

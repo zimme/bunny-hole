@@ -41,6 +41,14 @@ Bunny-managed TLS, and optional linked records in an existing Bunny DNS zone.
 
 ## 1. Create the repository
 
+The release's attested `bunny-hole-deployment-VERSION.tar.gz` archive contains this
+entire repository template, `LICENSE`, and public `release.json`. Verify the archive's
+GitHub artifact attestation against `zimme/bunny-hole` before extracting it into a new
+directory. It already records the exact release version and tested host digest in the
+public example. Run `bash scripts/setup.sh`, then customize the public configuration;
+you do not need a Bunny Hole source checkout or Deno to use a release archive. The setup
+and offline guard tests use Python 3's standard library; CI provides it.
+
 Copy this directory into a new private repository. Keep `AGENTS.md`, the setup skill,
 workflows, scripts, provider lockfile, and Terraform files together. From a Bunny Hole
 checkout, `deno task deployment:scaffold ../my-bunny-deployment` copies the complete
@@ -66,6 +74,12 @@ bunny-hole owner generate --output ./bunny-hole-owner.json
 
 Keep `bunny-hole-owner.json` offline. Only its printed public key belongs in Terraform.
 Do not use a branch image, `latest`, or an unreviewed local build.
+
+Stable releases are the default. For an explicitly approved evaluation, use the exact
+published lowercase `MAJOR.MINOR.0-rc.N` candidate and its verified digest, then set
+`allow_release_candidate=true` in the public configuration. That consent defaults to
+false even in an RC archive. A candidate is unstable and does not promise the intended
+stable compatibility; promotion is a separately authorized release.
 
 ## 3. Configure public inputs
 

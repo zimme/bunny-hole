@@ -124,13 +124,22 @@ variable "image_name" {
   }
 }
 
+variable "allow_release_candidate" {
+  description = "Explicitly opt into an unstable released rc.N image for evaluation. Stable releases remain the default."
+  type        = bool
+  default     = false
+}
+
 variable "image_tag" {
   description = "Immutable ComVer host release tag (MAJOR.MINOR.0)."
   type        = string
 
   validation {
-    condition     = can(regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.0$", var.image_tag))
-    error_message = "image_tag must be a released Compatible Version in MAJOR.MINOR.0 form; mutable tags such as latest are forbidden."
+    condition = (
+      can(regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.0$", var.image_tag)) ||
+      (var.allow_release_candidate && can(regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.0-rc\\.[1-9][0-9]*$", var.image_tag)))
+    )
+    error_message = "image_tag must be a released MAJOR.MINOR.0 version; a MAJOR.MINOR.0-rc.N candidate requires allow_release_candidate=true. Mutable tags are forbidden."
   }
 }
 

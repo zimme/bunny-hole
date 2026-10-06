@@ -53,10 +53,26 @@ BREAKING CHANGE: connectors must be upgraded with the host
 
 The release workflow compares commits since the latest ComVer tag. If any breaking
 marker is present, only a new major line is accepted. Otherwise, only a higher minor
-version on the current major line is accepted. The ComVer specification permits
-`MAJOR.MINOR` notation, prereleases, and build metadata, but Bunny Hole's stable-release
-policy deliberately accepts only normal `MAJOR.MINOR.0` versions. Nonzero patches,
-suffixes, leading zeroes, downgrades, and repeated versions are rejected.
+version on the current major line is accepted. ComVer sections 8 and 10 explicitly
+permit prereleases. Bunny Hole supports its normal `MAJOR.MINOR.0` releases plus the
+narrow evaluation channel `MAJOR.MINOR.0-rc.N`, where N starts at 1 and increases by
+one. The lowercase `rc` spelling is canonical. Other prerelease labels, nonzero patches,
+build metadata, leading zeroes, downgrades, and repeated versions are rejected.
+
+Candidate ordering does not replace compatibility checks: the proposed base version must
+still satisfy the bump rules relative to the latest stable release. Promotion removes
+the suffix from that same base version; RC tags do not become the stable compatibility
+baseline. Before the first stable release, an RC can evolve without promising the stable
+public API's compatibility. Candidates are immutable GitHub prereleases, use npm's `rc`
+distribution tag, and JSR excludes them from stable resolution. They do not become
+GitHub's latest stable release. Consumer Terraform rejects candidates unless
+`allow_release_candidate=true` is deliberately configured.
+
+Every published release includes an attested `bunny-hole-deployment-VERSION.tar.gz`
+archive containing the standalone template and `release.json` with the exact commit and
+published image digests. Its public example is stamped with the matching version and
+host digest; RC deployment consent still defaults to false. Consumers need no Bunny Hole
+development toolchain to extract and configure this archive.
 
 Released versions are immutable. npm and JSR enforce immutable package versions, the
 release workflow refuses to overwrite an existing versioned OCI tag, and operators

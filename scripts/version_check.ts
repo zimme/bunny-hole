@@ -1,4 +1,4 @@
-import { parseComVer } from "./comver.ts";
+import { parseReleaseVersion } from "./comver.ts";
 
 export async function readProductVersion(): Promise<string> {
   const paths = ["packages/api/mod.ts"];
@@ -53,7 +53,7 @@ async function checkDenoVersion(): Promise<string> {
 
 if (import.meta.main) {
   const version = await readProductVersion();
-  parseComVer(version);
+  parseReleaseVersion(version);
   const denoVersion = await checkDenoVersion();
   console.log(
     `version check: ${version} is valid ComVer; Deno ${denoVersion} is consistent`,

@@ -1,14 +1,14 @@
 import {
-  assertComVerBump,
-  compareComVer,
+  assertReleaseHistory,
+  compareReleaseVersion,
   hasBreakingChange,
-  parseComVer,
+  parseReleaseVersion,
 } from "./comver.ts";
 import { output } from "./process.ts";
 import { readProductVersion } from "./version_check.ts";
 
 const tag = Deno.args[0] ?? "";
-const current = parseComVer(tag);
+const current = parseReleaseVersion(tag);
 const productVersion = await readProductVersion();
 if (tag !== productVersion) {
   throw new Error(
@@ -21,13 +21,13 @@ const tags = (await output("git", ["tag", "--merged", "HEAD", "--list"]))
   .filter((candidate) => candidate && candidate !== tag)
   .flatMap((candidate) => {
     try {
-      return [parseComVer(candidate)];
+      return [parseReleaseVersion(candidate)];
     } catch {
       return [];
     }
   })
-  .sort(compareComVer);
-const previous = tags.at(-1);
+  .sort(compareReleaseVersion);
+const previous = tags.filter((version) => version.candidate === null).at(-1);
 
 if (previous) {
   const commits = await output("git", [
@@ -36,12 +36,13 @@ if (previous) {
     "--format=%s%n%b",
   ]);
   const breaking = hasBreakingChange(commits);
-  assertComVerBump(previous, current, breaking);
+  assertReleaseHistory(current, tags, breaking);
   console.log(
     `release check: ${previous.value} -> ${tag} (${
       breaking ? "breaking" : "non-breaking"
     })`,
   );
 } else {
+  assertReleaseHistory(current, tags, false);
   console.log(`release check: ${tag} is the first ComVer release`);
 }

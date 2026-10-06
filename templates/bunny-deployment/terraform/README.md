@@ -4,7 +4,8 @@ This directory provisions the documented Bunny Hole Magic Containers shape:
 
 - one required and allowed region, one running instance, and no autoscaling;
 - one non-root Bunny Hole host container from a public GHCR image pinned by both a
-  released `MAJOR.MINOR.0` tag and a lower-case `sha256:` digest;
+  released `MAJOR.MINOR.0` tag and a lower-case `sha256:` digest (a released lowercase
+  `MAJOR.MINOR.0-rc.N` evaluation candidate requires `allow_release_candidate=true`);
 - one encrypted persistent volume at `/var/lib/bunny-hole`;
 - a public/management CDN endpoint on container TCP port `8080` and a separate connector
   CDN endpoint on TCP port `7000`;

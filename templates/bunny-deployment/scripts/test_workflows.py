@@ -180,6 +180,26 @@ esac
         self.assertNotIn("import bunnynet_pullzone.public", self.calls())
         self.assertIn("import bunnynet_pullzone.connector 102", self.calls())
 
+    def test_setup_missing_source_leaves_no_destination_and_can_retry(self):
+        backend = self.root / "terraform/backend.tf"
+        original = backend.read_text()
+        self.config.unlink()
+        self.run_script("setup", success=False)
+        self.assertFalse(self.config.exists())
+        self.assertEqual(backend.read_text(), original)
+        self.assertEqual(list((self.root / "terraform").glob(".bunny-hole-config.*")), [])
+        self.config.with_name(self.config.name + ".example").write_text('{"region":"DE"}\n')
+        self.run_script("setup")
+        self.assertEqual(self.config.read_text(), '{"region":"DE"}\n')
+
+    def test_setup_partial_read_failure_never_installs_destination(self):
+        self.config.unlink()
+        self.config.with_name(self.config.name + ".example").write_text('{}\n')
+        self.fake("cat", 'printf \'{"partial":\'; exit 1')
+        self.run_script("setup", success=False)
+        self.assertFalse(self.config.exists())
+        self.assertEqual(list((self.root / "terraform").glob(".bunny-hole-config.*")), [])
+
 
 if __name__ == "__main__":
     unittest.main()

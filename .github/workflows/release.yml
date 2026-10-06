@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   release:
-    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: release
@@ -31,10 +30,12 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          [[ "$TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.0$ ]] || {
-            echo "ComVer tags must use MAJOR.MINOR.0" >&2
+          [[ "$TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.0(-rc\.[1-9][0-9]*)?$ ]] || {
+            echo "ComVer releases use MAJOR.MINOR.0 or MAJOR.MINOR.0-rc.N" >&2
             exit 1
           }
+      - name: Require a reviewed default-branch commit
+        run: git merge-base --is-ancestor HEAD origin/main
       - uses: ./.github/actions/rootlesskit-apparmor
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
@@ -175,7 +176,20 @@ jobs:
           subject-digest: ${{ steps.connector.outputs.digest }}
           sbom-path: bunny-hole-connector-${{ github.ref_name }}.spdx.json
           push-to-registry: true
-      - name: Attest native connector binaries
+      - name: Package the version-bound deployment template
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
+        with:
+          configFile: .devcontainer/devcontainer.json
+          cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:cache
+          push: never
+          env: |
+            RELEASE_TAG
+            RELEASE_COMMIT=${{ github.sha }}
+            RELEASE_REPOSITORY=${{ github.repository }}
+            HOST_DIGEST=${{ steps.host.outputs.digest }}
+            CONNECTOR_DIGEST=${{ steps.connector.outputs.digest }}
+          runCmd: deno task release:deployment-template
+      - name: Attest connector binaries and deployment template
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: dist/release/*
@@ -208,18 +222,23 @@ jobs:
             echo "ghcr.io/${GITHUB_REPOSITORY}-connector@${CONNECTOR_DIGEST}"
             echo '```'
             echo
-            echo "The same connector library version is published as @zimme/bunny-hole on JSR and npm."
+            echo "The same connector library version is published as @zimme/bunny-hole on JSR and npm. Candidates use npm's rc channel and are not stable releases."
+            echo "The deployment archive includes the complete template and release.json with these exact image digests. Verify its GitHub artifact attestation before extraction."
           } > release-notes.md
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          gh release create "$RELEASE_TAG"
-          "bunny-hole-host-${RELEASE_TAG}.spdx.json"
-          "bunny-hole-connector-${RELEASE_TAG}.spdx.json"
-          dist/release/*
-          --verify-tag --title "Bunny Hole $RELEASE_TAG"
-          --notes-file release-notes.md
+        run: |
+          channel_flags=()
+          if [[ "$RELEASE_TAG" == *-rc.* ]]; then
+            channel_flags=(--prerelease --latest=false)
+          fi
+          gh release create "$RELEASE_TAG" \
+            "bunny-hole-host-${RELEASE_TAG}.spdx.json" \
+            "bunny-hole-connector-${RELEASE_TAG}.spdx.json" \
+            dist/release/* \
+            --verify-tag --title "Bunny Hole $RELEASE_TAG" \
+            --notes-file release-notes.md "${channel_flags[@]}"
       - name: Tear down release validation environment
         if: always()
         run: |

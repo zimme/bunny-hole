@@ -59,6 +59,15 @@ machine.
 
 ## Required change analysis
 
+The release-candidate channel is tested across canonical/malformed identifiers, sequence
+gaps, repeated/downgraded versions, stable compatibility bumps, and promotion. Terraform
+mock-provider tests enforce stable defaults and explicit candidate consent. Archive
+tests extract a real packaged consumer, run setup, and check exact release commit/digest
+bindings, private-input placeholders, hidden files, and checksums. Release publication
+still runs the full validation and the exact published-image integration before
+attesting the version-bound deployment archive. Publication and any live consumer
+operation require their respective human authorizations.
+
 Deployment template changes are checked across public input markers and invalid modes,
 missing host or adopted zones, changed plan digests or branch tips, initial/retry
 bootstrap, mismatched imported identities, and temporary-plan cleanup. Offline tests

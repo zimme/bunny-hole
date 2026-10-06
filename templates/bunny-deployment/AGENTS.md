@@ -9,7 +9,9 @@ deployment.
 - Keep exactly one required/allowed region and one host instance. Do not enable Magic
   deployment, autoscaling, multiple regions, or multiple replicas.
 - Deploy only an immutable released `MAJOR.MINOR.0` host image tag and matching
-  `sha256:` digest. Never use `latest`, a branch, or a locally built image.
+  `sha256:` digest. Never use `latest`, a branch, or a locally built image. A released
+  `MAJOR.MINOR.0-rc.N` candidate may be used only for explicitly authorized evaluation
+  with `allow_release_candidate=true`; it is not a stable release.
 - Keep the management/public endpoint on container port 8080 and the connector endpoint
   on port 7000. Disable caching on both Pull Zones and enable WebSockets only on the
   connector Pull Zone.

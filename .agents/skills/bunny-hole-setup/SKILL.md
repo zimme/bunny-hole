@@ -57,6 +57,14 @@ The skill has four modes:
 
 ## Non-negotiable deployment shape
 
+Stable `MAJOR.MINOR.0` releases remain the default. An explicitly authorized evaluation
+may use a published lowercase `MAJOR.MINOR.0-rc.N` release with its verified digest and
+consumer `allow_release_candidate=true`. ComVer permits prereleases; candidates are
+unstable and do not replace the stable compatibility baseline. Prefer the attested
+deployment archive from that exact release: it contains all consumer scripts/guidance
+and the version-bound public configuration. Verify its artifact attestation before
+extraction. RC consent must still be configured explicitly.
+
 Preserve one Bunny region, one host instance, one persistent volume, and one active
 connector per enrollment. Use an immutable, release-tested host image digest; never use
 `latest`, a branch tag, or an unreviewed local image. Expose management/public HTTP on
