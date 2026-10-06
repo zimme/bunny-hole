@@ -233,3 +233,10 @@ event, tag, and workflow identity, and credential exposure through broad or misp
 environment forwarding. Workflow validation enforces an exact forwarding allowlist, and
 a mutation witness must reject removal of the OIDC request token. No test requests an
 OIDC token or publishes to a registry.
+
+Nested Docker tests execute the real startup selector with controlled route discovery
+and daemon effects. They cover overlapping subnets and host routes, adjacent subnets,
+broad private ranges, malformed routes, and exhaustion of all candidate pools. Unsafe
+inputs must fail before starting the daemon; removing the overlap comparison must fail
+the mutation witness. Production-image integration exercises the resulting bridge and
+project networks with the actual rootless daemon.

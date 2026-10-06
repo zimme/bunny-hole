@@ -1,6 +1,14 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: ".devcontainer/docker-engine.sh",
+    before: "if (first <= end && start <= last) blocked[candidate] = 1",
+    after: "if (0) blocked[candidate] = 1",
+    test: "tests/docker_engine_test.ts",
+    witness:
+      "nested Docker selects disjoint bridges and fails before startup on invalid or exhausted routes",
+  },
+  {
     source: ".github/workflows/release.yml",
     before: "            ACTIONS_ID_TOKEN_REQUEST_TOKEN\n",
     after: "",
