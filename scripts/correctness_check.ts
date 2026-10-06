@@ -1,6 +1,13 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: "templates/bunny-deployment/scripts/deployment.sh",
+    before: 'test "$actual_plan_sha256" = "$REVIEWED_PLAN_SHA256" || {',
+    after: 'test "0" = "0" || {',
+    test: "tests/deployment_scaffold_test.ts",
+    witness: "deployment workflow guards reject unsafe effects offline",
+  },
+  {
     source: "apps/compose/docker.ts",
     before: 'labels["com.docker.compose.project"] !== project',
     after: "false",

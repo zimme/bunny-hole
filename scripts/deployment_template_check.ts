@@ -27,6 +27,11 @@ const REQUIRED_FILES = [
   "terraform/outputs.tf",
   "terraform/backend.tf.example",
   "terraform/.terraform.lock.hcl",
+  "scripts/setup.sh",
+  "scripts/verify-inputs.sh",
+  "scripts/verify-tip.sh",
+  "scripts/deployment.sh",
+  "scripts/test_workflows.py",
 ];
 
 const WORKFLOWS = ["check.yml", "plan.yml", "apply.yml"];
@@ -195,6 +200,11 @@ async function checkWorkflows(
           `${TEMPLATE_ROOT}/${rel}: check workflow must run the backend-free Terraform mock-provider tests`,
         );
       }
+      if (!/python3\s+scripts\/test_workflows\.py/.test(source)) {
+        failures.push(
+          `${TEMPLATE_ROOT}/${rel}: check workflow must run offline deployment guard tests`,
+        );
+      }
       if (/\$\{\{\s*secrets\.|\$\{\{\s*vars\.|TF_VAR_/i.test(source)) {
         failures.push(
           `${TEMPLATE_ROOT}/${rel}: check workflow must not reference secrets`,
@@ -229,16 +239,38 @@ async function checkWorkflows(
     }
     if (name === "plan.yml") {
       checkProtectedWorkflow(workflow, source, rel, failures);
-      checkMarkerGuard(source, rel, failures);
-      checkPlanWorkflow(workflow, rel, failures);
-      checkBootstrapRetryPlan(source, rel, failures);
+      const expanded = await expandWorkflowScripts(source, template, failures);
+      checkMarkerGuard(expanded, rel, failures);
+      checkPlanWorkflow(workflow, expanded, rel, failures);
+      checkBootstrapRetryPlan(expanded, rel, failures);
     }
     if (name === "apply.yml") {
       checkProtectedWorkflow(workflow, source, rel, failures);
-      checkMarkerGuard(source, rel, failures);
-      checkApplyWorkflow(source, rel, failures);
+      const expanded = await expandWorkflowScripts(source, template, failures);
+      checkMarkerGuard(expanded, rel, failures);
+      checkApplyWorkflow(expanded, rel, failures);
     }
   }
+}
+
+// Inspect the exact called scripts as well as the workflow. Preserve the existing
+// policy checks when shell logic is extracted; never treat a script call as a bypass.
+async function expandWorkflowScripts(
+  source: string,
+  template: string,
+  failures: string[],
+): Promise<string> {
+  for (const name of ["deployment", "verify-inputs", "verify-tip"]) {
+    const call = new RegExp(`bash scripts/${name}\\.sh(?: (?:plan|apply))?`, "g");
+    if (!call.test(source)) continue;
+    try {
+      const body = await Deno.readTextFile(join(template, `scripts/${name}.sh`));
+      source = source.replace(call, () => body);
+    } catch {
+      failures.push(`${TEMPLATE_ROOT}/scripts/${name}.sh: called script is unreadable`);
+    }
+  }
+  return source;
 }
 
 function checkMarkerGuard(
@@ -271,6 +303,7 @@ function checkMarkerGuard(
 
 function checkPlanWorkflow(
   workflow: Record<string, unknown>,
+  expanded: string,
   rel: string,
   failures: string[],
 ): void {
@@ -286,8 +319,10 @@ function checkPlanWorkflow(
   const run = producesPlan?.run;
   if (
     env?.OPERATION !== "${{ inputs.operation }}" || typeof run !== "string" ||
-    !run.includes('"$OPERATION"') || run.includes("${{ inputs.operation }}") ||
-    !run.includes("reviewed_plan_sha256") || !run.includes("git rev-parse HEAD")
+    run.includes("${{ inputs.operation }}") ||
+    !(run === "bash scripts/deployment.sh plan" || run.includes('"$OPERATION"')) ||
+    !/reviewed_plan_sha256|actual_plan_sha256/.test(expanded) ||
+    !expanded.includes("git rev-parse HEAD")
   ) {
     failures.push(
       `${path}: plan must safely bind its operation, commit, and canonical digest`,
@@ -450,6 +485,23 @@ function checkProtectedWorkflow(
     failures.push(`${path}: live workflow must be workflow_dispatch only`);
   }
   const jobs = workflow.jobs;
+  if (typeof jobs === "object" && jobs !== null) {
+    for (const job of Object.values(jobs)) {
+      if (typeof job !== "object" || job === null) continue;
+      const configuration = job as Record<string, unknown>;
+      if (/secrets\./.test(JSON.stringify(configuration.env ?? {}))) {
+        failures.push(`${path}: deployment credentials must be step-scoped`);
+      }
+      const steps = Array.isArray(configuration.steps) ? configuration.steps : [];
+      for (const step of steps) {
+        if (step?.name === "Initialize remote state" && step?.env?.BUNNYNET_API_KEY) {
+          failures.push(
+            `${path}: remote-state initialization must not receive the Bunny key`,
+          );
+        }
+      }
+    }
+  }
   const jobsHaveProtectedEnvironment = typeof jobs === "object" && jobs !== null &&
     Object.keys(jobs as Record<string, unknown>).length > 0 &&
     Object.values(jobs as Record<string, unknown>).every((job) =>

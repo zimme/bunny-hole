@@ -31,6 +31,8 @@
     "agents:check": "deno run --allow-read=. scripts/verify_agents.ts",
     "workflows:check": "deno run --allow-env=LOG_STREAM,LOG_TOKENS --allow-read=. scripts/workflows_check.ts",
     "deployment-template:check": "deno run --allow-env=LOG_STREAM,LOG_TOKENS --allow-read=. scripts/deployment_template_check.ts",
+    "deployment-template:guards": "python3 templates/bunny-deployment/scripts/test_workflows.py",
+    "deployment:scaffold": "deno run --allow-read=. --allow-write scripts/scaffold_deployment.ts",
     "deployment-template:terraform": "deno run --allow-env --allow-net=registry.terraform.io,releases.hashicorp.com --allow-read=templates/bunny-deployment --allow-run=terraform --allow-write=/tmp scripts/terraform_template_validate.ts",
     "version:check": "deno run --allow-read=. scripts/version_check.ts",
     "package:check": "deno run --allow-env --allow-net=127.0.0.1 --allow-read=.,/tmp --allow-run=deno,npm,node,tar --allow-write=/tmp scripts/verify_package.ts",

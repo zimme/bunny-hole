@@ -7,6 +7,13 @@ publish a documented repository schema that creates a complete Magic Container
 application, both CDN policies, custom hostnames, TLS, and DNS from a dashboard “deploy
 from repository” flow.
 
+Run `deno task deployment:scaffold ../my-bunny-deployment` from a Bunny Hole checkout to
+copy the entire checked template, including hidden workflows, agent guidance, shared
+deployment scripts, and offline guard tests. It refuses an existing destination. In the
+new directory, `bash scripts/setup.sh` creates the two public configuration files
+without overwriting edits. Configure those files, then follow the template's protected
+plan/review/apply procedure; scaffolding performs no live operation.
+
 The template uses Terraform 1.16.2 and `BunnyWay/bunnynet` 0.18.2 because the official
 provider exposes the required application, Pull Zone, hostname, managed-TLS, and Bunny
 DNS resources. It consumes the already published host image; it does not rebuild this

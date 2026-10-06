@@ -59,6 +59,16 @@ machine.
 
 ## Required change analysis
 
+Deployment template changes are checked across public input markers and invalid modes,
+missing host or adopted zones, changed plan digests or branch tips, initial/retry
+bootstrap, mismatched imported identities, and temporary-plan cleanup. Offline tests
+replace Terraform and GitHub commands with fakes and assert which effects occur. A
+mutation witness bypasses the reviewed-plan digest guard and must be rejected. Scaffold
+tests copy the real template, run setup outside its directory, and prove existing public
+configuration is preserved. Live jobs serialize through the same concurrency group;
+their branch-tip check is a point-in-time guard, so branch protection and a quiet apply
+window remain necessary. Private backups and real restore acceptance stay human-owned.
+
 Before implementing a protocol, authorization, persistence, or lifecycle change, record
 the affected invariant and enumerate inputs/events in the PR description or task notes:
 

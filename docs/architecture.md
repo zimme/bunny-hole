@@ -167,8 +167,13 @@ deduplication, failure recovery, and handover. Bunny's per-pod volumes are not s
 between replicas. Until that design is implemented and fault-tested, scaling remains
 fixed at one.
 
-Rolling updates can briefly overlap pods, so plan a maintenance window and verify that
-exactly one healthy instance remains. Bunny Hole makes no zero-downtime failover claim.
+[Volume-backed rolling updates](https://bunny.net/docs/magic-containers/rolling-updates)
+stop the old pod before starting its replacement, so this single host has update
+downtime.
+[Persistent volumes](https://bunny.net/docs/magic-containers/persistent-volumes) are
+node-bound, with no automatic backups or replication. A disk replacement can lose their
+contents; private application-consistent backup and tested restoration of identity and
+SQLite state remain operator prerequisites.
 
 ## Deliberate future boundaries
 

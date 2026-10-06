@@ -3,9 +3,10 @@
 Deno 2.9.5 is the only task runner and is also the compiler, dependency manager,
 formatter, linter, test runner, coverage tool, and build tool. Terraform 1.16.2 exists
 only to validate the copyable consumer deployment configuration against its pinned
-provider. Node 24.13.1 and npm 11.8.0 exist in the development image only for GitHub
-Copilot CLI, Dev Container tooling, and validating the actual npm package. There are no
-npm task wrappers or repository `package.json`.
+provider. Python's standard library runs the consumer template's offline workflow guard
+tests; Deno remains the task runner. Node 24.13.1 and npm 11.8.0 exist in the
+development image only for GitHub Copilot CLI, Dev Container tooling, and validating the
+actual npm package. There are no npm task wrappers or repository `package.json`.
 
 ## Compose-native toolchain
 

@@ -375,6 +375,11 @@ async function writeFixture(root: string): Promise<void> {
     "terraform/tfvars.example":
       'region = "de"\nhost_image_digest = "sha256:replace-with-64-hex-digest"',
     "terraform/.terraform.lock.hcl": "# reviewed provider lock file",
+    "scripts/setup.sh": "# fixture setup",
+    "scripts/verify-inputs.sh": "# fixture guard",
+    "scripts/verify-tip.sh": "# fixture guard",
+    "scripts/deployment.sh": "# fixture workflow",
+    "scripts/test_workflows.py": "# fixture offline tests",
     ".github/workflows/check.yml":
       `name: Check\non:\n  pull_request:\n  push:\njobs:\n  check:\n    steps:\n      - uses: ./local-action\n      - name: Run mock-provider regression tests\n        run: terraform -chdir=terraform test -no-color\n      - name: Scan serialized private keys\n        run: |\n          if matched_files="$(git grep -IlE '(gh[oprsu]|github_pat)_[A-Za-z0-9_]{20,}|privateKey scan pattern {43}')"; then\n            printf '%s\\n' "$matched_files"\n            exit 1\n          else\n            grep_status=$?\n            if (( grep_status != 1 )); then\n              echo 'Credential scan failed; refusing to continue.' >&2\n              exit "$grep_status"\n            fi\n          fi\n`,
     ".github/workflows/plan.yml":
@@ -486,6 +491,13 @@ async function writeFixture(root: string): Promise<void> {
   await Deno.writeTextFile(
     applyPath,
     `${await Deno.readTextFile(applyPath)}\n${adoptionFixture}\n`,
+  );
+  const checkPath = `${template}/.github/workflows/check.yml`;
+  await Deno.writeTextFile(
+    checkPath,
+    `${await Deno.readTextFile(
+      checkPath,
+    )}\n      - name: Offline deployment guards\n        run: python3 scripts/test_workflows.py\n`,
   );
   assert((await Deno.readTextFile(`${template}/README.md`)).includes("WSS"));
 }

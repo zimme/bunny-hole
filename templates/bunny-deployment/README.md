@@ -5,6 +5,12 @@ its configuration reviewable in Git. It is a GitHub repository template, not a B
 dashboard-catalog template. It references the upstream host OCI image by both an
 immutable ComVer tag and matching digest; it does not rebuild Bunny Hole.
 
+Start with two public configuration files, then use **Plan deployment** and **Apply
+deployment**. Both workflows call the same `scripts/deployment.sh`; the copied
+repository includes offline guard tests. No push triggers a live deployment. Private
+backend and environment protections, release verification, and staged approvals remain
+required.
+
 The resulting topology is deliberately fixed:
 
 ```mermaid
@@ -36,8 +42,11 @@ Bunny-managed TLS, and optional linked records in an existing Bunny DNS zone.
 ## 1. Create the repository
 
 Copy this directory into a new private repository. Keep `AGENTS.md`, the setup skill,
-workflows, provider lockfile, and Terraform files together. Protect `main`, require the
-`Check deployment` workflow, and require pull requests for changes.
+workflows, scripts, provider lockfile, and Terraform files together. From a Bunny Hole
+checkout, `deno task deployment:scaffold ../my-bunny-deployment` copies the complete
+validated template into a new directory and refuses an existing destination. Protect the
+consumer's default branch, require the `Check deployment` workflow, and require pull
+requests for changes.
 
 An AI agent may customize public configuration and run offline checks, but it must read
 `AGENTS.md` and `.agents/skills/bunny-hole-setup/SKILL.md` first. Never paste a Bunny
@@ -63,25 +72,26 @@ Do not use a branch image, `latest`, or an unreviewed local build.
 Copy and commit the two non-secret configuration files:
 
 ```sh
-cp terraform/backend.tf.example terraform/backend.tf
-cp terraform/deployment.auto.tfvars.json.example \
-  terraform/deployment.auto.tfvars.json
+bash scripts/setup.sh
 ```
 
-Replace the backend and other general `REPLACE_WITH` markers, but retain the four
-`REPLACE_WITH_BOOTSTRAP_*` Pull Zone ID/name sentinels until the protected bootstrap
-workflow records the generated values. Then commit `deployment.auto.tfvars.json`: it
-contains public configuration only and the protected workflows require this file to be
-present in the repository. Keep local overrides such as `terraform.tfvars` untracked.
-Before `terraform init`, create/select the HCP Terraform workspace and verify in its
-Settings that **Execution mode is Local** (not Remote or Agent). This is a required
-prerequisite because the workflows run Terraform locally with saved plan files and
-environment credentials while HCP provides encrypted, locked remote state. Saved-plan
-generation fails closed if the workspace is not configured for local execution. The
-`cloud` backend cannot encode that workspace setting. Other secure remote backends are
-possible, but adapt the workflow credential mapping and retain encryption, locking,
-access control, and backup. Never use local state in shared automation or GitHub
-caches/artifacts for state.
+The helper creates only missing files and preserves existing configuration. Supply your
+backend organization/workspace and the deployment's application name, region, exact
+hostnames, verified release version/digest, and owner public key. The other deployment
+settings have conservative defaults. Replace general `REPLACE_WITH` markers, but retain
+the four `REPLACE_WITH_BOOTSTRAP_*` Pull Zone ID/name sentinels until the protected
+bootstrap workflow records the generated values. Then commit
+`deployment.auto.tfvars.json`: it contains public configuration only and the protected
+workflows require this file to be present in the repository. Keep local overrides such
+as `terraform.tfvars` untracked. Before `terraform init`, create/select the HCP
+Terraform workspace and verify in its Settings that **Execution mode is Local** (not
+Remote or Agent). This is a required prerequisite because the workflows run Terraform
+locally with saved plan files and environment credentials while HCP provides encrypted,
+locked remote state. Saved-plan generation fails closed if the workspace is not
+configured for local execution. The `cloud` backend cannot encode that workspace
+setting. Other secure remote backends are possible, but adapt the workflow credential
+mapping and retain encryption, locking, access control, and backup. Never use local
+state in shared automation or GitHub caches/artifacts for state.
 
 The deployment variables contain only public configuration: region, hostnames, owner
 public key, release version/digest, connector WebSocket capacity, and optional existing
@@ -116,6 +126,7 @@ Pull requests and ordinary pushes run only backend-free checks:
 terraform -chdir=terraform fmt -check -recursive
 terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
 terraform -chdir=terraform validate -no-color
+python3 scripts/test_workflows.py
 ```
 
 They receive no Bunny or backend secrets. Every action and provider is pinned. Review
@@ -188,6 +199,19 @@ URLs/hostnames, region, ComVer, digest, resource IDs, generated Pull Zone names/
 domains, and pending manual checks. It must never contain state or credentials.
 
 ## Operations
+
+The application volume and encrypted Terraform backend protect different state.
+[Bunny volumes](https://bunny.net/docs/magic-containers/persistent-volumes) are
+node-bound and provide no automatic backup or replication; disk replacement can lose
+their data. Before production, arrange private application-consistent backups and test
+restoration of the host identity and SQLite state together. Keep backup contents, keys,
+and data out of Git, agents, and workflow artifacts; record only a sanitized restoration
+result.
+
+[Volume-backed updates](https://bunny.net/docs/magic-containers/rolling-updates) stop
+the old pod first. Schedule downtime and verify connector reconnection. Keep region and
+volume identity stable. During a node outage, preserve the volume and wait for recovery
+or use a separately reviewed private restore procedure.
 
 - Update by changing both the ComVer tag and matching digest in a pull request,
   reviewing the plan, and using the protected apply workflow. Expect the single host and

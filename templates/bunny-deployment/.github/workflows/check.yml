@@ -35,6 +35,10 @@ jobs:
         run: terraform -chdir=terraform validate -no-color
       - name: Run mock-provider regression tests
         run: terraform -chdir=terraform test -no-color
+      - name: Test offline workflow guards
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+          python3 scripts/test_workflows.py
       - name: Reject generated or secret-bearing files
         shell: bash
         run: |
