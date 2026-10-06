@@ -221,3 +221,9 @@ The Compose controller entrypoint accepts only environment configuration, reject
 arguments and invalid project names, and owns signal registration/removal. Entrypoint
 tests cover startup failure, configuration defaults, exception cleanup, and bounded
 shutdown. The user-facing CLI rejects every removed Compose subcommand.
+
+Release ordering reads all canonical release tags, including tags on descendant or
+divergent commits. The stable compatibility baseline must be an ancestor of the release
+commit before its commit range is evaluated. A temporary Git repository test checks
+valid candidates, a late candidate after stable publication, and a divergent
+compatibility baseline.

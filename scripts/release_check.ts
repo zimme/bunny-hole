@@ -16,7 +16,7 @@ if (tag !== productVersion) {
   );
 }
 
-const tags = (await output("git", ["tag", "--merged", "HEAD", "--list"]))
+const tags = (await output("git", ["tag", "--list"]))
   .split("\n")
   .filter((candidate) => candidate && candidate !== tag)
   .flatMap((candidate) => {
@@ -27,9 +27,18 @@ const tags = (await output("git", ["tag", "--merged", "HEAD", "--list"]))
     }
   })
   .sort(compareReleaseVersion);
+const latest = tags.at(-1);
+if (latest && compareReleaseVersion(current, latest) <= 0) {
+  throw new Error("release version must increase across all release tags");
+}
 const previous = tags.filter((version) => version.candidate === null).at(-1);
 
 if (previous) {
+  try {
+    await output("git", ["merge-base", "--is-ancestor", previous.value, "HEAD"]);
+  } catch (cause) {
+    throw new Error("latest stable release must be an ancestor of HEAD", { cause });
+  }
   const commits = await output("git", [
     "log",
     `${previous.value}..HEAD`,
