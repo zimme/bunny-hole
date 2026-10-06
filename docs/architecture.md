@@ -12,13 +12,26 @@ Native connector bundles contain `bunny-hole` and `frpc`.
 
 ```mermaid
 flowchart LR
-  U[HTTP client] --> C[Bunny CDN<br/>TLS, custom hostnames, no cache]
-  C --> H[Deno host :8080<br/>exact routing and policy]
-  H --> V[frps HTTP vhost :9080]
-  V <==>|FRP 0.70.1 over outbound WSS| F[frpc connector]
-  F --> O[configured HTTP or HTTPS origin]
-  A[CLI / Compose / Gateway API] --> H
+  Viewer["HTTP viewer"] --> Public["Public / management CDN<br/>HTTPS :443, no cache"]
+  Admin["CLI or route controller"] -->|HTTPS control API| Public
+  subgraph Magic["One region, one Magic Container instance"]
+    Host["Deno host :8080<br/>Exact-host routing and policy"] --> Vhost["frps HTTP virtual host<br/>Loopback :9080"]
+    Vhost --- Frps["frps connector listener :7000"]
+    Frps -->|Loopback authorization plugin| Host
+    Host --- State["Persistent identity and SQLite state"]
+  end
+  Public --> Host
+  Frps <--> Edge["Connector CDN<br/>WSS :443, no cache"]
+  subgraph Local["Device or cluster"]
+    Frpc["frpc connector"] --> Origin["Fixed HTTP or HTTPS origin"]
+  end
+  Edge <--> Frpc
 ```
+
+The connector initiates WSS to the connector CDN; the bidirectional edges show the
+resulting tunnel, not an inbound connection to the device. The CDN terminates TLS and
+forwards the WebSocket stream to container port 7000. Viewer requests enter port 8080
+and reach only the selected FRP HTTP virtual host.
 
 Use two CDN-facing hostnames/endpoints:
 

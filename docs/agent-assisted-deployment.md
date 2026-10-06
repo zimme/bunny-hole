@@ -29,6 +29,23 @@ does not create those protections.
 
 ## A safe staged session
 
+```mermaid
+flowchart LR
+  subgraph Agent["Agent-visible work"]
+    Draft["Public configuration and offline checks"] --> Review["Review proposed changes and sanitized plan summary"]
+    Safe["Record public IDs, digests, hostnames, and verified health"]
+  end
+  subgraph Human["Human-controlled private steps"]
+    Approve["Approve the exact operation"] --> Execute["Use protected workflow or private terminal"]
+  end
+  Review --> Approve
+  Execute -->|Sanitized results only| Safe
+  Safe -->|Next stage needs its own review| Review
+```
+
+Credentials, state, binary plans, and private enrollment material stay out of the
+agent-visible path. Each live stage requires the documented explicit approval.
+
 1. **Prepare public inputs.** Provide the released `MAJOR.MINOR.0` version, tested image
    digest, region, app name, management and connector hostnames, exact route hostnames,
    local origin summary, DNS ownership, and Terraform/dashboard preference.

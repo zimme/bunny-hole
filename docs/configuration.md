@@ -129,6 +129,29 @@ permission for arbitrary destinations.
 
 ## Compose discovery
 
+```mermaid
+flowchart TD
+  Tick["Poll one Compose project"] --> Read["Filtered container-list GET"]
+  Read --> Validate["Validate labels, project scope, and credentials"]
+  Validate --> Reconcile["Create or replace desired routes<br/>Delete stale compose- routes; preserve manual routes"]
+  Reconcile --> Compare{"Desired routes and live connector?"}
+  Compare -->|Unchanged| Keep["Keep healthy connector"]
+  Compare -->|Changed or exited| Restart["Await old child cleanup<br/>Start connector with fresh session"]
+  Compare -->|No desired routes| Stop["Stop and await owned child"]
+  Read -->|Discovery error| Fail["Stop and await all owned children"]
+  Validate -->|Invalid declaration or credentials| Fail
+  Reconcile -->|Control API error| Fail
+  Keep --> Wait["Wait five seconds, unless shutting down"]
+  Restart --> Wait
+  Stop --> Wait
+  Fail --> Wait
+  Wait --> Tick
+```
+
+Shutdown interrupts requests and awaits child cleanup. Stopping the controller leaves
+durable routes intact; removing application labels or stopping an application removes
+its managed routes on the next successful reconciliation.
+
 Compose is managed exclusively by the in-stack controller. Select
 `/usr/local/bin/bunny-hole-compose` as the connector image's entrypoint with an empty
 `command`, set `BUNNY_HOLE_COMPOSE_PROJECT` to the exact Compose project name, and set
@@ -180,8 +203,8 @@ The [complete service example](../examples/compose/compose.yaml) starts with ord
 URL, and a pre-approved mode-`0600` credential file readable by the configured non-root
 UID. Local Compose file-backed secrets do not enforce Unix ownership/mode overrides;
 keep credentials in the protected read-only directory instead. The dedicated controller
-entrypoint requires an image built from this change or the next major release; the
-existing 1.0.0 image does not include it.
+entrypoint requires an image built from the current source or a published release that
+includes the dedicated controller binary. Source changes alone do not publish an image.
 
 Migration: remove `bunny-hole compose plan|sync|up` invocations and
 `BUNNY_HOLE_COMPOSE_COMMAND`. Add the controller service from the example and replace
@@ -198,6 +221,25 @@ labeled services have their stale `compose-` routes removed. This also respects 
 one-active-connector limit per enrollment.
 
 ## Kubernetes GitOps
+
+```mermaid
+flowchart LR
+  Hosts["BunnyHoleHost<br/>In credentials namespace"] --> Identity["Referenced credential Secret"]
+  Gateway["Gateway listener"] --> Attach["HTTPRoute attachment<br/>allowedRoutes and parentRefs"]
+  Routes["HTTPRoute"] --> Attach
+  Attach --> Backend["Named Service backend"]
+  Grants["ReferenceGrant"] -.->|Required for cross-namespace delegation| Attach
+  Grants -.->|Required for cross-namespace backend| Backend
+  Hosts --> Policy["Validate host, attachment, and backend policy"]
+  Identity --> Policy
+  Attach --> Policy
+  Backend --> Policy
+  Policy --> Sync["Reconcile k8s- routes<br/>Preserve manual routes"]
+  Sync --> Connector["One owned connector per enrollment"]
+```
+
+A Gateway outside the credentials namespace also needs a ReferenceGrant to its exact
+BunnyHoleHost. Invalid policy suspends the affected host rather than broadening access.
 
 Install the checked-in manifests with the standard Gateway API CRDs. A `BunnyHoleHost`
 names a pre-registered host and references a Secret containing the credential file

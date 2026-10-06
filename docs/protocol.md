@@ -32,10 +32,18 @@ a tunneled origin.
 
 ## Enrollment state machine
 
-```text
-new public key → pending (15 minutes) → active → revoked
-                         expiry ────────┘
+```mermaid
+stateDiagram-v2
+  [*] --> Pending: Enroll a public key
+  Pending --> Active: Owner approves an explicit grant
+  Pending --> Revoked: Owner revokes
+  Pending --> [*]: Expiry cleanup after 15 minutes
+  Active --> Revoked: Owner revokes
+  Revoked --> [*]: Owner explicitly purges
 ```
+
+Revocation is terminal for that enrollment. Expiry and purge remove records; a later
+enrollment is a new identity record and requires approval again.
 
 1. A device or cluster generates an Ed25519 pair locally.
 2. `POST /api/v1/enrollments` sends its name, kind, and public key.
@@ -63,6 +71,27 @@ Registration flows require an owner signature. Approval flows bind one pending
 enrollment and its canonical grant before authentication.
 
 ## Session authentication
+
+```mermaid
+sequenceDiagram
+  participant C as Connector
+  participant H as Host control API
+  participant E as Connector CDN
+  participant F as frps
+  Note over C,H: HTTPS control traffic uses the management CDN endpoint
+  C->>H: Request one-use challenge for active enrollment
+  H-->>C: Challenge with 60-second lifetime
+  C->>H: Sign enrollment and challenge with device key
+  H->>H: Consume challenge and verify proof
+  H-->>C: Routes, pinned descriptor, five-minute admission token
+  C->>E: Initiate outbound WSS connection
+  E->>F: Forward WebSocket stream to port 7000
+  F->>H: Loopback Login authorization with admission token
+  H->>H: Verify active enrollment and record newest admitted session
+  H-->>F: Authorize login
+  F-->>E: Admitted FRP session
+  E-->>C: Admitted FRP session
+```
 
 1. `POST /api/v1/session/challenge` requests a challenge for an active enrollment.
 2. The host stores a random 192-bit challenge for 60 seconds.

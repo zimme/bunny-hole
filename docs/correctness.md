@@ -8,11 +8,32 @@ Repository settings and actual production configuration require operator verific
 
 ## Patterns used now
 
+The CLI connector supervisor has explicit states and rejects illegal transitions:
+
+```mermaid
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Authenticating: Start
+  Authenticating --> Running: Session authenticated
+  Authenticating --> Backoff: Authentication or startup failed
+  Running --> Backoff: Connector exited or failed
+  Backoff --> Authenticating: Retry after bounded delay
+  Idle --> Stopped: Stop
+  Authenticating --> Stopped: Stop
+  Running --> Stopped: Stop
+  Backoff --> Stopped: Stop
+  Stopped --> [*]
+```
+
+The Compose and Kubernetes controllers own their own reconciliation and child-cleanup
+loops; this diagram describes the CLI supervisor, not a universal controller state
+machine.
+
 - **Explicit transitions:** the connector supervisor owns an enumerated state/event
   table. Adding a state or event fails compilation until every pair explicitly accepts
   or rejects it. Every state/event pair is tested, including rejected transitions and
-  terminal cancellation. CLI and Compose share its acquisition, process ownership, and
-  backoff.
+  terminal cancellation. The CLI uses this supervisor; Compose and Kubernetes use their
+  own reconciliation loops with awaited child cleanup.
 - **Durable invariants:** SQLite guards enrollment transitions, expiry shape, unique
   hostnames, foreign keys, and atomic challenge consumption. Revocation cannot return an
   existing enrollment to active. Tests enumerate all 64 six-operation

@@ -32,6 +32,20 @@ DNS zone; the template never creates a zone or changes nameservers.
 
 ## Why bootstrap is a reviewed transaction
 
+```mermaid
+flowchart TD
+  Prepare["Public inputs and offline validation"] --> Plan["Review bootstrap commit and plan digest"]
+  Plan --> Bootstrap["Approve bootstrap apply<br/>Create app and import generated Pull Zones"]
+  Bootstrap --> Record["Commit actual Pull Zone IDs and names"]
+  Record --> Policy["Review and approve policy / DNS plan<br/>Hostname TLS disabled"]
+  Policy --> DNS["Publish and verify DNS propagation"]
+  DNS --> TLS["Review and approve separate hostname / TLS plan"]
+  TLS --> Verify["Verify probes, WSS, exact routes, and no cache"]
+  Plan -.->|Commit or plan digest changed| Halt["Stop and review a new plan"]
+  Policy -.->|Commit or plan digest changed| Halt
+  TLS -.->|Commit or plan digest changed| Halt
+```
+
 A CDN endpoint nested in `bunnynet_compute_container_app` causes Magic Containers to
 create its Pull Zone. Terraform cannot declare the same zone independently before it
 exists without proposing a duplicate. The protected workflow therefore:

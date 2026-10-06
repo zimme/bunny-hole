@@ -7,13 +7,25 @@ immutable ComVer tag and matching digest; it does not rebuild Bunny Hole.
 
 The resulting topology is deliberately fixed:
 
-```text
-public HTTPS hostname ─┐
-management HTTPS host ─┼─ Bunny CDN :443 → host :8080
-connector WSS hostname ┘  Bunny CDN :443 → host :7000
-                                              │
-                                     one region / one instance
+```mermaid
+flowchart LR
+  Public["Exact public HTTPS hostname"] --> HTTP["Public / management CDN :443<br/>No cache"]
+  Management["Management HTTPS hostname"] --> HTTP
+  Connector["Outbound connector WSS"] <--> WSS["Connector CDN :443<br/>WebSockets enabled, no cache"]
+  subgraph App["One region, one Magic Container instance"]
+    Host["Bunny Hole host :8080"]
+    Relay["frps :7000"]
+    Volume["One persistent state volume"]
+    Host --- Volume
+    Relay -->|Loopback authorization plugin| Host
+    Host -->|Loopback HTTP virtual host| Relay
+  end
+  HTTP --> Host
+  WSS <--> Relay
 ```
+
+The connector initiates its outbound WSS connection. The diagram's bidirectional edges
+represent transport over that established session; no inbound connector port is needed.
 
 Terraform provisions the application, one persistent volume, the host container, health
 probes, and two CDN endpoints. Magic Containers creates a Pull Zone for each endpoint. A

@@ -7,10 +7,21 @@ It combines Bunny CDN and one Bunny Magic Container with a local connector that 
 the only long-lived outbound connection. No inbound port forwarding, public IP, UPnP,
 VPN, or Edge Script is required.
 
-```text
-viewer → Bunny CDN → Bunny Hole host → frps ══ outbound WSS ══ frpc → HTTP service
-                         Magic Container                 connector
+```mermaid
+flowchart LR
+  Viewer["HTTP viewer"] --> Public["Bunny CDN<br/>Public HTTPS endpoint"]
+  subgraph Host["One Magic Container instance"]
+    Ingress["Bunny Hole host<br/>Exact-host routing :8080"] --> Relay["frps"]
+  end
+  Public --> Ingress
+  Relay <--> Edge["Bunny CDN<br/>Connector WSS endpoint"]
+  Edge <--> Client["Local frpc connector"]
+  Client --> Origin["Configured HTTP or HTTPS service"]
 ```
+
+The connector initiates the outbound WSS connection; requests and responses use that
+established tunnel. The two CDN endpoints separate viewer traffic from connector
+transport.
 
 The Deno host owns enrollment, exact-host routing, header policy, and the FRP
 authorization plugin. Pinned, checksum-verified [FRP](https://github.com/fatedier/frp)
@@ -26,8 +37,9 @@ region, one Magic Container instance, and one active connector per enrollment.
 - A first-use CLI wizard, named hosts, per-host Ed25519 device keys, passkey approval,
   an offline owner recovery key, bounded reconnect backoff, native bundles, and a
   non-root connector OCI image.
-- Compose labels for services published on loopback ports, and a GitOps-ready Kubernetes
-  Gateway API controller using `Gateway`, `HTTPRoute`, and `ReferenceGrant`.
+- Compose labels for services on an explicitly allowed private network, and a
+  GitOps-ready Kubernetes Gateway API controller using `Gateway`, `HTTPRoute`, and
+  `ReferenceGrant`.
 - One cluster connected to several Bunny Hole hosts and one host enrolling many devices
   or clusters.
 - A TypeScript control library distributed as `@zimme/bunny-hole` on JSR and npm.
