@@ -37,6 +37,14 @@ application/protocol code or substitute an unpublished image.
 
 ## Credential boundary
 
+Stable `MAJOR.MINOR.0` releases remain the default. An explicitly authorized RC
+evaluation may use a published lowercase `MAJOR.MINOR.0-rc.N` release with matching
+verified digest and `allow_release_candidate=true`. A release deployment archive
+includes the exact public version/digest and `release.json`; verify its GitHub artifact
+attestation before extraction, then run `bash scripts/setup.sh`. RC consent remains
+false until deliberately configured. Never infer deployment readiness from a candidate
+tag or from public configuration alone.
+
 Never ask for, read, display, store, transform, or handle a Bunny API key, HCP/backend
 credential, registry token, owner private key, passkey response, connector config,
 device key, Kubernetes Secret, session token, raw Terraform state, or binary plan. Do

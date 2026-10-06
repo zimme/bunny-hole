@@ -100,7 +100,9 @@ environment variables select the pipeline.
   specification and the public API declared in `docs/versioning.md`. Use
   `MAJOR.MINOR.0`: breaking changes, including breaking bug fixes, require a major bump;
   every backwards-compatible release requires a minor bump. The patch component is
-  always zero, and released versions are immutable.
+  always zero, and released versions are immutable. Explicitly authorized evaluation
+  releases may use the documented lowercase `MAJOR.MINOR.0-rc.N` channel. Stable
+  consumer deployment remains the default; RC use requires explicit opt-in.
 
 Copilot setup uses the same Dev Container as CI and installs frozen dependencies. In a
 Copilot session, run commands with `docker compose exec -T --user vscode development`;

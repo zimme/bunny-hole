@@ -173,8 +173,15 @@ Each immutable `MAJOR.MINOR.0` release publishes:
 
 - `ghcr.io/zimme/bunny-hole-host` for Magic Containers;
 - `ghcr.io/zimme/bunny-hole-connector` for devices and Kubernetes;
-- native bundles containing matching `bunny-hole` and `frpc` executables; and
+- native bundles containing matching `bunny-hole` and `frpc` executables;
+- an attested standalone deployment-template archive with exact image digests; and
 - `@zimme/bunny-hole` for Deno, JSR, and npm consumers.
+
+The explicit `MAJOR.MINOR.0-rc.N` evaluation channel publishes the same versioned
+artifacts as GitHub prereleases and npm's `rc` tag. Stable selection remains the
+default; candidate deployments require explicit consent. See
+[versioning](docs/versioning.md) and the
+[release-archive setup path](docs/deployment-template.md).
 
 FRP 0.70.1 is included in the OCI images and native bundles; the library generates the
 validated profile but does not pretend FRP is a TypeScript library. See

@@ -172,3 +172,7 @@ and remove its local secret state in the private terminal. Destruction is a sepa
 explicit approval and must include a backup/retention decision for the persistent volume
 and a warning that it removes identity, enrollments, passkeys, grants, routes, and audit
 history.
+
+For explicit RC evaluation, use the canonical lowercase MAJOR.MINOR.0-rc.N release,
+verify the attested deployment archive and pinned host digest, and set
+`allow_release_candidate=true`. Stable release use remains the default.

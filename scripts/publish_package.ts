@@ -1,6 +1,7 @@
 import { buildNpmPackage } from "./build_npm_package.ts";
 import { run } from "./process.ts";
 import { readProductVersion } from "./version_check.ts";
+import { npmReleaseChannel } from "./comver.ts";
 
 const version = Deno.env.get("RELEASE_TAG")?.trim();
 if (!version || version !== await readProductVersion()) {
@@ -19,7 +20,15 @@ if (jsrVersionExists) {
 } else await run("deno", ["publish"]);
 if (!npmVersionExists) {
   const artifact = await buildNpmPackage("dist/npm");
-  await run("npm", ["publish", "--access", "public", "--provenance", artifact]);
+  await run("npm", [
+    "publish",
+    "--access",
+    "public",
+    "--provenance",
+    "--tag",
+    npmReleaseChannel(version),
+    artifact,
+  ]);
 } else console.log(`npm @zimme/bunny-hole@${version} already exists; skipping`);
 
 async function versionExists(url: string): Promise<boolean> {

@@ -30,7 +30,8 @@ implementation and approves each external action.
 
 ## Operator review
 
-- The selected image is an immutable, tested ComVer `MAJOR.MINOR.0` digest with
+- The selected image is an immutable, tested ComVer `MAJOR.MINOR.0` digest (or an
+  explicitly authorized published `MAJOR.MINOR.0-rc.N` candidate with RC opt-in) with
   provenance/SBOM evidence and the architecture is supported.
 - Region and replicas are both fixed at one. There is one durable volume mounted at
   `/var/lib/bunny-hole`; the operator understands rolling replacement drops live

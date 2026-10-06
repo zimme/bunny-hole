@@ -12,6 +12,11 @@ concurrency:
 permissions:
   contents: read
 
+# The Dev Container Dockerfile is generated outside the checkout. Use Compose
+# directly so Bake does not reject those generated paths.
+env:
+  COMPOSE_BAKE: "false"
+
 jobs:
   validate:
     runs-on: ubuntu-latest
