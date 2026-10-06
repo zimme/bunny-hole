@@ -2,11 +2,14 @@ import { buildNpmPackage } from "./build_npm_package.ts";
 import { run } from "./process.ts";
 import { readProductVersion } from "./version_check.ts";
 import { npmReleaseChannel } from "./comver.ts";
+import { assertPublicationContext } from "./publication_context.ts";
 
 const version = Deno.env.get("RELEASE_TAG")?.trim();
 if (!version || version !== await readProductVersion()) {
   throw new Error("RELEASE_TAG must match the product version");
 }
+// Check before registry requests or publication can create partial release effects.
+assertPublicationContext(version, (name) => Deno.env.get(name));
 
 const jsrUrl = `https://jsr.io/@zimme/bunny-hole/${version}/meta.json`;
 const jsrVersionExists = await versionExists(jsrUrl);

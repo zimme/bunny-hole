@@ -47,6 +47,8 @@ services:
       BUNNY_HOLE_BIND_ADDRESS: "0.0.0.0"
       BUNNY_HOLE_TEST_HOST: docker-engine
       CI:
+      # Match the runner builder and serialize Compose service builds.
+      COMPOSE_BAKE: "false"
       DENO_DIR: /deno-dir
       DENO_NO_PROMPT: "1"
       DENO_NO_UPDATE_CHECK: "1"

@@ -110,7 +110,9 @@ uses one Docker engine call at a time on the hosted runner. A local agent can st
 service directly with Compose, without running either GitHub workflow. The workflows set
 `COMPOSE_BAKE=false` on the runner because the Dev Container CLI generates its
 Dockerfile outside the checkout, which Bake refuses without additional filesystem
-entitlements. The normal Compose builder uses the same Dockerfile and toolchain.
+entitlements. The development service also disables Bake, so nested builds use the same
+Compose builder and honor its service-build parallelism limit instead of a separate Bake
+execution path. The Dockerfile and pinned toolchain stay the same.
 
 On failure, CI and Copilot setup run `bash .devcontainer/diagnose.sh` before cleanup.
 The script collects host memory and disk availability, container exit and out-of-memory

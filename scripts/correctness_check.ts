@@ -1,6 +1,14 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: ".github/workflows/release.yml",
+    before: "            ACTIONS_ID_TOKEN_REQUEST_TOKEN\n",
+    after: "",
+    test: "tests/publication_context_test.ts",
+    witness:
+      "release forwarding supplies publisher context without exposing runner credentials elsewhere",
+  },
+  {
     source: "templates/bunny-deployment/scripts/setup.sh",
     before: 'cat "$destination.example" > "$temporary"',
     after: 'cat "$destination.example" > "$destination"',
