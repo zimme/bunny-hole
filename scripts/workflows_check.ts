@@ -1,4 +1,5 @@
 import { parseDocument } from "npm:yaml@2.9.0";
+import { publicationStepFailures } from "./publication_context.ts";
 
 const failures: string[] = [];
 for await (const entry of Deno.readDir(".github/workflows")) {
@@ -19,6 +20,11 @@ function inspect(value: unknown, path: string): void {
     return;
   }
   if (typeof value !== "object" || value === null) return;
+  failures.push(
+    ...publicationStepFailures(value as Record<string, unknown>).map(
+      (failure) => `${path}: ${failure}`,
+    ),
+  );
   for (const [key, child] of Object.entries(value)) {
     if (
       key === "uses" && typeof child === "string" && !child.startsWith("./") &&

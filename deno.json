@@ -40,7 +40,7 @@
     "release:check": "deno run --allow-read=. --allow-run=git scripts/release_check.ts",
     "release:artifacts": "deno run --allow-net=github.com,objects.githubusercontent.com,release-assets.githubusercontent.com,curl.se,www.mozilla.org --allow-read=. --allow-write=dist,/tmp --allow-run=deno,tar,unzip scripts/build_release_artifacts.ts",
     "release:deployment-template": "deno run --allow-env=RELEASE_TAG,RELEASE_COMMIT,RELEASE_REPOSITORY,HOST_DIGEST,CONNECTOR_DIGEST,LOG_STREAM,LOG_TOKENS --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=tar scripts/build_deployment_archive.ts",
-    "release:publish-package": "deno run --allow-env=RELEASE_TAG --allow-net=jsr.io,registry.npmjs.org --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=deno,git,npm,tar scripts/publish_package.ts",
+    "release:publish-package": "deno run --allow-env=RELEASE_TAG,ACTIONS_ID_TOKEN_REQUEST_URL,ACTIONS_ID_TOKEN_REQUEST_TOKEN,GITHUB_ACTIONS,GITHUB_EVENT_NAME,GITHUB_REF,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_REPOSITORY_OWNER_ID,GITHUB_RUN_ATTEMPT,GITHUB_RUN_ID,GITHUB_SERVER_URL,GITHUB_SHA,GITHUB_WORKFLOW_REF,RUNNER_ENVIRONMENT --allow-net=jsr.io,registry.npmjs.org --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=deno,git,npm,tar scripts/publish_package.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "spellcheck": "deno run --allow-env --allow-sys=homedir,uid --allow-read cspell lint --config cspell.json --gitignore --dot --no-progress .",

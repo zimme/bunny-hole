@@ -88,3 +88,10 @@ Before creating a tag, update the connector CLI, connector library, host, and ro
 deno task version:check
 deno task release:check 1.4.0
 ```
+
+Package publication forwards only the short-lived GitHub OIDC request credentials and
+public provenance inputs into its Dev Container step. Validation steps receive neither,
+and no step inherits the runner's entire environment. The publisher rejects missing
+context, the wrong tag/workflow, and non-hosted runners before contacting a registry.
+GitHub release protection and npm/JSR trusted-publisher account configuration remain
+required human setup; successful CI does not prove those account controls are ready.

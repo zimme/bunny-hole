@@ -227,3 +227,9 @@ divergent commits. The stable compatibility baseline must be an ancestor of the 
 commit before its commit range is evaluated. A temporary Git repository test checks
 valid candidates, a late candidate after stable publication, and a divergent
 compatibility baseline.
+
+Publication context tests cover every missing OIDC/provenance input, incorrect runner,
+event, tag, and workflow identity, and credential exposure through broad or misplaced
+environment forwarding. Workflow validation enforces an exact forwarding allowlist, and
+a mutation witness must reject removal of the OIDC request token. No test requests an
+OIDC token or publishes to a registry.
