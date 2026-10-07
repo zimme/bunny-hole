@@ -85,7 +85,10 @@ export async function checkToolchainVersions(root = "."): Promise<void> {
     const content = await Deno.readTextFile(`${root}/${path}`);
     for (const [reference] of content.matchAll(/denoland\/deno:([^\s"']+)/g)) {
       const parameterized = `denoland/deno:${"${DENO_VERSION}"}@sha256:${image[3]}`;
-      if (reference !== image[1] && reference !== parameterized) {
+      if (
+        reference !== image[1] &&
+        !(path.endsWith("Dockerfile") && reference === parameterized)
+      ) {
         throw new Error(`${path} contains a drifting or mutable Deno image reference`);
       }
     }

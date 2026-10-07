@@ -125,14 +125,22 @@ Deno.test("toolchain validation enforces machine mirrors without duplicated pros
     }
     const integrationPath = `${root}/scripts/integration.ts`;
     const integration = await Deno.readTextFile(integrationPath);
-    await Deno.writeTextFile(
-      integrationPath,
-      integration.replace(
-        "DENO_INTEGRATION_IMAGE,",
-        `"denoland/deno:0.0.0@sha256:${"a".repeat(64)}",`,
-      ),
-    );
-    await assertRejects(() => checkToolchainVersions(root), /Deno image reference/);
+    const digest = (await Deno.readTextFile("scripts/toolchain.ts"))
+      .match(/@sha256:([a-f0-9]{64})/)?.[1];
+    assert(digest);
+    for (
+      const reference of [
+        `denoland/deno:0.0.0@sha256:${digest}`,
+        `denoland/deno:${"${DENO_VERSION}"}@sha256:${digest}`,
+        "denoland/deno:latest",
+      ]
+    ) {
+      await Deno.writeTextFile(
+        integrationPath,
+        integration.replace("DENO_INTEGRATION_IMAGE,", `${JSON.stringify(reference)},`),
+      );
+      await assertRejects(() => checkToolchainVersions(root), /Deno image reference/);
+    }
   } finally {
     await Deno.remove(root, { recursive: true });
   }
