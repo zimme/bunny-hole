@@ -1,6 +1,6 @@
 /** Public Bunny Hole control-plane API model. */
 export const API_VERSION = 1;
-export const VERSION = "1.0.0-rc.2";
+export const VERSION = "1.0.0-rc.3";
 
 export const LIMITS = Object.freeze({
   maxControlRequests: 32,
