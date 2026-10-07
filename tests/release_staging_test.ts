@@ -2,6 +2,8 @@ import { dirname, join } from "node:path";
 import { parseDocument } from "npm:yaml@2.9.0";
 import { assert, assertEquals } from "./assert.ts";
 
+// cspell:words gpgsign
+
 Deno.test("release SBOM staging preserves a clean publishable checkout", async () => {
   const workflow = parseDocument(
     await Deno.readTextFile(".github/workflows/release.yml"),
@@ -82,6 +84,7 @@ Deno.test("release SBOM staging preserves a clean publishable checkout", async (
     assert(!dirty.success);
     assert(new TextDecoder().decode(dirty.stderr).includes("uncommitted changes"));
     assertEquals(attestations.sort(), [...outputs].sort());
+    for (const output of outputs) assertEquals(dirname(output), "dist/release");
     assert(String(release?.run).includes("dist/release/*"));
   } finally {
     await Deno.remove(directory, { recursive: true });

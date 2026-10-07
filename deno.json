@@ -1,6 +1,6 @@
 {
   "name": "@zimme/bunny-hole",
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc.4",
   "exports": "./apps/connector/mod.ts",
   "license": "MIT",
   "publish": {
