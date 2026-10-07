@@ -1,6 +1,14 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: ".github/workflows/release.yml",
+    before:
+      "          output-file: dist/release/bunny-hole-host-${{ github.ref_name }}.spdx.json",
+    after: "          output-file: bunny-hole-host-${{ github.ref_name }}.spdx.json",
+    test: "tests/release_staging_test.ts",
+    witness: "release SBOM staging preserves a clean publishable checkout",
+  },
+  {
     source: "compose.yaml",
     before: "      GIT_CONFIG_VALUE_1: /workspaces/bunny-hole",
     after: '      GIT_CONFIG_VALUE_1: "*"',

@@ -214,6 +214,13 @@ validation gate. This builds all six targets without publishing anything. Downlo
 bundle assembly use a temporary directory under the ignored `dist/release` output tree,
 covered by the task's scoped permissions and removed on success or failure.
 
+Release SBOMs also belong under `dist/release`: generating them in the source checkout
+would make it dirty before JSR publication. The release staging regression uses the
+workflow's actual SBOM paths and Git ignore rules in a temporary repository, then runs
+the real Deno publication dry run without `--allow-dirty`. Source changes must still
+stop publication. SBOM attestation and GitHub release attachments use those same output
+paths.
+
 Every published release surface uses one immutable ComVer version: host OCI, connector
 OCI, native bundle, and JSR module. Local npm packaging uses the same product version
 for compatibility checks; npm registry publication is deferred. Releases occur only from
