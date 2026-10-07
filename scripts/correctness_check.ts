@@ -1,6 +1,14 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: "compose.yaml",
+    before: "      GIT_CONFIG_VALUE_1: /workspaces/bunny-hole",
+    after: '      GIT_CONFIG_VALUE_1: "*"',
+    test: "tests/development_git_test.ts",
+    witness:
+      "development Git configuration trusts only the mounted checkout and disables host fsmonitor",
+  },
+  {
     source: "scripts/publication_context.ts",
     before: 'environment.toLowerCase() === "bunny"',
     after: "false",

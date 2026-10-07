@@ -7,6 +7,7 @@ console.log(
 );
 
 const steps: [string, string[]][] = [
+  ["git", ["rev-parse", "--verify", "HEAD"]],
   ["deno", ["task", "agents:check"]],
   ["deno", ["task", "workflows:check"]],
   ["deno", ["task", "deployment-template:check"]],
