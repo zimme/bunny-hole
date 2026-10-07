@@ -54,7 +54,12 @@ const caBundle = JSON.parse(
 const version = await readProductVersion();
 const outputDirectory = "dist/release";
 await Deno.mkdir(outputDirectory, { recursive: true });
-const temporary = await Deno.makeTempDir({ prefix: "bunny-hole-release-" });
+// Stage inside the output tree so the task's scoped read/write permissions cover
+// both downloaded inputs and assembled bundles, without trusting system /tmp.
+const temporary = await Deno.makeTempDir({
+  dir: outputDirectory,
+  prefix: ".staging-",
+});
 
 try {
   const trustedCa = join(temporary, "ca-certificates.crt");

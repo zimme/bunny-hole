@@ -38,7 +38,7 @@
     "package:check": "deno run --allow-env --allow-net=127.0.0.1 --allow-read=.,/tmp --allow-run=deno,npm,node,tar --allow-write=/tmp scripts/verify_package.ts",
     "package:build": "deno run --allow-read=.,/tmp --allow-run=deno,npm,tar --allow-write=dist,/tmp scripts/build_npm_package.ts",
     "release:check": "deno run --allow-read=. --allow-run=git scripts/release_check.ts",
-    "release:artifacts": "deno run --allow-net=github.com,objects.githubusercontent.com,release-assets.githubusercontent.com,curl.se,www.mozilla.org --allow-read=. --allow-write=dist,/tmp --allow-run=deno,tar,unzip scripts/build_release_artifacts.ts",
+    "release:artifacts": "deno run --allow-net=github.com,objects.githubusercontent.com,release-assets.githubusercontent.com,curl.se,www.mozilla.org --allow-read=. --allow-write=dist --allow-run=deno,tar,unzip scripts/build_release_artifacts.ts",
     "release:deployment-template": "deno run --allow-env=RELEASE_TAG,RELEASE_COMMIT,RELEASE_REPOSITORY,HOST_DIGEST,CONNECTOR_DIGEST,LOG_STREAM,LOG_TOKENS --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=tar scripts/build_deployment_archive.ts",
     "release:publish-package": "deno run --allow-env=RELEASE_TAG,ACTIONS_ID_TOKEN_REQUEST_URL,ACTIONS_ID_TOKEN_REQUEST_TOKEN,GITHUB_ACTIONS,GITHUB_EVENT_NAME,GITHUB_REF,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_REPOSITORY_OWNER_ID,GITHUB_RUN_ATTEMPT,GITHUB_RUN_ID,GITHUB_SERVER_URL,GITHUB_SHA,GITHUB_WORKFLOW_REF,RUNNER_ENVIRONMENT --allow-net=jsr.io --allow-read=. --allow-run=deno scripts/publish_package.ts",
     "fmt": "deno fmt",
