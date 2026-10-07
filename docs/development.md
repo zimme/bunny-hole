@@ -37,6 +37,11 @@ Compose plugin. It connects to the pinned rootless Docker-in-Docker service in
 `compose.yaml`, so validation can build and exercise the sibling production-image
 topology without exposing the host Docker socket.
 
+Copilot's setup action declares `COMPOSE_BAKE=false` on the action step itself. The
+embedded review runner does not inherit the workflow-level environment, and Bake would
+reject the Dev Container CLI's generated Dockerfile outside the checkout. The explicit
+step environment keeps embedded and standalone setup on the same Compose builder.
+
 The startup entrypoint leaves repository sources host-owned and makes only the ignored
 `.tmp`, `coverage`, and `dist` directories writable by the fixed development user.
 Integration writes only a secret-free Compose override beneath `.tmp`. It streams the
