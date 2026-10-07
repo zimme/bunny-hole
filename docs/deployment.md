@@ -270,13 +270,16 @@ an ordinary branch push.
 
 Enable GitHub release immutability before the first release. Create `@zimme/bunny-hole`
 on JSR and link it to `zimme/bunny-hole`. Create the protected GitHub `Production`
-Environment with a required human reviewer and a tag rule permitting the intended
-release tag. Disable administrator bypass where available. For a solo maintainer who
-also triggers the release, leave Prevent self-review disabled: GitHub otherwise blocks
-that maintainer from approving the job. The maintainer must manually approve the waiting
-job in GitHub Actions; an agent must not approve it. This provides a human approval
-gate, not independent review. With a separate human approver, enable Prevent
-self-review.
+Environment with a required human reviewer and Selected branches and tags rules of type
+Tag permitting `*.*.0` and `*.*.0-rc.*`. These patterns allow stable ComVer releases and
+the supported RC channel; GitHub's patterns cannot enforce canonical numeric syntax or
+release ordering. The workflow's tag, version, and release checks enforce those rules
+before publication. An eligible tag pattern does not authorize creating a release.
+Disable administrator bypass where available. For a solo maintainer who also triggers
+the release, leave Prevent self-review disabled: GitHub otherwise blocks that maintainer
+from approving the job. The maintainer must manually approve the waiting job in GitHub
+Actions; an agent must not approve it. This provides a human approval gate, not
+independent review. With a separate human approver, enable Prevent self-review.
 
 These release settings are separate from the deployment template's `production`
 environment, which requires independent review and prevents self-review before receiving
