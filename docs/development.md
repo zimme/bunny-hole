@@ -208,6 +208,12 @@ for every Linux, macOS, and Windows target. It also bundles the same checksum-pi
 public CA file and MPL-2.0 license used by the connector OCI image; native users keep
 `bunny-hole`, `frpc`, and `ca-certificates.crt` together.
 
+When changing the native builder or its task permissions, run
+`deno task release:artifacts` in the development service as well as the normal
+validation gate. This builds all six targets without publishing anything. Downloads and
+bundle assembly use a temporary directory under the ignored `dist/release` output tree,
+covered by the task's scoped permissions and removed on success or failure.
+
 Every published release surface uses one immutable ComVer version: host OCI, connector
 OCI, native bundle, and JSR module. Local npm packaging uses the same product version
 for compatibility checks; npm registry publication is deferred. Releases occur only from
