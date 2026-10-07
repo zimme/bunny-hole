@@ -88,8 +88,16 @@ environment variables select the pipeline.
   a human uses the dashboard or a private interactive terminal.
 - Do not add Edge Scripting or Bunny Database: neither supplies documented affinity for
   the process holding the live FRP connection. Do not use mutable action references.
-- Do not create releases, tags, Bunny resources, or deployments without explicit
-  authorization.
+- Agents may prepare stable or evaluation releases and create new version tags on
+  reviewed, validated `main` commits to trigger `.github/workflows/release.yml`, without
+  additional conversational approval. Follow `docs/versioning.md` and verify that the
+  protected `Release` environment requires a human reviewer and permits the proposed tag
+  before creating it. Publication runs only through that workflow after human approval
+  in GitHub Actions. Agents must never approve or bypass that gate, weaken its
+  protection, publish directly, or move existing release tags. If the required
+  protection cannot be verified, finish the release preparation and report the remaining
+  human step.
+- Bunny resources and deployments still require explicit authorization.
 - Keep `templates/bunny-deployment` copyable and self-contained. Its live workflows are
   manual, default-branch-only, protected-environment operations; PR checks receive no
   deployment or state credentials.
@@ -100,9 +108,9 @@ environment variables select the pipeline.
   specification and the public API declared in `docs/versioning.md`. Use
   `MAJOR.MINOR.0`: breaking changes, including breaking bug fixes, require a major bump;
   every backwards-compatible release requires a minor bump. The patch component is
-  always zero, and released versions are immutable. Explicitly authorized evaluation
-  releases may use the documented lowercase `MAJOR.MINOR.0-rc.N` channel. Stable
-  consumer deployment remains the default; RC use requires explicit opt-in.
+  always zero, and released versions are immutable. Evaluation releases may use the
+  documented lowercase `MAJOR.MINOR.0-rc.N` channel. Stable consumer deployment remains
+  the default; RC use requires explicit opt-in.
 
 Copilot setup uses the same Dev Container as CI and installs frozen dependencies. In a
 Copilot session, run commands with `docker compose exec -T --user vscode development`;
