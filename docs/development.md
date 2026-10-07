@@ -198,9 +198,11 @@ for every Linux, macOS, and Windows target. It also bundles the same checksum-pi
 public CA file and MPL-2.0 license used by the connector OCI image; native users keep
 `bunny-hole`, `frpc`, and `ca-certificates.crt` together.
 
-Every release surface uses one immutable ComVer version: host OCI, connector OCI, native
-bundle, JSR module, and npm package. Releases occur only from increasing `MAJOR.MINOR.0`
-tags. See [versioning](versioning.md).
+Every published release surface uses one immutable ComVer version: host OCI, connector
+OCI, native bundle, and JSR module. Local npm packaging uses the same product version
+for compatibility checks; npm registry publication is deferred. Releases occur only from
+increasing `MAJOR.MINOR.0` or explicit `MAJOR.MINOR.0-rc.N` tags. See
+[versioning](versioning.md).
 
 ## Contribution workflow
 
