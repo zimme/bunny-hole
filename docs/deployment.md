@@ -243,12 +243,17 @@ layer and is future work, not an autoscaling toggle.
 ## Optional manual GitHub deployment workflow
 
 `.github/workflows/deploy-bunny.yml` can update an existing app only when manually
-dispatched with an existing release version and matching digest. Protect the
-`production` GitHub Environment with reviewers. Set `BUNNY_APP_ID` and
-`BUNNY_CONTAINER_NAME` as environment variables, then enter the API key interactively:
+dispatched with an existing release version and matching digest. Protect the `Bunny`
+GitHub Environment with reviewers, default-branch-only access, and administrator bypass
+disabled where available before storing deployment credentials. This environment is
+separate from the upstream `Production` release environment; GitHub environment names
+are case-insensitive. If migrating a configured deployment, recreate its protections,
+variables, and secret in `Bunny` before dispatching this workflow. Set `BUNNY_APP_ID`
+and `BUNNY_CONTAINER_NAME` as environment variables, then enter the API key
+interactively:
 
 ```sh
-gh secret set --env production BUNNYNET_API_KEY
+gh secret set --env Bunny BUNNYNET_API_KEY
 ```
 
 Current Bunny documentation describes a full account API key and does not document OIDC
@@ -281,8 +286,9 @@ from approving the job. The maintainer must manually approve the waiting job in 
 Actions; an agent must not approve it. This provides a human approval gate, not
 independent review. With a separate human approver, enable Prevent self-review.
 
-These release settings are separate from the deployment template's `production`
-environment, which requires independent review and prevents self-review before receiving
-deployment credentials. The tag workflow uses GitHub OIDC for JSR publication and needs
-no stored registry token. npm registry publication is deferred and requires no npm
-account setup.
+These release settings are separate from the upstream `Bunny` deployment environment and
+the deployment template's `production` environment in each consumer repository. The
+template's environment requires independent review and prevents self-review before
+receiving deployment credentials. The tag workflow uses GitHub OIDC for JSR publication
+and needs no stored registry token. npm registry publication is deferred and requires no
+npm account setup.

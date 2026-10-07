@@ -234,6 +234,13 @@ environment forwarding. Workflow validation enforces an exact forwarding allowli
 a mutation witness must reject removal of the OIDC request token. No test requests an
 OIDC token or publishes to a registry.
 
+Workflow policy also requires the release job's exact `Production` environment and the
+optional deployment job's distinct `Bunny` environment. GitHub names are
+case-insensitive, so other jobs cannot use any capitalization of `Production`. Tests
+exercise string and named-object forms, missing/incorrect names, and case aliases;
+mutation witnesses require release-name drift and deployment/release aliasing to fail.
+Account protection rules and human approval still require operator verification.
+
 The JSR-only publisher checks identity before its first registry request, releases
 response bodies before any publication, skips existing immutable versions, and stops on
 registry or publication failures. Its behavior test permits only the exact JSR metadata

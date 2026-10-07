@@ -1,6 +1,22 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: ".github/workflows/release.yml",
+    before: "    environment: Production",
+    after: "    environment: unprotected",
+    test: "tests/publication_context_test.ts",
+    witness:
+      "release forwarding supplies publisher context without exposing runner credentials elsewhere",
+  },
+  {
+    source: ".github/workflows/deploy-bunny.yml",
+    before: "    environment: Bunny",
+    after: "    environment: production",
+    test: "tests/publication_context_test.ts",
+    witness:
+      "release forwarding supplies publisher context without exposing runner credentials elsewhere",
+  },
+  {
     source: "deno.json",
     before:
       "--allow-net=jsr.io --allow-read=. --allow-run=deno scripts/publish_package.ts",

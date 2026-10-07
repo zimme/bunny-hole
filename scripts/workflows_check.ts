@@ -1,5 +1,8 @@
 import { parseDocument } from "npm:yaml@2.9.0";
-import { publicationStepFailures } from "./publication_context.ts";
+import {
+  publicationStepFailures,
+  workflowEnvironmentFailures,
+} from "./publication_context.ts";
 
 const failures: string[] = [];
 for await (const entry of Deno.readDir(".github/workflows")) {
@@ -9,10 +12,18 @@ for await (const entry of Deno.readDir(".github/workflows")) {
     uniqueKeys: true,
   });
   for (const error of document.errors) failures.push(`${path}: ${error.message}`);
-  inspect(document.toJS(), path);
+  const workflow = document.toJS();
+  failures.push(
+    ...workflowEnvironmentFailures(workflow, path).map((failure) =>
+      `${path}: ${failure}`
+    ),
+  );
+  inspect(workflow, path);
 }
 if (failures.length > 0) throw new Error(failures.join("\n"));
-console.log("workflow check: valid YAML and immutable action references");
+console.log(
+  "workflow check: valid YAML, immutable actions, and protected environments",
+);
 
 function inspect(value: unknown, path: string): void {
   if (Array.isArray(value)) {

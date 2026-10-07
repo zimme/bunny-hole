@@ -3,6 +3,7 @@ import {
   assertPublicationContext,
   PUBLICATION_ENVIRONMENT,
   publicationStepFailures,
+  workflowEnvironmentFailures,
 } from "../scripts/publication_context.ts";
 import { publishPackage } from "../scripts/publish_package.ts";
 import { assert, assertEquals, assertRejects, assertThrows } from "./assert.ts";
@@ -11,6 +12,51 @@ Deno.test("release forwarding supplies publisher context without exposing runner
   const workflow = parseDocument(
     await Deno.readTextFile(".github/workflows/release.yml"),
   ).toJS();
+  assertEquals(
+    workflowEnvironmentFailures(workflow, ".github/workflows/release.yml"),
+    [],
+  );
+  const deployment = parseDocument(
+    await Deno.readTextFile(".github/workflows/deploy-bunny.yml"),
+  ).toJS();
+  assertEquals(
+    workflowEnvironmentFailures(deployment, ".github/workflows/deploy-bunny.yml"),
+    [],
+  );
+  for (
+    const [path, job, allowed] of [
+      [".github/workflows/release.yml", "release", "Production"],
+      [".github/workflows/deploy-bunny.yml", "deploy", "Bunny"],
+    ]
+  ) {
+    assert(workflowEnvironmentFailures({}, path).length > 0);
+    assert(workflowEnvironmentFailures({ jobs: {} }, path).length > 0);
+    for (const environment of [allowed, { name: allowed }]) {
+      assertEquals(
+        workflowEnvironmentFailures({ jobs: { [job]: { environment } } }, path),
+        [],
+      );
+    }
+    for (
+      const environment of [undefined, {}, "unprotected", "production", {
+        name: "PRODUCTION",
+      }]
+    ) {
+      assert(
+        workflowEnvironmentFailures({ jobs: { [job]: { environment } } }, path).length >
+          0,
+      );
+    }
+  }
+  assertEquals(workflowEnvironmentFailures({}, ".github/workflows/ci.yml"), []);
+  for (const environment of ["Production", "production", { name: "PRODUCTION" }]) {
+    assert(
+      workflowEnvironmentFailures(
+        { jobs: { validate: { environment } } },
+        ".github/workflows/ci.yml",
+      ).length > 0,
+    );
+  }
   const steps = workflow.jobs.release.steps as Record<string, unknown>[];
   const publish = steps.find((step) =>
     (step.with as Record<string, unknown> | undefined)?.runCmd ===
