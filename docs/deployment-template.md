@@ -11,7 +11,7 @@ The shortest consumer path uses the deployment archive from the exact published 
 rather than a source checkout:
 
 ```sh
-version=1.0.0-rc.4 # Select this only for explicitly approved RC evaluation.
+version=VERSION # Replace VERSION with the selected published release.
 archive="bunny-hole-deployment-${version}.tar.gz"
 gh release download "$version" --repo zimme/bunny-hole --pattern "$archive"
 gh attestation verify "$archive" --repo zimme/bunny-hole
@@ -28,6 +28,16 @@ and, for an approved RC evaluation only, explicitly set `allow_release_candidate
 Stable versions need no opt-in. Private release verification, account protections,
 backend setup, credentials, DNS review, and restore readiness remain prerequisites.
 
+Before creating a private consumer repository for these live workflows, check that the
+account supports required deployment reviewers: GitHub requires Enterprise for this
+protection on private repositories. An independent human reviewer is also required;
+self-review prevention excludes a sole operator approving their own run. Pro or Team
+alone is insufficient for the private-repository approval gate. Keep live workflows
+disabled and credentials absent when those prerequisites cannot be met. A private
+terminal or dashboard procedure remains available with human checkpoints, but does not
+provide equivalent independent review. See
+[GitHub environment availability](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
+
 Run `deno task deployment:scaffold ../my-bunny-deployment` from a Bunny Hole checkout to
 copy the entire checked template, including hidden workflows, agent guidance, shared
 deployment scripts, and offline guard tests. It refuses an existing destination. In the
@@ -35,10 +45,11 @@ new directory, `bash scripts/setup.sh` creates the two public configuration file
 without overwriting edits. Configure those files, then follow the template's protected
 plan/review/apply procedure; scaffolding performs no live operation.
 
-The template uses Terraform 1.16.2 and `BunnyWay/bunnynet` 0.18.2 because the official
-provider exposes the required application, Pull Zone, hostname, managed-TLS, and Bunny
-DNS resources. It consumes the already published host image; it does not rebuild this
-project or grant a consumer repository permission to publish upstream artifacts.
+The template pins Terraform in `.terraform-version` and `BunnyWay/bunnynet` in
+`terraform/versions.tf` and its provider lockfile because the official provider exposes
+the required application, Pull Zone, hostname, managed-TLS, and Bunny DNS resources. It
+consumes the already published host image; it does not rebuild this project or grant a
+consumer repository permission to publish upstream artifacts.
 
 ## Declared topology
 

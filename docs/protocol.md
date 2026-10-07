@@ -1,6 +1,6 @@
 # Bunny Hole protocol profile
 
-Protocol version 1 is a bounded HTTPS control API plus a constrained FRP 0.70.1 data
+Protocol version 1 is a bounded HTTPS control API plus a constrained, pinned FRP data
 plane. Request bodies are carried as binary HTTP stream bytes by FRP; Bunny Hole does
 not base64-encode them or invent a second multiplexing wire format.
 

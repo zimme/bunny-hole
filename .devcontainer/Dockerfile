@@ -4,6 +4,7 @@ FROM denoland/deno:${DENO_VERSION}@sha256:b429777c3dcff34a6488f365a1537db1640b2d
 FROM mcr.microsoft.com/devcontainers/base@sha256:1f851004adcd3dff3776b4a1da86727cf52280b0fdc9d5b0568c9c7d74274286
 
 ARG TARGETARCH
+ARG DENO_VERSION
 ARG NODE_VERSION=24.13.1
 ARG NPM_VERSION=11.8.0
 ARG GH_VERSION=2.96.0
@@ -69,7 +70,7 @@ RUN set -eux; \
       "docker-compose-plugin=${DOCKER_COMPOSE_VERSION}" \
       python3 ripgrep shellcheck unzip; \
     rm -rf /var/lib/apt/lists/* /tmp/*; \
-    test "$(deno --version | head -n 1)" = "deno 2.9.5 (stable, release, $(uname -m)-unknown-linux-gnu)"; \
+    test "$(deno --version | head -n 1)" = "deno ${DENO_VERSION} (stable, release, $(uname -m)-unknown-linux-gnu)"; \
     test "$(node --version)" = "v${NODE_VERSION}"; \
     test "$(npm --version)" = "${NPM_VERSION}"; \
     test "$(gh --version | head -n 1)" = "gh version ${GH_VERSION} (2026-07-02)"; \

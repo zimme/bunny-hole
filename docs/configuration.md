@@ -269,7 +269,7 @@ and Magic Container limits consistently; an intentionally smaller CDN limit is s
 Trailers are not forwarded; hop-by-hop, internal, and spoofable forwarding headers are
 removed.
 
-## Hardening migration to 1.0.0
+## Security hardening migration
 
 Upgrade host and connectors together. Enrollment phrases now contain sixteen words (64
 bits); compare the entire phrase. HTTPS origins require valid certificates matching the

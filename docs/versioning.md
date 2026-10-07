@@ -82,12 +82,25 @@ registry publication is deferred; local npm packaging and compatibility checks r
 available. If any released artifact is wrong, publish the next compatible minor or
 breaking major version; never replace the existing version.
 
-Before creating a tag, update the connector CLI, connector library, host, and root
-`deno.json` versions together and check the intended tag locally:
+`deno.json` is the canonical product version. The CLI, library and host share the
+embedded API constant; OpenAPI metadata mirrors that same version. Use one command to
+update all required fields, rather than editing them individually. The command validates
+ComVer, rejects repeated/downgraded versions and pre-existing metadata drift before
+writing, and attempts to restore all originals if a write fails. It does not create a
+tag or publish anything. Runtime environment variables cannot override the embedded
+artifact version. During release, the Git tag selects the version and `release:check`
+requires it to match the committed manifest, runtime constant and OpenAPI metadata
+before any publication. Archive names, OCI tags, deployment metadata and publisher
+context derive from that verified tag. Generating new source versions after checkout
+would dirty the tree required by JSR publication, so release preparation commits the
+metadata first; mismatched tags fail closed instead of relabeling the built artifact.
+
+Before creating a tag, set `VERSION` to the proposed release version and run:
 
 ```sh
+deno task version:bump "$VERSION"
 deno task version:check
-deno task release:check 1.4.0
+deno task release:check "$VERSION"
 ```
 
 Package publication forwards only the short-lived GitHub OIDC request credentials and

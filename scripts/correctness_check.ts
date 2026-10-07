@@ -1,6 +1,14 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: "scripts/toolchain.ts",
+    before: '"denoland/deno:',
+    after: '"denoland/deno:0',
+    test: "tests/version_bump_test.ts",
+    witness:
+      "toolchain validation enforces machine mirrors without duplicated prose pins",
+  },
+  {
     source: ".github/workflows/release.yml",
     before: '          gh release create "$RELEASE_TAG"',
     after:

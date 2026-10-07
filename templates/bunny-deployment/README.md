@@ -114,6 +114,20 @@ credential in `tfvars`.
 
 ## 4. Protect the GitHub Environment
 
+Check account eligibility before choosing the private-repository workflow. GitHub's
+[environment protection availability](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
+limits required deployment reviewers in private repositories to GitHub Enterprise;
+GitHub Pro or Team alone does not supply this approval gate. An independent human with
+repository read access must be available to approve runs started by the operator.
+Preventing self-review means a sole maintainer cannot approve their own deployment. The
+template has no solo-maintainer GitHub Actions mode with equivalent independent
+approval. If these prerequisites are unavailable, keep live workflows disabled and do
+not add deployment secrets. A human-operated private-terminal or dashboard deployment is
+a separate operating procedure; it does not provide this template's independent review
+guarantee. See the upstream
+[deployment guidance](https://github.com/zimme/bunny-hole/blob/main/docs/agent-assisted-deployment.md)
+for those private checkpoints.
+
 Before adding secrets, create a GitHub Environment named `production`:
 
 - require an independent reviewer and prevent self-review;
@@ -142,6 +156,11 @@ terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
 terraform -chdir=terraform validate -no-color
 python3 scripts/test_workflows.py
 ```
+
+Mock tests supply their own complete variable baselines, independent of the consumer's
+public configuration. Both stable configurations and explicitly opted-in RC
+configurations must pass these checks; the production RC consent validation remains
+enforced.
 
 They receive no Bunny or backend secrets. Every action and provider is pinned. Review
 the plan for exact hostnames, one region/instance, the image digest, and replacement or

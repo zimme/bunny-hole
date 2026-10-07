@@ -1,12 +1,20 @@
 # Development
 
-Deno 2.9.5 is the only task runner and is also the compiler, dependency manager,
-formatter, linter, test runner, coverage tool, and build tool. Terraform 1.16.2 exists
-only to validate the copyable consumer deployment configuration against its pinned
-provider. Python's standard library runs the consumer template's offline workflow guard
-tests; Deno remains the task runner. Node 24.13.1 and npm 11.8.0 exist in the
-development image only for GitHub Copilot CLI, Dev Container tooling, and validating the
-actual npm package. There are no npm task wrappers or repository `package.json`.
+The Deno version pinned in `.tool-versions` is the only task runner and is also the
+compiler, dependency manager, formatter, linter, test runner, coverage tool, and build
+tool. The template-pinned Terraform version exists only to validate the copyable
+consumer deployment configuration against its pinned provider. Python's standard library
+runs the consumer template's offline workflow guard tests; Deno remains the task runner.
+The image-pinned Node and npm versions exist in the development image only for GitHub
+Copilot CLI, Dev Container tooling, and validating the actual npm package. There are no
+npm task wrappers or repository `package.json`.
+
+Deno, Node and Terraform versions come from `.tool-versions`. Other development tools
+are pinned by the defaults in `.devcontainer/Dockerfile` and mirrored into Compose.
+`version:check` enforces required Docker/Compose/CI/template mirrors and the shared
+immutable integration image in `scripts/toolchain.ts`. A Deno upgrade must also select
+its verified image digest; changing a version label cannot substitute a mutable image
+tag.
 
 ## Compose-native toolchain
 

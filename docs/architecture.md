@@ -5,10 +5,11 @@ Container, Docker, Kubernetes, and upstream FRP documentation.
 
 ## Chosen architecture
 
-Bunny Hole combines a small Deno control/HTTP plane with unmodified FRP 0.70.1 for the
-multiplexed tunnel. The host OCI contains `bunny-hole-host` and `frps`; the connector
-OCI contains `bunny-hole`, the dedicated `bunny-hole-compose` controller, and `frpc`.
-Native connector bundles contain `bunny-hole` and `frpc`.
+Bunny Hole combines a small Deno control/HTTP plane with unmodified FRP pinned in
+`third_party/frp.json` for the multiplexed tunnel. The host OCI contains
+`bunny-hole-host` and `frps`; the connector OCI contains `bunny-hole`, the dedicated
+`bunny-hole-compose` controller, and `frpc`. Native connector bundles contain
+`bunny-hole` and `frpc`.
 
 ```mermaid
 flowchart LR
@@ -103,11 +104,11 @@ state. A new login deterministically replaces the prior session; its next operat
 heartbeat is rejected within the 45-second dead-session window. Existing streams are not
 migrated. Revocation blocks new sessions and all subsequent plugin operations.
 
-Passkeys use SimpleWebAuthn 13.3.2, require user verification and resident credentials,
-consume one-use challenges, and persist signature counters. Browser ceremonies run on
-the management origin through short-lived fragment-token URLs, while the offline owner
-private key remains in the CLI process. Operators should keep at least two passkeys and
-an offline recovery copy.
+Passkeys use SimpleWebAuthn pinned in `deno.json` and `deno.lock`, require user
+verification and resident credentials, consume one-use challenges, and persist signature
+counters. Browser ceremonies run on the management origin through short-lived
+fragment-token URLs, while the offline owner private key remains in the CLI process.
+Operators should keep at least two passkeys and an offline recovery copy.
 
 ## Bunny findings and consequences
 
@@ -147,8 +148,9 @@ an offline recovery copy.
   immutable image plus a commit-pinned official action.
 - Bunny's [Terraform guide](https://docs.bunny.net/terraform) points to the official
   [`BunnyWay/bunnynet` provider](https://github.com/BunnyWay/terraform-provider-bunnynet).
-  Provider 0.18.2 exposes Magic Container endpoint Pull Zone IDs plus the Pull Zone,
-  hostname, managed-TLS, and Bunny DNS resources used by the consumer template.
+  The template-pinned provider exposes Magic Container endpoint Pull Zone IDs plus the
+  Pull Zone, hostname, managed-TLS, and Bunny DNS resources used by the consumer
+  template.
 - Bunny documents no Edge Script isolate-affinity or addressable live-socket primitive.
   An Edge Script request can execute away from the isolate holding a connector socket;
   Origin Shield is an origin/cache feature, not documented stateful session affinity.
@@ -186,15 +188,15 @@ untested switches would widen the attack surface without completing those produc
 High availability is also future work for the stateful-routing reasons above. Automatic
 Bunny hostname creation is kept out of the always-on host because it would require a
 full-account, long-lived Bunny API key. Use the dashboard or the separately reviewed
-consumer Terraform template instead. Provider 0.18.2 can manage the Magic Container
-application and, after importing the endpoint-generated Pull Zones, their cache/WSS
-policy, exact hostnames, managed TLS, and optional records in an existing Bunny DNS
-zone. This is an operator control-plane concern and never gives the running tunnel host
-the Bunny account key.
+consumer Terraform template instead. The template-pinned provider can manage the Magic
+Container application and, after importing the endpoint-generated Pull Zones, their
+cache/WSS policy, exact hostnames, managed TLS, and optional records in an existing
+Bunny DNS zone. This is an operator control-plane concern and never gives the running
+tunnel host the Bunny account key.
 
 ## Toolchain and supply chain
 
-- Deno 2.9.5 is pinned in `.tool-versions`, containers, CI, and documentation. Deno's
+- Deno is pinned in `.tool-versions`, containers, and CI. Deno's
   [lockfile](https://docs.deno.com/runtime/reference/deno_json/) is frozen and its
   dependency graph is prewarmed in the development image.
 - Node/npm exist only for GitHub Copilot/Dev Container tooling and npm-package
