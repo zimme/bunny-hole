@@ -34,6 +34,14 @@ Deno.test("one version bump updates artifact metadata and rejects invalid or dri
         before,
       );
     }
+    await assertRejects(
+      () => bumpProductVersion("1.2.0", root, () => Promise.resolve()),
+      /version bump failed/,
+    );
+    assertEquals(
+      await Promise.all(paths.map((path) => Deno.readTextFile(`${root}/${path}`))),
+      before,
+    );
     let writes = 0;
     let partialWriteObserved = false;
     await assertRejects(

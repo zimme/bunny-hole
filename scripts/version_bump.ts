@@ -36,7 +36,9 @@ export async function bumpProductVersion(
     for (const [path, source] of updates) {
       await writeFile(`${root}/${path}`, source);
     }
-    await readProductVersion(root);
+    if (await readProductVersion(root) !== version) {
+      throw new Error("version writes did not persist the requested product version");
+    }
   } catch (error) {
     const failures: unknown[] = [error];
     for (const [path, source] of originals) {
