@@ -143,18 +143,20 @@ jobs:
             BUNNY_HOLE_HOST_IMAGE
             BUNNY_HOLE_CONNECTOR_IMAGE
           runCmd: deno task integration
+      - name: Initialize runner-owned SBOM output
+        run: mkdir -p dist/release-sboms
       - name: Generate host SPDX SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ghcr.io/${{ github.repository }}-host@${{ steps.host.outputs.digest }}
           format: spdx-json
-          output-file: dist/release/bunny-hole-host-${{ github.ref_name }}.spdx.json
+          output-file: dist/release-sboms/bunny-hole-host-${{ github.ref_name }}.spdx.json
       - name: Generate connector SPDX SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
           format: spdx-json
-          output-file: dist/release/bunny-hole-connector-${{ github.ref_name }}.spdx.json
+          output-file: dist/release-sboms/bunny-hole-connector-${{ github.ref_name }}.spdx.json
       - name: Attest host image provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
@@ -172,14 +174,14 @@ jobs:
         with:
           subject-name: ghcr.io/${{ github.repository }}-host
           subject-digest: ${{ steps.host.outputs.digest }}
-          sbom-path: dist/release/bunny-hole-host-${{ github.ref_name }}.spdx.json
+          sbom-path: dist/release-sboms/bunny-hole-host-${{ github.ref_name }}.spdx.json
           push-to-registry: true
       - name: Attest connector SBOM
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-name: ghcr.io/${{ github.repository }}-connector
           subject-digest: ${{ steps.connector.outputs.digest }}
-          sbom-path: dist/release/bunny-hole-connector-${{ github.ref_name }}.spdx.json
+          sbom-path: dist/release-sboms/bunny-hole-connector-${{ github.ref_name }}.spdx.json
           push-to-registry: true
       - name: Package the version-bound deployment template
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
@@ -197,7 +199,9 @@ jobs:
       - name: Attest release files
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: dist/release/*
+          subject-path: |
+            dist/release/*
+            dist/release-sboms/*
       - name: Publish the connector library to JSR
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
@@ -256,6 +260,7 @@ jobs:
           fi
           gh release create "$RELEASE_TAG" \
             dist/release/* \
+            dist/release-sboms/* \
             --verify-tag --title "Bunny Hole $RELEASE_TAG" \
             --notes-file release-notes.md "${channel_flags[@]}"
       - name: Tear down release validation environment

@@ -71,6 +71,9 @@ Deno.test("release SBOM staging preserves a clean publishable checkout", async (
       await Deno.mkdir(dirname(destination), { recursive: true });
       await Deno.writeTextFile(destination, "{}\n");
     }
+    const native = "dist/release/bunny-hole-fixture.tar.gz";
+    await Deno.mkdir(join(directory, "dist/release"), { recursive: true });
+    await Deno.writeTextFile(join(directory, native), "native bundle fixture\n");
     const status = await command("git", ["status", "--porcelain"]);
     assert(status.success);
     assertEquals(new TextDecoder().decode(status.stdout), "");
@@ -83,7 +86,24 @@ Deno.test("release SBOM staging preserves a clean publishable checkout", async (
     assert(!dirty.success);
     assert(new TextDecoder().decode(dirty.stderr).includes("uncommitted changes"));
     assertEquals(attestations.sort(), [...outputs].sort());
-    for (const output of outputs) assertEquals(dirname(output), "dist/release");
+    for (const output of outputs) assertEquals(dirname(output), "dist/release-sboms");
+    const initialize = steps.find((step) =>
+      step.name === "Initialize runner-owned SBOM output"
+    );
+    assertEquals(initialize?.run, "mkdir -p dist/release-sboms");
+    assert(
+      steps.indexOf(initialize!) <
+        steps.findIndex((step) =>
+          typeof (step.with as Record<string, unknown> | undefined)?.["output-file"] ===
+            "string"
+        ),
+    );
+    const fileAttestation = steps.find((step) => step.name === "Attest release files");
+    assertEquals(
+      String((fileAttestation?.with as Record<string, unknown>)["subject-path"])
+        .trim().split(/\s+/).sort(),
+      ["dist/release-sboms/*", "dist/release/*"],
+    );
 
     // Execute the workflow's actual attachment command with publication replaced
     // by an argument recorder. Obsolete root paths and duplicates must fail too.
@@ -106,8 +126,12 @@ Deno.test("release SBOM staging preserves a clean publishable checkout", async (
     assertEquals(args.slice(0, 3), ["release", "create", "1.0.0-rc.4"]);
     assertEquals(
       args.slice(3, args.indexOf("--verify-tag")).sort(),
-      outputs.map((path) => path.replaceAll("${{ github.ref_name }}", "1.0.0-rc.4"))
-        .sort(),
+      [
+        ...outputs.map((path) =>
+          path.replaceAll("${{ github.ref_name }}", "1.0.0-rc.4")
+        ),
+        native,
+      ].sort(),
     );
   } finally {
     await Deno.remove(directory, { recursive: true });

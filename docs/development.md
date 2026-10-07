@@ -214,8 +214,11 @@ validation gate. This builds all six targets without publishing anything. Downlo
 bundle assembly use a temporary directory under the ignored `dist/release` output tree,
 covered by the task's scoped permissions and removed on success or failure.
 
-Release SBOMs also belong under `dist/release`: generating them in the source checkout
-would make it dirty before JSR publication. The release staging regression uses the
+Release SBOMs belong under the runner-owned `dist/release-sboms` directory: generating
+them in the source checkout would make it dirty before JSR publication, while the
+container-owned `dist/release` directory does not permit hosted-runner writes. The
+shared development entrypoint makes only their parent `dist` writable by both users;
+each creates and owns its own output directory. The release staging regression uses the
 workflow's actual SBOM paths and Git ignore rules in a temporary repository, then runs
 the real Deno publication dry run without `--allow-dirty`. Source changes must still
 stop publication. SBOM attestation and GitHub release attachments use those same output
