@@ -84,7 +84,31 @@ Deno.test("release SBOM staging preserves a clean publishable checkout", async (
     assert(new TextDecoder().decode(dirty.stderr).includes("uncommitted changes"));
     assertEquals(attestations.sort(), [...outputs].sort());
     for (const output of outputs) assertEquals(dirname(output), "dist/release");
-    assert(String(release?.run).includes("dist/release/*"));
+
+    // Execute the workflow's actual attachment command with publication replaced
+    // by an argument recorder. Obsolete root paths and duplicates must fail too.
+    assert(typeof release?.run === "string");
+    const bin = join(directory, ".tmp", "bin");
+    await Deno.mkdir(bin, { recursive: true });
+    await Deno.writeTextFile(join(bin, "gh"), '#!/bin/sh\nprintf "%s\\n" "$@"\n', {
+      mode: 0o755,
+    });
+    const upload = await new Deno.Command("bash", {
+      args: ["-c", release.run],
+      cwd: directory,
+      clearEnv: true,
+      env: { PATH: `${bin}:${Deno.env.get("PATH")}`, RELEASE_TAG: "1.0.0-rc.4" },
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assert(upload.success, new TextDecoder().decode(upload.stderr));
+    const args = new TextDecoder().decode(upload.stdout).trim().split("\n");
+    assertEquals(args.slice(0, 3), ["release", "create", "1.0.0-rc.4"]);
+    assertEquals(
+      args.slice(3, args.indexOf("--verify-tag")).sort(),
+      outputs.map((path) => path.replaceAll("${{ github.ref_name }}", "1.0.0-rc.4"))
+        .sort(),
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
