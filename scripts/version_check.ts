@@ -1,19 +1,19 @@
 import { parseReleaseVersion } from "./comver.ts";
 
-export async function readProductVersion(): Promise<string> {
+export async function readProductVersion(root = "."): Promise<string> {
   const paths = ["packages/api/mod.ts"];
   const versions = new Map<string, string>();
 
   for (const path of paths) {
-    const source = await Deno.readTextFile(path);
+    const source = await Deno.readTextFile(`${root}/${path}`);
     const match = source.match(/export const VERSION = "([^"]+)";/);
     if (!match) throw new Error(`product VERSION is missing from ${path}`);
     versions.set(path, match[1]);
   }
 
-  const manifest = JSON.parse(await Deno.readTextFile("deno.json"));
+  const manifest = JSON.parse(await Deno.readTextFile(`${root}/deno.json`));
   versions.set("deno.json", manifest.version);
-  const openApi = await Deno.readTextFile("docs/openapi.yaml");
+  const openApi = await Deno.readTextFile(`${root}/docs/openapi.yaml`);
   const openApiVersion = openApi.match(/^[ ]{2}version: ([^\s]+)$/m)?.[1];
   if (!openApiVersion) throw new Error("OpenAPI product version is missing");
   versions.set("docs/openapi.yaml", openApiVersion);
@@ -25,37 +25,68 @@ export async function readProductVersion(): Promise<string> {
       }`,
     );
   }
-  return [...unique][0];
+  const version = [...unique][0];
+  parseReleaseVersion(version);
+  return version;
 }
 
-async function checkDenoVersion(): Promise<string> {
-  const toolVersions = await Deno.readTextFile(".tool-versions");
-  const matches = [...toolVersions.matchAll(/^deno\s+(\S+)$/gm)];
-  if (matches.length !== 1 || !/^\d+\.\d+\.\d+$/.test(matches[0][1])) {
-    throw new Error(".tool-versions must declare exactly one stable Deno version");
+export async function checkToolchainVersions(root = "."): Promise<void> {
+  const source = await Deno.readTextFile(`${root}/.tool-versions`);
+  const expected = new Map<string, string[]>();
+  const pins: Record<string, string> = {};
+  for (const name of ["deno", "nodejs", "terraform"]) {
+    const matches = [...source.matchAll(new RegExp(`^${name}\\s+(\\S+)$`, "gm"))];
+    if (matches.length !== 1 || !/^\d+\.\d+\.\d+$/.test(matches[0][1])) {
+      throw new Error(`.tool-versions must declare exactly one stable ${name} version`);
+    }
+    pins[name] = matches[0][1];
   }
-  const version = matches[0][1];
-  const expected = new Map<string, string>([
-    ["AGENTS.md", `Use Deno ${version}`],
-    ["Dockerfile", `ARG DENO_VERSION=${version}`],
-    [".devcontainer/Dockerfile", `ARG DENO_VERSION=${version}`],
-    ["compose.yaml", `DENO_VERSION: "${version}"`],
-    ["docs/architecture.md", `Deno ${version} is pinned`],
-    ["docs/development.md", `Deno ${version} is the only task runner`],
+  expected.set("Dockerfile", [`ARG DENO_VERSION=${pins.deno}`]);
+  expected.set(".devcontainer/Dockerfile", [
+    `ARG DENO_VERSION=${pins.deno}`,
+    `ARG NODE_VERSION=${pins.nodejs}`,
+    `ARG TERRAFORM_VERSION=${pins.terraform}`,
   ]);
-  for (const [path, marker] of expected) {
-    if (!(await Deno.readTextFile(path)).includes(marker)) {
-      throw new Error(`${path} does not use authoritative Deno ${version}`);
+  expected.set("compose.yaml", [
+    `DENO_VERSION: "${pins.deno}"`,
+    `NODE_VERSION: "${pins.nodejs}"`,
+    `TERRAFORM_VERSION: "${pins.terraform}"`,
+  ]);
+  expected.set(".github/workflows/ci.yml", [`deno-version: ${pins.deno}`]);
+  expected.set("templates/bunny-deployment/.terraform-version", [pins.terraform]);
+  expected.set("templates/bunny-deployment/terraform/versions.tf", [
+    `required_version = "= ${pins.terraform}"`,
+  ]);
+  for (const workflow of ["check", "plan", "apply"]) {
+    expected.set(`templates/bunny-deployment/.github/workflows/${workflow}.yml`, [
+      `terraform_version: ${pins.terraform}`,
+    ]);
+  }
+  for (const [path, markers] of expected) {
+    const content = await Deno.readTextFile(`${root}/${path}`);
+    for (const marker of markers) {
+      if (!content.split("\n").some((line) => line.trim() === marker)) {
+        throw new Error(`${path} does not match toolchain pin ${marker}`);
+      }
     }
   }
-  return version;
+  // Compose must use the same pinned development tools as its image defaults.
+  const dockerfile = await Deno.readTextFile(`${root}/.devcontainer/Dockerfile`);
+  const compose = await Deno.readTextFile(`${root}/compose.yaml`);
+  for (
+    const [, name, value] of dockerfile.matchAll(/^ARG ([A-Z_]+_VERSION)=(\S+)$/gm)
+  ) {
+    if (!compose.includes(`${name}: "${value}"`)) {
+      throw new Error(`compose.yaml does not match image toolchain pin ${name}`);
+    }
+  }
 }
 
 if (import.meta.main) {
   const version = await readProductVersion();
   parseReleaseVersion(version);
-  const denoVersion = await checkDenoVersion();
+  await checkToolchainVersions();
   console.log(
-    `version check: ${version} is valid ComVer; Deno ${denoVersion} is consistent`,
+    `version check: ${version} is valid ComVer; toolchain pins are consistent`,
   );
 }
