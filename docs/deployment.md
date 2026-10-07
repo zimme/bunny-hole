@@ -248,7 +248,10 @@ GitHub Environment with reviewers, default-branch-only access, and administrator
 disabled where available before storing deployment credentials. This environment is
 separate from the upstream `Production` release environment; GitHub environment names
 are case-insensitive. If migrating a configured deployment, recreate its protections,
-variables, and secret in `Bunny` before dispatching this workflow. Set `BUNNY_APP_ID`
+variables, and secret in `Bunny` before dispatching this workflow. Remove the legacy
+`BUNNYNET_API_KEY`, `BUNNY_APP_ID`, and `BUNNY_CONTAINER_NAME` values from the old
+`production`/`Production` environment before using it for releases. Perform credential
+migration and cleanup privately; never give the API key to an agent. Set `BUNNY_APP_ID`
 and `BUNNY_CONTAINER_NAME` as environment variables, then enter the API key
 interactively:
 

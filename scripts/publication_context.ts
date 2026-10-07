@@ -49,6 +49,12 @@ export function workflowEnvironmentFailures(
     ) {
       failures.push("Only the release job may use the Production environment");
     }
+    if (
+      !deployment && typeof environment === "string" &&
+      environment.toLowerCase() === "bunny"
+    ) {
+      failures.push("Only the deployment job may use the Bunny environment");
+    }
   }
   return failures;
 }

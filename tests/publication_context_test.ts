@@ -49,7 +49,16 @@ Deno.test("release forwarding supplies publisher context without exposing runner
     }
   }
   assertEquals(workflowEnvironmentFailures({}, ".github/workflows/ci.yml"), []);
-  for (const environment of ["Production", "production", { name: "PRODUCTION" }]) {
+  for (
+    const environment of [
+      "Production",
+      "production",
+      { name: "PRODUCTION" },
+      "Bunny",
+      "bunny",
+      { name: "BUNNY" },
+    ]
+  ) {
     assert(
       workflowEnvironmentFailures(
         { jobs: { validate: { environment } } },

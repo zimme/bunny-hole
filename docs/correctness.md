@@ -236,10 +236,11 @@ OIDC token or publishes to a registry.
 
 Workflow policy also requires the release job's exact `Production` environment and the
 optional deployment job's distinct `Bunny` environment. GitHub names are
-case-insensitive, so other jobs cannot use any capitalization of `Production`. Tests
-exercise string and named-object forms, missing/incorrect names, and case aliases;
-mutation witnesses require release-name drift and deployment/release aliasing to fail.
-Account protection rules and human approval still require operator verification.
+case-insensitive, so other jobs cannot use any capitalization of either reserved name.
+Tests exercise string and named-object forms, missing/incorrect names, and case aliases;
+mutation witnesses require release-name drift, deployment/release aliasing, and weakened
+deployment-environment reservation to fail. Account protection rules and human approval
+still require operator verification.
 
 The JSR-only publisher checks identity before its first registry request, releases
 response bodies before any publication, skips existing immutable versions, and stops on

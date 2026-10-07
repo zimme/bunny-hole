@@ -1,6 +1,14 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: "scripts/publication_context.ts",
+    before: 'environment.toLowerCase() === "bunny"',
+    after: "false",
+    test: "tests/publication_context_test.ts",
+    witness:
+      "release forwarding supplies publisher context without exposing runner credentials elsewhere",
+  },
+  {
     source: ".github/workflows/release.yml",
     before: "    environment: Production",
     after: "    environment: unprotected",
