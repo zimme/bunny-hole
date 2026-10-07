@@ -12,62 +12,78 @@ try {
   // Validate the template exactly as a consumer uses it: configuration files are
   // copied into the repository and then Terraform runs without a live backend or
   // Bunny credentials. The test-file variable blocks must override these public
-  // adopted/TLS values for their bootstrap cases.
+  // adopted/DNS/TLS/consent values for their independent scenarios.
   await copyDirectory("templates/bunny-deployment", copiedTemplateDirectory);
   await Deno.writeTextFile(
     `${terraformDirectory}/backend.tf`,
     `terraform {\n  cloud {\n    organization = "consumer-example"\n    workspaces { name = "bunny-hole-production" }\n  }\n}\n`,
   );
-  await Deno.writeTextFile(
-    `${terraformDirectory}/deployment.auto.tfvars.json`,
-    JSON.stringify(
-      {
-        application_name: "consumer-bunny-hole",
-        region: "DE",
-        management_hostname: "manage.consumer.example",
-        application_hostnames: ["app.consumer.example"],
-        connector_hostname: "connect.consumer.example",
-        public_pullzone_id: "101",
-        public_pullzone_name: "public-generated",
-        connector_pullzone_id: "102",
-        connector_pullzone_name: "connector-generated",
-        image_tag: "0.1.0",
-        image_digest: `sha256:${"a".repeat(64)}`,
-        owner_public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        enable_hostname_tls: true,
-      },
-      null,
-      2,
-    ) + "\n",
-  );
-  await run(
-    "terraform",
-    ["-chdir=" + terraformDirectory, "fmt", "-check", "-recursive"],
-    options,
-  );
-  await run(
-    "terraform",
-    [
-      "-chdir=" + terraformDirectory,
-      "init",
-      "-backend=false",
-      "-input=false",
-      "-lockfile=readonly",
-    ],
-    options,
-  );
-  await run(
-    "terraform",
-    ["-chdir=" + terraformDirectory, "validate", "-no-color"],
-    options,
-  );
-  // Mock-provider regression tests exercise optional DNS and bootstrap sentinels
-  // without Bunny credentials or any live infrastructure.
-  await run(
-    "terraform",
-    ["-chdir=" + terraformDirectory, "test", "-no-color"],
-    options,
-  );
+  const consumerInputs = {
+    application_name: "consumer-bunny-hole",
+    region: "DE",
+    management_hostname: "manage.consumer.example",
+    application_hostnames: ["app.consumer.example"],
+    connector_hostname: "connect.consumer.example",
+    public_pullzone_id: "101",
+    public_pullzone_name: "public-generated",
+    connector_pullzone_id: "102",
+    connector_pullzone_name: "connector-generated",
+    image_digest: `sha256:${"a".repeat(64)}`,
+    owner_public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    enable_hostname_tls: true,
+    dns_zone_domain: "consumer.example",
+    image_namespace: "consumer",
+    image_name: "custom-host",
+    volume_size_gb: 3,
+    request_timeout_ms: 60000,
+    connector_websocket_limit: 1000,
+    dns_ttl: 600,
+  };
+  for (const allowReleaseCandidate of [false, true]) {
+    console.log(
+      `Copied consumer checks: allow_release_candidate=${allowReleaseCandidate}`,
+    );
+    await Deno.writeTextFile(
+      `${terraformDirectory}/deployment.auto.tfvars.json`,
+      JSON.stringify(
+        {
+          ...consumerInputs,
+          image_tag: allowReleaseCandidate ? "1.0.0-rc.1" : "1.0.0",
+          allow_release_candidate: allowReleaseCandidate,
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    await run(
+      "terraform",
+      ["-chdir=" + terraformDirectory, "fmt", "-check", "-recursive"],
+      options,
+    );
+    await run(
+      "terraform",
+      [
+        "-chdir=" + terraformDirectory,
+        "init",
+        "-backend=false",
+        "-input=false",
+        "-lockfile=readonly",
+      ],
+      options,
+    );
+    await run(
+      "terraform",
+      ["-chdir=" + terraformDirectory, "validate", "-no-color"],
+      options,
+    );
+    // Mock-provider regression tests exercise optional DNS and bootstrap sentinels
+    // without Bunny credentials or any live infrastructure.
+    await run(
+      "terraform",
+      ["-chdir=" + terraformDirectory, "test", "-no-color"],
+      options,
+    );
+  }
 } finally {
   await Deno.remove(dataDirectory, { recursive: true });
 }

@@ -11,7 +11,7 @@ The shortest consumer path uses the deployment archive from the exact published 
 rather than a source checkout:
 
 ```sh
-version=1.0.0-rc.4 # Select this only for explicitly approved RC evaluation.
+version=1.0.0-rc.5 # Select this only for explicitly approved RC evaluation.
 archive="bunny-hole-deployment-${version}.tar.gz"
 gh release download "$version" --repo zimme/bunny-hole --pattern "$archive"
 gh attestation verify "$archive" --repo zimme/bunny-hole
@@ -27,6 +27,16 @@ already uses that exact host version/digest. Customize public application/backen
 and, for an approved RC evaluation only, explicitly set `allow_release_candidate=true`.
 Stable versions need no opt-in. Private release verification, account protections,
 backend setup, credentials, DNS review, and restore readiness remain prerequisites.
+
+Before creating a private consumer repository for these live workflows, check that the
+account supports required deployment reviewers: GitHub requires Enterprise for this
+protection on private repositories. An independent human reviewer is also required;
+self-review prevention excludes a sole operator approving their own run. Pro or Team
+alone is insufficient for the private-repository approval gate. Keep live workflows
+disabled and credentials absent when those prerequisites cannot be met. A private
+terminal or dashboard procedure remains available with human checkpoints, but does not
+provide equivalent independent review. See
+[GitHub environment availability](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
 
 Run `deno task deployment:scaffold ../my-bunny-deployment` from a Bunny Hole checkout to
 copy the entire checked template, including hidden workflows, agent guidance, shared
