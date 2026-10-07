@@ -50,8 +50,9 @@ an open proxy. Those are distinct designs, not hidden experimental switches.
 
 ## Local development
 
-Deno 2.9.5 is pinned throughout. The complete development image is Compose-native; Dev
-Container-aware editors are optional adapters and add no Features.
+Deno is pinned in `.tool-versions` and the development image. The complete development
+image is Compose-native; Dev Container-aware editors are optional adapters and add no
+Features.
 
 ```sh
 sh .devcontainer/initialize.sh
@@ -183,9 +184,9 @@ remains the default; candidate deployments require explicit consent. See
 [versioning](docs/versioning.md) and the
 [release-archive setup path](docs/deployment-template.md).
 
-FRP 0.70.1 is included in the OCI images and native bundles; the library generates the
-validated profile but does not pretend FRP is a TypeScript library. See
-[third-party notices](THIRD_PARTY_NOTICES.md).
+The FRP version pinned in `third_party/frp.json` is included in the OCI images and
+native bundles; the library generates the validated profile but does not pretend FRP is
+a TypeScript library. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 Library consumers provide credentials and the matching `frpc` executable explicitly:
 
@@ -259,11 +260,12 @@ See [deployment](docs/deployment.md),
 
 ## Security hardening and correctness
 
-Version 1.0.0 verifies HTTPS origin certificates, enforces Kubernetes namespace
-delegation, supports owner passkey revocation, and bounds control-request cleanup. Read
-[migration steps](docs/configuration.md#hardening-migration-to-100) before upgrading.
-[Correctness engineering](docs/correctness.md) describes state transitions, mutation
-witnesses, agent requirements, and the remaining operator acceptance checks.
+The security hardening update verifies HTTPS origin certificates, enforces Kubernetes
+namespace delegation, supports owner passkey revocation, and bounds control-request
+cleanup. Read [migration steps](docs/configuration.md#security-hardening-migration)
+before upgrading. [Correctness engineering](docs/correctness.md) describes state
+transitions, mutation witnesses, agent requirements, and the remaining operator
+acceptance checks.
 
 ## License
 

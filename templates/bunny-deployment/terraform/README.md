@@ -17,21 +17,23 @@ This directory provisions the documented Bunny Hole Magic Containers shape:
 The Bunny provider does not create the two Pull Zones as ordinary Terraform resources:
 Magic Containers creates them as a side effect of the CDN endpoints. The declarations
 below are intentionally an adoption workflow. They must be imported after the target
-bootstrap apply. Pull Zone names are replacement-only in provider 0.18.2, so bootstrap
-records the actual generated IDs and names and normal convergence refuses any mismatch.
-Custom hostname resources are deliberately off at first (`enable_hostname_tls = false`).
-After DNS is published and propagation is verified, a separate reviewed apply requests
-Bunny-managed TLS (`tls_enabled = true`, with no certificate private key in this
-repository). Optional Bunny DNS records link an already-existing zone to the adopted
-Pull Zones; this template never creates a DNS zone or changes nameserver delegation.
+bootstrap apply. Pull Zone names are replacement-only in the pinned provider, so
+bootstrap records the actual generated IDs and names and normal convergence refuses any
+mismatch. Custom hostname resources are deliberately off at first
+(`enable_hostname_tls = false`). After DNS is published and propagation is verified, a
+separate reviewed apply requests Bunny-managed TLS (`tls_enabled = true`, with no
+certificate private key in this repository). Optional Bunny DNS records link an
+already-existing zone to the adopted Pull Zones; this template never creates a DNS zone
+or changes nameserver delegation.
 
 ## Before you start
 
-Use Terraform **1.16.2** and the exact `BunnyWay/bunnynet` provider **0.18.2**. Verify
-that the selected Bunny region and a published, tested host image are available. Keep
-the Bunny API key out of files and agent conversations: the provider reads it only from
-`BUNNYNET_API_KEY` in a private shell or a protected CI environment. Bunny documents
-that this is a full-account key and does not document scoped/OIDC deployment keys.
+Use the Terraform version in `../.terraform-version` and the exact `BunnyWay/bunnynet`
+provider pinned in `versions.tf` and `.terraform.lock.hcl`. Verify that the selected
+Bunny region and a published, tested host image are available. Keep the Bunny API key
+out of files and agent conversations: the provider reads it only from `BUNNYNET_API_KEY`
+in a private shell or a protected CI environment. Bunny documents that this is a
+full-account key and does not document scoped/OIDC deployment keys.
 
 The HCP Terraform backend is the checked-in example. Copy it and replace its
 organization placeholder before `terraform init`. Copy the public deployment
@@ -127,8 +129,8 @@ unexpected replacement is a stop condition. Review the plan carefully: the two P
 Zones should resolve to the compute-container origin endpoint IDs, `public` must have
 `websockets_enabled = false`, `connector` must have it enabled, and both must show
 caching, error caching, request coalescing, and origin retries disabled. If Bunny
-reports drift caused by a dashboard-only setting that provider 0.18.2 cannot model, stop
-and resolve it manually; do not add undocumented Terraform arguments.
+reports drift caused by a dashboard-only setting that the pinned provider cannot model,
+stop and resolve it manually; do not add undocumented Terraform arguments.
 
 ## Apply and hostname/DNS setup
 

@@ -29,7 +29,7 @@ deployment.
 
 ## Validation
 
-Use Terraform 1.16.2 and the committed provider lockfile:
+Use the Terraform version in `.terraform-version` and the committed provider lockfile:
 
 ```sh
 terraform -chdir=terraform fmt -check -recursive

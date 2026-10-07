@@ -36,8 +36,8 @@ changes.
 
 ## Commands
 
-Use Deno 2.9.5 and the Compose-native development service. Terraform 1.16.2 is pinned
-for validating the consumer deployment template. From the host:
+Use the toolchain pinned in `.tool-versions` and the Compose-native development service.
+The consumer template pins Terraform in its `.terraform-version` file. From the host:
 
 ```sh
 sh .devcontainer/initialize.sh

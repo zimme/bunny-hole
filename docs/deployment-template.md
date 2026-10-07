@@ -11,7 +11,7 @@ The shortest consumer path uses the deployment archive from the exact published 
 rather than a source checkout:
 
 ```sh
-version=1.0.0-rc.5 # Select this only for explicitly approved RC evaluation.
+version=VERSION # Replace VERSION with the selected published release.
 archive="bunny-hole-deployment-${version}.tar.gz"
 gh release download "$version" --repo zimme/bunny-hole --pattern "$archive"
 gh attestation verify "$archive" --repo zimme/bunny-hole
@@ -45,10 +45,11 @@ new directory, `bash scripts/setup.sh` creates the two public configuration file
 without overwriting edits. Configure those files, then follow the template's protected
 plan/review/apply procedure; scaffolding performs no live operation.
 
-The template uses Terraform 1.16.2 and `BunnyWay/bunnynet` 0.18.2 because the official
-provider exposes the required application, Pull Zone, hostname, managed-TLS, and Bunny
-DNS resources. It consumes the already published host image; it does not rebuild this
-project or grant a consumer repository permission to publish upstream artifacts.
+The template pins Terraform in `.terraform-version` and `BunnyWay/bunnynet` in
+`terraform/versions.tf` and its provider lockfile because the official provider exposes
+the required application, Pull Zone, hostname, managed-TLS, and Bunny DNS resources. It
+consumes the already published host image; it does not rebuild this project or grant a
+consumer repository permission to publish upstream artifacts.
 
 ## Declared topology
 

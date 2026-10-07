@@ -4,13 +4,16 @@ Use this small record to resume work without transferring credentials. It is a
 communication contract, not Terraform state and not a deployment authorization. Values
 must be public or intentionally non-sensitive operational facts.
 
+Replace the release placeholders with the exact verified version and image digest;
+a completed handoff must identify immutable artifacts.
+
 ```json
 {
   "schema": "bunny-hole-setup/v1",
   "status": "pending-manual-items",
   "repository": "owner/repository",
   "release": {
-    "version": "1.4.0",
+    "version": "<verified-published-version>",
     "imageDigest": "sha256:<immutable-tested-digest>",
     "provenanceVerified": true
   },

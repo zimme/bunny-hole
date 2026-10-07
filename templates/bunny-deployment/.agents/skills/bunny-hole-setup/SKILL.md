@@ -22,8 +22,8 @@ application/protocol code or substitute an unpublished image.
   digest. A separately approved bootstrap dispatch must reproduce both before it creates
   the app, imports the automatically generated Pull Zones, prints `bootstrap_handoff`,
   and stops. Commit the handoff's actual generated Pull Zone IDs and names before a full
-  plan: `name` is replacement-only in provider 0.18.2, so it is never routine cleanup.
-  Never import a resource until its ID and ownership have been verified.
+  plan: `name` is replacement-only in the pinned provider, so it is never routine
+  cleanup. Never import a resource until its ID and ownership have been verified.
 - **Plan or apply:** require a separate explicit approval for each operation. Use only
   the protected default-branch workflows. Enter the reviewed commit and canonical plan
   digest into apply; a mismatch requires a new plan and review. Never accept a

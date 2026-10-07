@@ -81,11 +81,11 @@ The pinned provider can manage the application, adopted Pull Zones, WebSocket/ca
 policy, exact custom hostnames, managed TLS, and optional records in an existing Bunny
 DNS zone. It cannot atomically create and manage a Magic Container endpoint's
 side-effect Pull Zone: bootstrap therefore creates only the application, imports both
-generated zones, records their actual IDs/names, and stops. Provider 0.18.2 treats Pull
-Zone name as replacement-only, so the template fails a full plan unless the committed
-handoff names match the zones at its recorded IDs. The protected apply must reproduce
-both the reviewed commit and canonical plan digest. First review/apply policy and DNS
-with custom hostname TLS disabled; only after propagation is verified should a
+generated zones, records their actual IDs/names, and stops. The template-pinned provider
+treats Pull Zone name as replacement-only, so the template fails a full plan unless the
+committed handoff names match the zones at its recorded IDs. The protected apply must
+reproduce both the reviewed commit and canonical plan digest. First review/apply policy
+and DNS with custom hostname TLS disabled; only after propagation is verified should a
 separately reviewed plan enable managed TLS. Use the dashboard only for provider gaps
 and certificate/DNS validation, and never claim a setting is verified without checking
 the deployed result. Endpoint renames require a separate review because they may

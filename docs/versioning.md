@@ -83,11 +83,12 @@ available. If any released artifact is wrong, publish the next compatible minor 
 breaking major version; never replace the existing version.
 
 Before creating a tag, update the connector CLI, connector library, host, and root
-`deno.json` versions together and check the intended tag locally:
+`deno.json` versions together and check the intended tag locally. Set `VERSION` to the
+proposed release version before running:
 
 ```sh
 deno task version:check
-deno task release:check 1.4.0
+deno task release:check "$VERSION"
 ```
 
 Package publication forwards only the short-lived GitHub OIDC request credentials and
