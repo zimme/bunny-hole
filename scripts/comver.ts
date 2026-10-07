@@ -97,7 +97,3 @@ export function assertReleaseHistory(
     }
   }
 }
-
-export function npmReleaseChannel(version: string): "rc" | "latest" {
-  return parseReleaseVersion(version).candidate === null ? "latest" : "rc";
-}

@@ -4,7 +4,6 @@ import {
   compareComVer,
   compareReleaseVersion,
   hasBreakingChange,
-  npmReleaseChannel,
   parseComVer,
   parseReleaseVersion,
 } from "../scripts/comver.ts";
@@ -15,8 +14,6 @@ Deno.test("Bunny Hole release candidates extend ComVer without changing stable p
   assertEquals(parse("1.0.0-rc.1").candidate, 1n);
   assertEquals(compareReleaseVersion(parse("1.0.0-rc.9"), parse("1.0.0-rc.10")), -1);
   assertEquals(compareReleaseVersion(parse("1.0.0-rc.10"), parse("1.0.0")), -1);
-  assertEquals(npmReleaseChannel("1.0.0-rc.1"), "rc");
-  assertEquals(npmReleaseChannel("1.0.0"), "latest");
   for (
     const invalid of [
       "1.0.1-rc.1",

@@ -1,48 +1,35 @@
-import { buildNpmPackage } from "./build_npm_package.ts";
 import { run } from "./process.ts";
 import { readProductVersion } from "./version_check.ts";
-import { npmReleaseChannel } from "./comver.ts";
 import { assertPublicationContext } from "./publication_context.ts";
 
-const version = Deno.env.get("RELEASE_TAG")?.trim();
-if (!version || version !== await readProductVersion()) {
-  throw new Error("RELEASE_TAG must match the product version");
-}
-// Check before registry requests or publication can create partial release effects.
-assertPublicationContext(version, (name) => Deno.env.get(name));
-
-const jsrUrl = `https://jsr.io/@zimme/bunny-hole/${version}/meta.json`;
-const jsrVersionExists = await versionExists(jsrUrl);
-
-const npmUrl = `https://registry.npmjs.org/${
-  encodeURIComponent("@zimme/bunny-hole")
-}/${version}`;
-const npmVersionExists = await versionExists(npmUrl);
-if (jsrVersionExists) {
-  console.log(`JSR @zimme/bunny-hole@${version} already exists; skipping`);
-} else await run("deno", ["publish"]);
-if (!npmVersionExists) {
-  const artifact = await buildNpmPackage("dist/npm");
-  await run("npm", [
-    "publish",
-    "--access",
-    "public",
-    "--provenance",
-    "--tag",
-    npmReleaseChannel(version),
-    artifact,
-  ]);
-} else console.log(`npm @zimme/bunny-hole@${version} already exists; skipping`);
-
-async function versionExists(url: string): Promise<boolean> {
-  const response = await fetch(url, {
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(15_000),
-  });
+export async function publishPackage(
+  version: string,
+  get: (name: string) => string | undefined,
+  effects = { fetch, run },
+): Promise<void> {
+  // Reject invalid identity before registry requests or publication effects.
+  assertPublicationContext(version, get);
+  const response = await effects.fetch(
+    `https://jsr.io/@zimme/bunny-hole/${version}_meta.json`,
+    {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
   await response.body?.cancel();
-  if (response.status === 404) return false;
-  if (!response.ok) {
+  if (response.status === 404) {
+    await effects.run("deno", ["publish"]);
+  } else if (!response.ok) {
     throw new Error(`registry check failed with HTTP ${response.status}`);
+  } else {
+    console.log(`JSR @zimme/bunny-hole@${version} already exists; skipping`);
   }
-  return true;
+}
+
+if (import.meta.main) {
+  const version = Deno.env.get("RELEASE_TAG")?.trim();
+  if (!version || version !== await readProductVersion()) {
+    throw new Error("RELEASE_TAG must match the product version");
+  }
+  await publishPackage(version, (name) => Deno.env.get(name));
 }

@@ -198,7 +198,7 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: dist/release/*
-      - name: Publish the connector library to JSR and npm
+      - name: Publish the connector library to JSR
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           configFile: .devcontainer/devcontainer.json
@@ -243,7 +243,7 @@ jobs:
             echo "ghcr.io/${GITHUB_REPOSITORY}-connector@${CONNECTOR_DIGEST}"
             echo '```'
             echo
-            echo "The same connector library version is published as @zimme/bunny-hole on JSR and npm. Candidates use npm's rc channel and are not stable releases."
+            echo "The same connector library version is published as @zimme/bunny-hole on JSR. npm registry publication is deferred. Candidates are not stable releases."
             echo "The deployment archive includes the complete template and release.json with these exact image digests. Verify its GitHub artifact attestation before extraction."
           } > release-notes.md
       - name: Create GitHub release

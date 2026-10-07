@@ -50,8 +50,9 @@ exposing a sensitive service.
 ## Release trust
 
 Official stable releases use one immutable `MAJOR.MINOR.0` version for host and
-connector OCI images, native bundles, the standalone deployment template, JSR source,
-and the npm library. Explicit `MAJOR.MINOR.0-rc.N` releases are unstable evaluation
-artifacts, not stable defaults. Prefer OCI digests, verify native `SHA256SUMS`, and
-verify GitHub provenance/SBOM attestations. The project does not publish an Edge Script
-build and does not require npm or JSR tokens after trusted publishing is configured.
+connector OCI images, native bundles, the standalone deployment template, and the JSR
+library. Explicit `MAJOR.MINOR.0-rc.N` releases are unstable evaluation artifacts, not
+stable defaults. Prefer OCI digests, verify native `SHA256SUMS`, and verify GitHub
+provenance/SBOM attestations. The project does not publish an Edge Script build and does
+not require a JSR token after repository linkage is configured. npm registry publication
+is deferred.
