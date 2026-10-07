@@ -96,7 +96,7 @@ Deno.test("publisher validates identity, releases registry bodies and publishes 
       fetch: ((input, init) => {
         assertEquals(
           String(input),
-          `https://jsr.io/@zimme/bunny-hole/${version}/meta.json`,
+          `https://jsr.io/@zimme/bunny-hole/${version}_meta.json`,
         );
         assert(init?.signal instanceof AbortSignal);
         effects.push("check");

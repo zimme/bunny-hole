@@ -10,7 +10,7 @@ export async function publishPackage(
   // Reject invalid identity before registry requests or publication effects.
   assertPublicationContext(version, get);
   const response = await effects.fetch(
-    `https://jsr.io/@zimme/bunny-hole/${version}/meta.json`,
+    `https://jsr.io/@zimme/bunny-hole/${version}_meta.json`,
     {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(15_000),
