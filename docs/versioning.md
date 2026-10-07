@@ -96,3 +96,12 @@ and no step inherits the runner's entire environment. The publisher rejects miss
 context, the wrong tag/workflow, and non-hosted runners before contacting a registry.
 GitHub release protection and JSR repository linkage remain required human setup;
 successful CI does not prove those account controls are ready.
+
+Agents may prepare a release and create its new tag on reviewed, validated `main`
+without additional approval in the conversation. Before tagging, they must verify that
+the protected `Release` environment requires a human reviewer and allows the proposed
+tag. The tag triggers the release workflow; a human approves publication in GitHub
+Actions. Agents must not approve or bypass that gate, weaken its protection, publish
+outside the workflow, or move existing release tags. This authorization covers stable
+and evaluation releases, not Bunny resources or deployments. RC consumer use still
+requires explicit opt-in.

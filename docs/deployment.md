@@ -281,9 +281,10 @@ Environment with a required human reviewer and Selected branches and tags rules 
 Tag permitting `*.*.0` and `*.*.0-rc.*`. These patterns allow stable ComVer releases and
 the supported RC channel; GitHub's patterns cannot enforce canonical numeric syntax or
 release ordering. The workflow's tag, version, and release checks enforce those rules
-before publication. An eligible tag pattern does not authorize creating a release.
-Disable administrator bypass where available. For a solo maintainer who also triggers
-the release, leave Prevent self-review disabled: GitHub otherwise blocks that maintainer
+before publication. Agents may prepare releases and trigger this workflow under
+`AGENTS.md`; publication still requires the human approval described below. Disable
+administrator bypass where available. For a solo maintainer who also triggers the
+release, leave Prevent self-review disabled: GitHub otherwise blocks that maintainer
 from approving the job. The maintainer must manually approve the waiting job in GitHub
 Actions; an agent must not approve it. This provides a human approval gate, not
 independent review. With a separate human approver, enable Prevent self-review.
