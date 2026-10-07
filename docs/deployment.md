@@ -269,7 +269,17 @@ an ordinary branch push.
 ## Repository owner setup before the first release
 
 Enable GitHub release immutability before the first release. Create `@zimme/bunny-hole`
-on JSR and link it to `zimme/bunny-hole`. Create the protected GitHub `release`
+on JSR and link it to `zimme/bunny-hole`. Create the protected GitHub `Production`
 Environment with a required human reviewer and a tag rule permitting the intended
-release tag. The tag workflow uses GitHub OIDC for JSR publication and needs no stored
-registry token. npm registry publication is deferred and requires no npm account setup.
+release tag. Disable administrator bypass where available. For a solo maintainer who
+also triggers the release, leave Prevent self-review disabled: GitHub otherwise blocks
+that maintainer from approving the job. The maintainer must manually approve the waiting
+job in GitHub Actions; an agent must not approve it. This provides a human approval
+gate, not independent review. With a separate human approver, enable Prevent
+self-review.
+
+These release settings are separate from the deployment template's `production`
+environment, which requires independent review and prevents self-review before receiving
+deployment credentials. The tag workflow uses GitHub OIDC for JSR publication and needs
+no stored registry token. npm registry publication is deferred and requires no npm
+account setup.

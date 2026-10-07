@@ -16,7 +16,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    environment: release
+    environment: Production
     env:
       BUNNY_HOLE_ENVIRONMENT_NAME: release-validation
       COMPOSE_PARALLEL_LIMIT: "1"
