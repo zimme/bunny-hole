@@ -243,12 +243,20 @@ layer and is future work, not an autoscaling toggle.
 ## Optional manual GitHub deployment workflow
 
 `.github/workflows/deploy-bunny.yml` can update an existing app only when manually
-dispatched with an existing release version and matching digest. Protect the
-`production` GitHub Environment with reviewers. Set `BUNNY_APP_ID` and
-`BUNNY_CONTAINER_NAME` as environment variables, then enter the API key interactively:
+dispatched with an existing release version and matching digest. Protect the `Bunny`
+GitHub Environment with reviewers, default-branch-only access, and administrator bypass
+disabled where available before storing deployment credentials. This environment is
+separate from the upstream `Production` release environment; GitHub environment names
+are case-insensitive. If migrating a configured deployment, recreate its protections,
+variables, and secret in `Bunny` before dispatching this workflow. Remove the legacy
+`BUNNYNET_API_KEY`, `BUNNY_APP_ID`, and `BUNNY_CONTAINER_NAME` values from the old
+`production`/`Production` environment before using it for releases. Perform credential
+migration and cleanup privately; never give the API key to an agent. Set `BUNNY_APP_ID`
+and `BUNNY_CONTAINER_NAME` as environment variables, then enter the API key
+interactively:
 
 ```sh
-gh secret set --env production BUNNYNET_API_KEY
+gh secret set --env Bunny BUNNYNET_API_KEY
 ```
 
 Current Bunny documentation describes a full account API key and does not document OIDC
@@ -269,7 +277,21 @@ an ordinary branch push.
 ## Repository owner setup before the first release
 
 Enable GitHub release immutability before the first release. Create `@zimme/bunny-hole`
-on JSR and link it to `zimme/bunny-hole`. Create the protected GitHub `release`
-Environment with a required human reviewer and a tag rule permitting the intended
-release tag. The tag workflow uses GitHub OIDC for JSR publication and needs no stored
-registry token. npm registry publication is deferred and requires no npm account setup.
+on JSR and link it to `zimme/bunny-hole`. Create the protected GitHub `Production`
+Environment with a required human reviewer and Selected branches and tags rules of type
+Tag permitting `*.*.0` and `*.*.0-rc.*`. These patterns allow stable ComVer releases and
+the supported RC channel; GitHub's patterns cannot enforce canonical numeric syntax or
+release ordering. The workflow's tag, version, and release checks enforce those rules
+before publication. An eligible tag pattern does not authorize creating a release.
+Disable administrator bypass where available. For a solo maintainer who also triggers
+the release, leave Prevent self-review disabled: GitHub otherwise blocks that maintainer
+from approving the job. The maintainer must manually approve the waiting job in GitHub
+Actions; an agent must not approve it. This provides a human approval gate, not
+independent review. With a separate human approver, enable Prevent self-review.
+
+These release settings are separate from the upstream `Bunny` deployment environment and
+the deployment template's `production` environment in each consumer repository. The
+template's environment requires independent review and prevents self-review before
+receiving deployment credentials. The tag workflow uses GitHub OIDC for JSR publication
+and needs no stored registry token. npm registry publication is deferred and requires no
+npm account setup.

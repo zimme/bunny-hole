@@ -16,6 +16,49 @@ export const PUBLICATION_ENVIRONMENT = [
   "RUNNER_ENVIRONMENT",
 ] as const;
 
+/** Keep registry release approval separate from live Bunny deployment credentials. */
+export function workflowEnvironmentFailures(
+  workflow: Record<string, unknown>,
+  path: string,
+): string[] {
+  const jobs = workflow.jobs as Record<string, Record<string, unknown>> | undefined;
+  const failures: string[] = [];
+  if (path === ".github/workflows/release.yml" && !jobs?.release) {
+    failures.push("Release workflow must contain its protected release job");
+  }
+  if (path === ".github/workflows/deploy-bunny.yml" && !jobs?.deploy) {
+    failures.push("Bunny deployment workflow must contain its protected deploy job");
+  }
+  for (const [id, job] of Object.entries(jobs ?? {})) {
+    const environment = typeof job.environment === "string"
+      ? job.environment
+      : (job.environment as { name?: unknown } | undefined)?.name;
+    const release = path === ".github/workflows/release.yml" && id === "release";
+    const deployment = path === ".github/workflows/deploy-bunny.yml" && id === "deploy";
+    if (release && environment !== "Production") {
+      failures.push("Release must use the protected Production environment");
+    }
+    if (deployment && environment !== "Bunny") {
+      failures.push(
+        "Bunny deployment must use its separate protected Bunny environment",
+      );
+    }
+    if (
+      !release && typeof environment === "string" &&
+      environment.toLowerCase() === "production"
+    ) {
+      failures.push("Only the release job may use the Production environment");
+    }
+    if (
+      !deployment && typeof environment === "string" &&
+      environment.toLowerCase() === "bunny"
+    ) {
+      failures.push("Only the deployment job may use the Bunny environment");
+    }
+  }
+  return failures;
+}
+
 export function assertPublicationContext(
   version: string,
   get: (name: string) => string | undefined,
