@@ -42,7 +42,7 @@ region, one Magic Container instance, and one active connector per enrollment.
   `ReferenceGrant`.
 - One cluster connected to several Bunny Hole hosts and one host enrolling many devices
   or clusters.
-- A TypeScript control library distributed as `@zimme/bunny-hole` on JSR and npm.
+- A TypeScript control library distributed as `@zimme/bunny-hole` on JSR.
 
 Bunny Hole does **not** promise public WebSocket proxying, arbitrary TCP or UDP,
 end-to-end HTTP/2 semantics, multiple relay replicas, multi-region failover, a VPN, or
@@ -175,11 +175,11 @@ Each immutable `MAJOR.MINOR.0` release publishes:
 - `ghcr.io/zimme/bunny-hole-connector` for devices and Kubernetes;
 - native bundles containing matching `bunny-hole` and `frpc` executables;
 - an attested standalone deployment-template archive with exact image digests; and
-- `@zimme/bunny-hole` for Deno, JSR, and npm consumers.
+- `@zimme/bunny-hole` on JSR for Deno and compatible consumers.
 
 The explicit `MAJOR.MINOR.0-rc.N` evaluation channel publishes the same versioned
-artifacts as GitHub prereleases and npm's `rc` tag. Stable selection remains the
-default; candidate deployments require explicit consent. See
+artifacts as GitHub prereleases. npm registry publication is deferred. Stable selection
+remains the default; candidate deployments require explicit consent. See
 [versioning](docs/versioning.md) and the
 [release-archive setup path](docs/deployment-template.md).
 

@@ -1,4 +1,4 @@
-/** GitHub OIDC and provenance inputs used by the pinned Deno and npm publishers. */
+/** GitHub OIDC and provenance inputs used by the pinned Deno publisher. */
 export const PUBLICATION_ENVIRONMENT = [
   "ACTIONS_ID_TOKEN_REQUEST_URL",
   "ACTIONS_ID_TOKEN_REQUEST_TOKEN",

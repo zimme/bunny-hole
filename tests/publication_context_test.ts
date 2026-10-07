@@ -4,7 +4,8 @@ import {
   PUBLICATION_ENVIRONMENT,
   publicationStepFailures,
 } from "../scripts/publication_context.ts";
-import { assert, assertEquals, assertThrows } from "./assert.ts";
+import { publishPackage } from "../scripts/publish_package.ts";
+import { assert, assertEquals, assertRejects, assertThrows } from "./assert.ts";
 
 Deno.test("release forwarding supplies publisher context without exposing runner credentials elsewhere", async () => {
   const workflow = parseDocument(
@@ -22,6 +23,8 @@ Deno.test("release forwarding supplies publisher context without exposing runner
     /--allow-env=(\S+)/,
   )[1].split(",");
   for (const name of PUBLICATION_ENVIRONMENT) assert(permissions.includes(name));
+  assert(manifest.tasks["release:publish-package"].includes("--allow-net=jsr.io "));
+  assert(manifest.tasks["release:publish-package"].includes("--allow-run=deno "));
 
   const inputs = publish.with as Record<string, unknown>;
   for (const name of PUBLICATION_ENVIRONMENT) {
@@ -53,18 +56,7 @@ Deno.test("release forwarding supplies publisher context without exposing runner
 
 Deno.test("publisher refuses missing or mismatched identity context before registry effects", () => {
   const version = "1.0.0-rc.1";
-  const context: Record<string, string> = Object.fromEntries(
-    PUBLICATION_ENVIRONMENT.map((name) => [name, "test-value"]),
-  );
-  Object.assign(context, {
-    GITHUB_ACTIONS: "true",
-    RUNNER_ENVIRONMENT: "github-hosted",
-    GITHUB_EVENT_NAME: "push",
-    GITHUB_REF: `refs/tags/${version}`,
-    GITHUB_REPOSITORY: "zimme/bunny-hole",
-    GITHUB_WORKFLOW_REF:
-      `zimme/bunny-hole/.github/workflows/release.yml@refs/tags/${version}`,
-  });
+  const context = publicationContext(version);
   assertPublicationContext(version, (name) => context[name]);
   for (const name of PUBLICATION_ENVIRONMENT) {
     for (const missing of [undefined, "", " "]) {
@@ -94,3 +86,80 @@ Deno.test("publisher refuses missing or mismatched identity context before regis
     );
   }
 });
+
+Deno.test("publisher validates identity, releases registry bodies and publishes only missing JSR versions", async () => {
+  const version = "1.0.0-rc.1";
+  const context = publicationContext(version);
+  for (const status of [200, 404, 503]) {
+    const effects: string[] = [];
+    const dependencies = {
+      fetch: ((input, init) => {
+        assertEquals(
+          String(input),
+          `https://jsr.io/@zimme/bunny-hole/${version}/meta.json`,
+        );
+        assert(init?.signal instanceof AbortSignal);
+        effects.push("check");
+        return Promise.resolve(
+          new Response(
+            new ReadableStream({
+              cancel() {
+                effects.push("cancel");
+              },
+            }),
+            { status },
+          ),
+        );
+      }) as typeof fetch,
+      run: (command: string, args: string[]) => {
+        assertEquals([command, ...args], ["deno", "publish"]);
+        effects.push("publish");
+        return Promise.resolve();
+      },
+    };
+    await assertRejects(
+      () => publishPackage(version, () => undefined, dependencies),
+      /Missing publication context/,
+    );
+    assertEquals(effects, []);
+    const publish = () =>
+      publishPackage(version, (name) => context[name], dependencies);
+    if (status === 503) await assertRejects(publish, /HTTP 503/);
+    else await publish();
+    assertEquals(
+      effects,
+      status === 404 ? ["check", "cancel", "publish"] : ["check", "cancel"],
+    );
+  }
+  let invoked = false;
+  await assertRejects(() =>
+    publishPackage(version, (name) => context[name], {
+      fetch: () => Promise.reject(new Error("registry unavailable")),
+      run: () => {
+        invoked = true;
+        return Promise.resolve();
+      },
+    }), /registry unavailable/);
+  assert(!invoked);
+  await assertRejects(() =>
+    publishPackage(version, (name) => context[name], {
+      fetch: () => Promise.resolve(new Response(null, { status: 404 })),
+      run: () => Promise.reject(new Error("publication failed")),
+    }), /publication failed/);
+});
+
+function publicationContext(version: string): Record<string, string> {
+  const context: Record<string, string> = Object.fromEntries(
+    PUBLICATION_ENVIRONMENT.map((name) => [name, "test-value"]),
+  );
+  Object.assign(context, {
+    GITHUB_ACTIONS: "true",
+    RUNNER_ENVIRONMENT: "github-hosted",
+    GITHUB_EVENT_NAME: "push",
+    GITHUB_REF: `refs/tags/${version}`,
+    GITHUB_REPOSITORY: "zimme/bunny-hole",
+    GITHUB_WORKFLOW_REF:
+      `zimme/bunny-hole/.github/workflows/release.yml@refs/tags/${version}`,
+  });
+  return context;
+}

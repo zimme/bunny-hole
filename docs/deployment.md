@@ -269,8 +269,7 @@ an ordinary branch push.
 ## Repository owner setup before the first release
 
 Enable GitHub release immutability before the first release. Create `@zimme/bunny-hole`
-on JSR and link it to this repository. npm requires the package to exist before a
-trusted publisher can be configured, so publish the exact first generated tarball
-interactively with npm 2FA, then configure `.github/workflows/release.yml` as its OIDC
-trusted publisher using the `release` Environment. Subsequent tag workflows require no
-npm or JSR token.
+on JSR and link it to `zimme/bunny-hole`. Create the protected GitHub `release`
+Environment with a required human reviewer and a tag rule permitting the intended
+release tag. The tag workflow uses GitHub OIDC for JSR publication and needs no stored
+registry token. npm registry publication is deferred and requires no npm account setup.

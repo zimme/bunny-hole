@@ -234,6 +234,12 @@ environment forwarding. Workflow validation enforces an exact forwarding allowli
 a mutation witness must reject removal of the OIDC request token. No test requests an
 OIDC token or publishes to a registry.
 
+The JSR-only publisher checks identity before its first registry request, releases
+response bodies before any publication, skips existing immutable versions, and stops on
+registry or publication failures. Its behavior test permits only the exact JSR metadata
+URL and `deno publish`; npm publication is deferred. A mutation witness requires that
+removing the identity preflight fails the behavior test.
+
 Nested Docker tests execute the real startup selector with controlled route discovery
 and daemon effects. They cover overlapping subnets and host routes, adjacent subnets,
 broad private ranges, malformed routes, and exhaustion of all candidate pools. Unsafe

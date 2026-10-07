@@ -63,10 +63,10 @@ Candidate ordering does not replace compatibility checks: the proposed base vers
 still satisfy the bump rules relative to the latest stable release. Promotion removes
 the suffix from that same base version; RC tags do not become the stable compatibility
 baseline. Before the first stable release, an RC can evolve without promising the stable
-public API's compatibility. Candidates are immutable GitHub prereleases, use npm's `rc`
-distribution tag, and JSR excludes them from stable resolution. They do not become
-GitHub's latest stable release. Consumer Terraform rejects candidates unless
-`allow_release_candidate=true` is deliberately configured.
+public API's compatibility. Candidates are immutable GitHub prereleases, and JSR
+excludes them from stable resolution. They do not become GitHub's latest stable release.
+Consumer Terraform rejects candidates unless `allow_release_candidate=true` is
+deliberately configured.
 
 Every published release includes an attested `bunny-hole-deployment-VERSION.tar.gz`
 archive containing the standalone template and `release.json` with the exact commit and
@@ -74,12 +74,13 @@ published image digests. Its public example is stamped with the matching version
 host digest; RC deployment consent still defaults to false. Consumers need no Bunny Hole
 development toolchain to extract and configure this archive.
 
-Released versions are immutable. npm and JSR enforce immutable package versions, the
-release workflow refuses to overwrite an existing versioned OCI tag, and operators
-should deploy recorded OCI digests. Package publishing is restartable: it skips an exact
-npm or JSR version that the immutable registry already contains and publishes only the
-missing registry artifact. If any released artifact is wrong, publish the next
-compatible minor or breaking major version; never replace the existing version.
+Released versions are immutable. JSR enforces immutable package versions, the release
+workflow refuses to overwrite an existing versioned OCI tag, and operators should deploy
+recorded OCI digests. Package publishing is restartable: it skips an exact JSR version
+that the immutable registry already contains and publishes only missing versions. npm
+registry publication is deferred; local npm packaging and compatibility checks remain
+available. If any released artifact is wrong, publish the next compatible minor or
+breaking major version; never replace the existing version.
 
 Before creating a tag, update the connector CLI, connector library, host, and root
 `deno.json` versions together and check the intended tag locally:
@@ -93,5 +94,5 @@ Package publication forwards only the short-lived GitHub OIDC request credential
 public provenance inputs into its Dev Container step. Validation steps receive neither,
 and no step inherits the runner's entire environment. The publisher rejects missing
 context, the wrong tag/workflow, and non-hosted runners before contacting a registry.
-GitHub release protection and npm/JSR trusted-publisher account configuration remain
-required human setup; successful CI does not prove those account controls are ready.
+GitHub release protection and JSR repository linkage remain required human setup;
+successful CI does not prove those account controls are ready.
