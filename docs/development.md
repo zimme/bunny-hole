@@ -44,11 +44,16 @@ step environment keeps embedded and standalone setup on the same Compose builder
 
 The startup entrypoint leaves repository sources host-owned and makes only the ignored
 `.tmp`, `coverage`, and `dist` directories writable by the fixed development user.
-Integration writes only a secret-free Compose override beneath `.tmp`. It streams the
-ephemeral connector configuration over standard input into a per-run Docker volume,
-where the file is owned by the production connector user with mode `0600`. Private keys
-therefore never enter command arguments, environment variables, host bind mounts, or the
-repository workspace.
+Compose configures Git to trust only `/workspaces/bunny-hole` despite that ownership
+difference and disables the host's filesystem monitor. It never trusts every directory.
+Validation requires readable Git commit metadata before its checks, so ownership errors
+cannot silently skip tracked-file, history, or release checks. A regression queries the
+actual Git configuration, and a mutation witness rejects wildcard trust. Integration
+writes only a secret-free Compose override beneath `.tmp`. It streams the ephemeral
+connector configuration over standard input into a per-run Docker volume, where the file
+is owned by the production connector user with mode `0600`. Private keys therefore never
+enter command arguments, environment variables, host bind mounts, or the repository
+workspace.
 
 Inside the service, run `deno task setup` once and then focused tasks such as `fmt`,
 `lint`, `check`, `test`, `coverage`, `integration`, `build`, `package:check`, `audit`,

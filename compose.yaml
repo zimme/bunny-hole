@@ -55,9 +55,12 @@ services:
       DENO_NO_PROMPT: "1"
       DENO_NO_UPDATE_CHECK: "1"
       DOCKER_HOST: tcp://docker-engine:2375
-      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_COUNT: "2"
       GIT_CONFIG_KEY_0: core.fsmonitor
       GIT_CONFIG_VALUE_0: "false"
+      # The fixed container UID differs from the owner of a hosted checkout.
+      GIT_CONFIG_KEY_1: safe.directory
+      GIT_CONFIG_VALUE_1: /workspaces/bunny-hole
     volumes:
       - .:/workspaces/bunny-hole:cached
       - development-deno-cache:/deno-dir
