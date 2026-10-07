@@ -1,3 +1,4 @@
+// cspell:words alltrue toset
 import { run } from "./process.ts";
 
 const dataDirectory = await Deno.makeTempDir({
@@ -96,6 +97,8 @@ run "configured_consumer_plan" {
     condition = (
       bunnynet_pullzone.public.name == "public-generated" &&
       bunnynet_pullzone.connector.name == "connector-generated" &&
+      terraform_data.pullzone_adoption.input.public_id == "101" &&
+      terraform_data.pullzone_adoption.input.connector_id == "102" &&
       data.bunnynet_pullzone.public_adopted[0].id == 101 &&
       data.bunnynet_pullzone.connector_adopted[0].id == 102 &&
       bunnynet_pullzone.connector.websockets_max_connections == 1000
