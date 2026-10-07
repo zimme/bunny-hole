@@ -9,6 +9,11 @@ The image-pinned Node and npm versions exist in the development image only for G
 Copilot CLI, Dev Container tooling, and validating the actual npm package. There are no
 npm task wrappers or repository `package.json`.
 
+Toolchain versions come from `.tool-versions`. `version:check` enforces required
+Docker/Compose/CI/template mirrors and the shared immutable integration image in
+`scripts/toolchain.ts`. A Deno upgrade must also select its verified image digest;
+changing a version label cannot substitute a mutable image tag.
+
 ## Compose-native toolchain
 
 The complete environment is an ordinary Compose service:

@@ -70,6 +70,26 @@ export async function checkToolchainVersions(root = "."): Promise<void> {
       }
     }
   }
+  const integrationRuntime = await Deno.readTextFile(`${root}/scripts/toolchain.ts`);
+  const image = integrationRuntime.match(
+    /export const DENO_INTEGRATION_IMAGE =\s*"(denoland\/deno:([^@"]+)@sha256:([a-f0-9]{64}))";/,
+  );
+  if (!image || image[2] !== pins.deno) {
+    throw new Error(
+      "integration runtime must pin the authoritative Deno version and immutable digest",
+    );
+  }
+  for (
+    const path of ["Dockerfile", ".devcontainer/Dockerfile", "scripts/integration.ts"]
+  ) {
+    const content = await Deno.readTextFile(`${root}/${path}`);
+    for (const [reference] of content.matchAll(/denoland\/deno:([^\s"']+)/g)) {
+      const parameterized = `denoland/deno:${"${DENO_VERSION}"}@sha256:${image[3]}`;
+      if (reference !== image[1] && reference !== parameterized) {
+        throw new Error(`${path} contains a drifting or mutable Deno image reference`);
+      }
+    }
+  }
   // Compose must use the same pinned development tools as its image defaults.
   const dockerfile = await Deno.readTextFile(`${root}/.devcontainer/Dockerfile`);
   const compose = await Deno.readTextFile(`${root}/compose.yaml`);

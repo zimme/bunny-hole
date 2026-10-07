@@ -2,6 +2,7 @@ import { generateKeyPair, sign } from "../packages/api/auth.ts";
 import { canonicalGrant, validateGrant } from "../packages/api/mod.ts";
 import { BunnyHoleClient } from "../apps/connector/client.ts";
 import { output, run } from "./process.ts";
+import { DENO_INTEGRATION_IMAGE } from "./toolchain.ts";
 import { request as httpRequest } from "node:http";
 import { once } from "node:events";
 import { Readable } from "node:stream";
@@ -270,7 +271,7 @@ try {
       "0:0",
       "--volume",
       `${configVolume}:/config`,
-      "denoland/deno:2.9.5@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463",
+      DENO_INTEGRATION_IMAGE,
       "deno",
       "eval",
       'const data=await new Response(Deno.stdin.readable).bytes(); await Deno.writeFile("/config/config.json",data,{mode:0o600}); await Deno.chown("/config/config.json",65532,65532)',
@@ -637,7 +638,7 @@ async function stageTlsMaterial(
       "0:0",
       "--volume",
       `${volume}:/tls`,
-      "denoland/deno:2.9.5@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463",
+      DENO_INTEGRATION_IMAGE,
       "deno",
       "eval",
       tlsStagingScript,
@@ -658,7 +659,7 @@ async function stageTlsMaterial(
     "65532:65532",
     "--volume",
     `${volume}:/tls:ro`,
-    "denoland/deno:2.9.5@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463",
+    DENO_INTEGRATION_IMAGE,
     "deno",
     "eval",
     'for(const name of ["tls.crt","tls.key","ca.crt"])await Deno.readTextFile(`/tls/${name}`)',

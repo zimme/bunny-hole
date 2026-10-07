@@ -72,6 +72,8 @@ Deno.test("one version bump updates artifact metadata and rejects invalid or dri
 Deno.test("toolchain validation enforces machine mirrors without duplicated prose pins", async () => {
   const root = await Deno.makeTempDir();
   const paths = [
+    "scripts/toolchain.ts",
+    "scripts/integration.ts",
     ".tool-versions",
     "Dockerfile",
     ".devcontainer/Dockerfile",
@@ -109,6 +111,7 @@ Deno.test("toolchain validation enforces machine mirrors without duplicated pros
           /terraform_version: \S+/,
         ],
         [".devcontainer/Dockerfile", /ARG NODE_VERSION=\S+/],
+        ["scripts/toolchain.ts", /denoland\/deno:[^"\n]+/],
       ] as const
     ) {
       const original = await Deno.readTextFile(`${root}/${path}`);
@@ -120,6 +123,16 @@ Deno.test("toolchain validation enforces machine mirrors without duplicated pros
       await assertRejects(() => checkToolchainVersions(root));
       await Deno.writeTextFile(`${root}/${path}`, original);
     }
+    const integrationPath = `${root}/scripts/integration.ts`;
+    const integration = await Deno.readTextFile(integrationPath);
+    await Deno.writeTextFile(
+      integrationPath,
+      integration.replace(
+        "DENO_INTEGRATION_IMAGE,",
+        `"denoland/deno:0.0.0@sha256:${"a".repeat(64)}",`,
+      ),
+    );
+    await assertRejects(() => checkToolchainVersions(root), /Deno image reference/);
   } finally {
     await Deno.remove(root, { recursive: true });
   }
