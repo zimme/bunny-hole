@@ -27,7 +27,32 @@ Deno.test("one version bump updates artifact metadata and rejects invalid or dri
     const before = await Promise.all(
       paths.map((path) => Deno.readTextFile(`${root}/${path}`)),
     );
-    await assertRejects(() => bumpProductVersion("1.1.1", root));
+    for (const version of ["1.1.1", "1.1.0", "1.0.0", "1.1.0-rc.1"]) {
+      await assertRejects(() => bumpProductVersion(version, root));
+      assertEquals(
+        await Promise.all(paths.map((path) => Deno.readTextFile(`${root}/${path}`))),
+        before,
+      );
+    }
+    let writes = 0;
+    await assertRejects(
+      () =>
+        bumpProductVersion("1.2.0", root, async (path, source) => {
+          writes++;
+          if (writes === 2) {
+            assertEquals(
+              JSON.parse(await Deno.readTextFile(`${root}/deno.json`)).version,
+              "1.2.0",
+            );
+            // Simulate an I/O failure after part of the second file was written.
+            await Deno.writeTextFile(path, "partial write");
+            throw new Error("injected second-write failure");
+          }
+          await Deno.writeTextFile(path, source);
+        }),
+      /version bump failed/,
+    );
+    assertEquals(writes, 5);
     assertEquals(
       await Promise.all(paths.map((path) => Deno.readTextFile(`${root}/${path}`))),
       before,

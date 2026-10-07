@@ -1,10 +1,19 @@
-import { parseReleaseVersion } from "./comver.ts";
+import { compareReleaseVersion, parseReleaseVersion } from "./comver.ts";
 import { readProductVersion } from "./version_check.ts";
 
 /** Update required product metadata together; runtime versions remain immutable. */
-export async function bumpProductVersion(version: string, root = "."): Promise<void> {
-  parseReleaseVersion(version);
+export async function bumpProductVersion(
+  version: string,
+  root = ".",
+  writeFile: (path: string, source: string) => Promise<void> = Deno.writeTextFile,
+): Promise<void> {
+  const target = parseReleaseVersion(version);
   const previous = await readProductVersion(root);
+  if (compareReleaseVersion(target, parseReleaseVersion(previous)) <= 0) {
+    throw new Error(
+      "product version must increase; repeated versions and downgrades are forbidden",
+    );
+  }
   const markers = new Map([
     ["deno.json", [`"version": "${previous}"`, `"version": "${version}"`]],
     ["packages/api/mod.ts", [
@@ -25,14 +34,14 @@ export async function bumpProductVersion(version: string, root = "."): Promise<v
   }
   try {
     for (const [path, source] of updates) {
-      await Deno.writeTextFile(`${root}/${path}`, source);
+      await writeFile(`${root}/${path}`, source);
     }
     await readProductVersion(root);
   } catch (error) {
     const failures: unknown[] = [error];
     for (const [path, source] of originals) {
       try {
-        await Deno.writeTextFile(`${root}/${path}`, source);
+        await writeFile(`${root}/${path}`, source);
       } catch (restoreError) {
         failures.push(restoreError);
       }

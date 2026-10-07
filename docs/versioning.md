@@ -85,15 +85,15 @@ breaking major version; never replace the existing version.
 `deno.json` is the canonical product version. The CLI, library and host share the
 embedded API constant; OpenAPI metadata mirrors that same version. Use one command to
 update all required fields, rather than editing them individually. The command validates
-ComVer, rejects pre-existing metadata drift before writing, and attempts to restore all
-originals if a write fails. It does not create a tag or publish anything. Runtime
-environment variables cannot override the embedded artifact version. During release, the
-Git tag selects the version and `release:check` requires it to match the committed
-manifest, runtime constant and OpenAPI metadata before any publication. Archive names,
-OCI tags, deployment metadata and publisher context derive from that verified tag.
-Generating new source versions after checkout would dirty the tree required by JSR
-publication, so release preparation commits the metadata first; mismatched tags fail
-closed instead of relabeling the built artifact.
+ComVer, rejects repeated/downgraded versions and pre-existing metadata drift before
+writing, and attempts to restore all originals if a write fails. It does not create a
+tag or publish anything. Runtime environment variables cannot override the embedded
+artifact version. During release, the Git tag selects the version and `release:check`
+requires it to match the committed manifest, runtime constant and OpenAPI metadata
+before any publication. Archive names, OCI tags, deployment metadata and publisher
+context derive from that verified tag. Generating new source versions after checkout
+would dirty the tree required by JSR publication, so release preparation commits the
+metadata first; mismatched tags fail closed instead of relabeling the built artifact.
 
 Before creating a tag, set `VERSION` to the proposed release version and run:
 
