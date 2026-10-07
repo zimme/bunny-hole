@@ -35,6 +35,7 @@ Deno.test("one version bump updates artifact metadata and rejects invalid or dri
       );
     }
     let writes = 0;
+    let partialWriteObserved = false;
     await assertRejects(
       () =>
         bumpProductVersion("1.2.0", root, async (path, source) => {
@@ -46,12 +47,14 @@ Deno.test("one version bump updates artifact metadata and rejects invalid or dri
             );
             // Simulate an I/O failure after part of the second file was written.
             await Deno.writeTextFile(path, "partial write");
+            partialWriteObserved = true;
             throw new Error("injected second-write failure");
           }
           await Deno.writeTextFile(path, source);
         }),
       /version bump failed/,
     );
+    assert(partialWriteObserved);
     assertEquals(writes, 5);
     assertEquals(
       await Promise.all(paths.map((path) => Deno.readTextFile(`${root}/${path}`))),
