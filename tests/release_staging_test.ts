@@ -37,14 +37,13 @@ Deno.test("release SBOM staging preserves a clean publishable checkout", async (
       }),
     );
     await Deno.writeTextFile(join(directory, "mod.ts"), "export const value = 1;\n");
-    async function command(program: string, args: string[]) {
-      return await new Deno.Command(program, {
+    const command = (program: string, args: string[]) =>
+      new Deno.Command(program, {
         args,
         cwd: directory,
         stdout: "piped",
         stderr: "piped",
       }).output();
-    }
     for (
       const args of [
         ["init"],
