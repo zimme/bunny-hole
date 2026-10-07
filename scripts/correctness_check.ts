@@ -18,7 +18,7 @@ const mutations = [
   },
   {
     source: ".github/workflows/release.yml",
-    before: "    environment: Production",
+    before: "    environment: Release",
     after: "    environment: unprotected",
     test: "tests/publication_context_test.ts",
     witness:
@@ -27,7 +27,7 @@ const mutations = [
   {
     source: ".github/workflows/deploy-bunny.yml",
     before: "    environment: Bunny",
-    after: "    environment: production",
+    after: "    environment: release",
     test: "tests/publication_context_test.ts",
     witness:
       "release forwarding supplies publisher context without exposing runner credentials elsewhere",

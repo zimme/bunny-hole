@@ -148,8 +148,8 @@ credential.
   reproducible secret checks run through repository validation/workflows.
 - Tag-only increasing ComVer releases publish immutable OCI tags/digests, native
   checksums, SBOMs, and GitHub attestations. JSR publication uses GitHub OIDC after
-  human-controlled repository linkage, within the protected `Production` Environment.
-  npm registry publication is deferred; no npm bootstrap or registry token is required.
+  human-controlled repository linkage, within the protected `Release` Environment. npm
+  registry publication is deferred; no npm bootstrap or registry token is required.
 - The optional Bunny deployment is manual, environment-protected, and accepts only an
   already published version/digest pair. Ordinary pushes never deploy.
 

@@ -246,14 +246,13 @@ layer and is future work, not an autoscaling toggle.
 dispatched with an existing release version and matching digest. Protect the `Bunny`
 GitHub Environment with reviewers, default-branch-only access, and administrator bypass
 disabled where available before storing deployment credentials. This environment is
-separate from the upstream `Production` release environment; GitHub environment names
-are case-insensitive. If migrating a configured deployment, recreate its protections,
+separate from the upstream `Release` release environment; GitHub environment names are
+case-insensitive. If migrating a configured deployment, recreate its protections,
 variables, and secret in `Bunny` before dispatching this workflow. Remove the legacy
 `BUNNYNET_API_KEY`, `BUNNY_APP_ID`, and `BUNNY_CONTAINER_NAME` values from the old
-`production`/`Production` environment before using it for releases. Perform credential
-migration and cleanup privately; never give the API key to an agent. Set `BUNNY_APP_ID`
-and `BUNNY_CONTAINER_NAME` as environment variables, then enter the API key
-interactively:
+`production`/`Production` environment after migration. Perform credential migration and
+cleanup privately; never give the API key to an agent. Set `BUNNY_APP_ID` and
+`BUNNY_CONTAINER_NAME` as environment variables, then enter the API key interactively:
 
 ```sh
 gh secret set --env Bunny BUNNYNET_API_KEY
@@ -277,7 +276,7 @@ an ordinary branch push.
 ## Repository owner setup before the first release
 
 Enable GitHub release immutability before the first release. Create `@zimme/bunny-hole`
-on JSR and link it to `zimme/bunny-hole`. Create the protected GitHub `Production`
+on JSR and link it to `zimme/bunny-hole`. Create the protected GitHub `Release`
 Environment with a required human reviewer and Selected branches and tags rules of type
 Tag permitting `*.*.0` and `*.*.0-rc.*`. These patterns allow stable ComVer releases and
 the supported RC channel; GitHub's patterns cannot enforce canonical numeric syntax or

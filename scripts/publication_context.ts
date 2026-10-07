@@ -35,8 +35,8 @@ export function workflowEnvironmentFailures(
       : (job.environment as { name?: unknown } | undefined)?.name;
     const release = path === ".github/workflows/release.yml" && id === "release";
     const deployment = path === ".github/workflows/deploy-bunny.yml" && id === "deploy";
-    if (release && environment !== "Production") {
-      failures.push("Release must use the protected Production environment");
+    if (release && environment !== "Release") {
+      failures.push("Release must use the protected Release environment");
     }
     if (deployment && environment !== "Bunny") {
       failures.push(
@@ -45,9 +45,9 @@ export function workflowEnvironmentFailures(
     }
     if (
       !release && typeof environment === "string" &&
-      environment.toLowerCase() === "production"
+      environment.toLowerCase() === "release"
     ) {
-      failures.push("Only the release job may use the Production environment");
+      failures.push("Only the release job may use the Release environment");
     }
     if (
       !deployment && typeof environment === "string" &&

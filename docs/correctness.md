@@ -234,7 +234,7 @@ environment forwarding. Workflow validation enforces an exact forwarding allowli
 a mutation witness must reject removal of the OIDC request token. No test requests an
 OIDC token or publishes to a registry.
 
-Workflow policy also requires the release job's exact `Production` environment and the
+Workflow policy also requires the release job's exact `Release` environment and the
 optional deployment job's distinct `Bunny` environment. GitHub names are
 case-insensitive, so other jobs cannot use any capitalization of either reserved name.
 Tests exercise string and named-object forms, missing/incorrect names, and case aliases;
