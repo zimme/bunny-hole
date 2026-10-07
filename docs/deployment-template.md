@@ -11,7 +11,7 @@ The shortest consumer path uses the deployment archive from the exact published 
 rather than a source checkout:
 
 ```sh
-version=1.0.0-rc.1 # Select this only for explicitly approved RC evaluation.
+version=1.0.0-rc.2 # Select this only for explicitly approved RC evaluation.
 archive="bunny-hole-deployment-${version}.tar.gz"
 gh release download "$version" --repo zimme/bunny-hole --pattern "$archive"
 gh attestation verify "$archive" --repo zimme/bunny-hole

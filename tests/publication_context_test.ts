@@ -25,7 +25,7 @@ Deno.test("release forwarding supplies publisher context without exposing runner
   );
   for (
     const [path, job, allowed] of [
-      [".github/workflows/release.yml", "release", "Production"],
+      [".github/workflows/release.yml", "release", "Release"],
       [".github/workflows/deploy-bunny.yml", "deploy", "Bunny"],
     ]
   ) {
@@ -38,8 +38,8 @@ Deno.test("release forwarding supplies publisher context without exposing runner
       );
     }
     for (
-      const environment of [undefined, {}, "unprotected", "production", {
-        name: "PRODUCTION",
+      const environment of [undefined, {}, "unprotected", "release", {
+        name: "RELEASE",
       }]
     ) {
       assert(
@@ -51,9 +51,9 @@ Deno.test("release forwarding supplies publisher context without exposing runner
   assertEquals(workflowEnvironmentFailures({}, ".github/workflows/ci.yml"), []);
   for (
     const environment of [
-      "Production",
-      "production",
-      { name: "PRODUCTION" },
+      "Release",
+      "release",
+      { name: "RELEASE" },
       "Bunny",
       "bunny",
       { name: "BUNNY" },
