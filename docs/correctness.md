@@ -238,7 +238,9 @@ The JSR-only publisher checks identity before its first registry request, releas
 response bodies before any publication, skips existing immutable versions, and stops on
 registry or publication failures. Its behavior test permits only the exact JSR metadata
 URL and `deno publish`; npm publication is deferred. A mutation witness requires that
-removing the identity preflight fails the behavior test.
+removing the identity preflight fails the behavior test. The forwarding test also
+enforces the exact parent-process permission set; restoring the former npm registry,
+subprocess, and write capabilities must fail its mutation witness.
 
 Nested Docker tests execute the real startup selector with controlled route discovery
 and daemon effects. They cover overlapping subnets and host routes, adjacent subnets,

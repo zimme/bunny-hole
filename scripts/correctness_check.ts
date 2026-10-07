@@ -1,6 +1,16 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: "deno.json",
+    before:
+      "--allow-net=jsr.io --allow-read=. --allow-run=deno scripts/publish_package.ts",
+    after:
+      "--allow-net=jsr.io,registry.npmjs.org --allow-read=.,/tmp --allow-write=dist,/tmp --allow-run=deno,git,npm,tar scripts/publish_package.ts",
+    test: "tests/publication_context_test.ts",
+    witness:
+      "release forwarding supplies publisher context without exposing runner credentials elsewhere",
+  },
+  {
     source: "scripts/publish_package.ts",
     before: "  assertPublicationContext(version, get);",
     after: "",

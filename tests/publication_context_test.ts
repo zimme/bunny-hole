@@ -19,12 +19,12 @@ Deno.test("release forwarding supplies publisher context without exposing runner
   assert(publish);
   for (const step of steps) assertEquals(publicationStepFailures(step), []);
   const manifest = JSON.parse(await Deno.readTextFile("deno.json"));
-  const permissions = manifest.tasks["release:publish-package"].match(
-    /--allow-env=(\S+)/,
-  )[1].split(",");
-  for (const name of PUBLICATION_ENVIRONMENT) assert(permissions.includes(name));
-  assert(manifest.tasks["release:publish-package"].includes("--allow-net=jsr.io "));
-  assert(manifest.tasks["release:publish-package"].includes("--allow-run=deno "));
+  assertEquals(
+    manifest.tasks["release:publish-package"],
+    `deno run --allow-env=${
+      ["RELEASE_TAG", ...PUBLICATION_ENVIRONMENT].join(",")
+    } --allow-net=jsr.io --allow-read=. --allow-run=deno scripts/publish_package.ts`,
+  );
 
   const inputs = publish.with as Record<string, unknown>;
   for (const name of PUBLICATION_ENVIRONMENT) {
