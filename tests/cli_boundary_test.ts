@@ -3,6 +3,55 @@ import { saveState } from "../apps/connector/state.ts";
 import { generateKeyPair } from "../packages/api/auth.ts";
 import { assert, assertEquals, assertRejects } from "./assert.ts";
 
+Deno.test("CLI rejects unsupported exposure options before any effects", async () => {
+  const directory = await Deno.makeTempDir();
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  let requests = 0;
+  const output: string[] = [];
+  try {
+    globalThis.fetch = () => {
+      requests++;
+      return Promise.reject(new Error("unexpected network effect"));
+    };
+    console.log = (value: unknown) => output.push(String(value));
+    const config = `${directory}/missing.json`;
+    for (
+      const args of [
+        ["host", "add", "--url", "https://host.test", "--udp", "true"],
+        ["route", "add", "--protocol", "http", "--public-port", "27015"],
+        ["connect", "--hostname", "game.example.com"],
+        ["route", "delete", "route-id", "--all", "true"],
+        ["owner", "generate", "--output", `${directory}/owner.json`, "--extra", "x"],
+      ]
+    ) {
+      await assertRejects(
+        () => main([...args, "--config", config]),
+        /unsupported option/,
+      );
+    }
+    for (
+      const args of [
+        ["connect", "unexpected"],
+        ["host", "use", "home", "extra"],
+        ["route", "delete", "route-id", "extra"],
+        ["route", "delete", "--config", config],
+        ["--version", "--token", "hidden"],
+        ["--help", "ignored"],
+        ["operator", "--transport", "tcp"],
+        ["connect", "--development", "false"],
+      ]
+    ) await assertRejects(() => main(args), /argument/);
+    assertEquals(requests, 0);
+    assertEquals(output, []);
+    assertEquals(Array.from(Deno.readDirSync(directory)), []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("CLI rejects ambiguous flags, missing IDs and unsafe secret flags", async () => {
   for (
     const args of [

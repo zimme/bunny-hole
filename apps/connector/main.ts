@@ -27,6 +27,55 @@ export const EXIT_CONNECTION = 69;
 
 class UsageError extends Error {}
 
+// Validate the complete command before any file, credential, network, or process effect.
+// Unknown exposure options must never silently become a different supported command.
+const COMMAND_INPUTS: Record<string, { positional: number; flags: string[] }> = {
+  "host add": { positional: 0, flags: ["name", "url"] },
+  "host list": { positional: 0, flags: [] },
+  "host use": { positional: 1, flags: [] },
+  "host remove": { positional: 1, flags: ["yes"] },
+  "enrollment status": { positional: 0, flags: [] },
+  "enrollment approve": { positional: 1, flags: ["grant", "owner-key", "passkey"] },
+  "enrollment revoke": { positional: 1, flags: ["owner-key"] },
+  "enrollment purge": { positional: 1, flags: ["owner-key"] },
+  "route add": {
+    positional: 0,
+    flags: ["name", "protocol", "target", "hostname", "allow-private-network"],
+  },
+  "route list": { positional: 0, flags: [] },
+  "route delete": { positional: 1, flags: [] },
+  "owner generate": { positional: 0, flags: ["output"] },
+  "owner passkey": { positional: 0, flags: ["owner-key", "name"] },
+  "owner passkey-list": { positional: 0, flags: ["owner-key"] },
+  "owner passkey-revoke": { positional: 1, flags: ["owner-key"] },
+  "cluster prepare": {
+    positional: 0,
+    flags: ["url", "name", "namespace", "secret-name"],
+  },
+  connect: { positional: 0, flags: ["transport", "trusted-ca-file"] },
+  check: { positional: 0, flags: [] },
+};
+
+function validateCommandInput(args: string[]): void {
+  const standalone = ["connect", "check"].includes(args[0]);
+  const key = standalone ? args[0] : `${args[0]} ${args[1]}`;
+  // The dispatch below owns unsupported command errors and the skill export grammar.
+  const input = COMMAND_INPUTS[key];
+  if (!input) return;
+  const rest = args.slice(standalone ? 1 : 2);
+  for (let index = 0; index < input.positional; index++) {
+    if (!rest[index] || rest[index].startsWith("--")) {
+      throw new UsageError("missing command argument; use --help");
+    }
+  }
+  const flags = flagsFrom(rest.slice(input.positional));
+  for (const name of Object.keys(flags)) {
+    if (!["config", "host", "development", ...input.flags].includes(name)) {
+      throw new UsageError("unsupported option for this command; use --help");
+    }
+  }
+}
+
 const HELP = `Bunny Hole ${VERSION}
 
 Usage:
@@ -78,6 +127,10 @@ if (import.meta.main) {
 
 export async function main(args: string[]): Promise<void> {
   if (args.length === 0) return await wizard();
+  validateCommandInput(args);
+  if (["--help", "-h", "help", "--version", "-V", "operator"].includes(args[0])) {
+    if (args.length !== 1) throw new UsageError("unexpected argument; use --help");
+  }
   if (["--help", "-h", "help"].includes(args[0])) return console.log(HELP);
   if (["--version", "-V"].includes(args[0])) {
     return console.log(`bunny-hole ${VERSION}`);
@@ -665,7 +718,9 @@ function flagsFrom(args: string[]): Flags {
   const flags: Flags = {};
   for (let index = 0; index < args.length; index++) {
     const raw = args[index];
-    if (!raw.startsWith("--")) continue;
+    if (!raw.startsWith("--")) {
+      throw new UsageError("unexpected argument; use --help");
+    }
     const name = raw.slice(2);
     if (["private-key", "secret", "token"].includes(name)) {
       throw new UsageError(`--${name} is forbidden`);
