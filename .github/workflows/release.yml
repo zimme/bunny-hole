@@ -146,13 +146,13 @@ jobs:
       - name: Initialize runner-owned SBOM output
         run: mkdir -p dist/release-sboms
       - name: Generate host SPDX SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ghcr.io/${{ github.repository }}-host@${{ steps.host.outputs.digest }}
           format: spdx-json
           output-file: dist/release-sboms/bunny-hole-host-${{ github.ref_name }}.spdx.json
       - name: Generate connector SPDX SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ghcr.io/${{ github.repository }}-connector@${{ steps.connector.outputs.digest }}
           format: spdx-json
