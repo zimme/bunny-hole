@@ -144,11 +144,12 @@ separate future design if exposure must end even after an agent crashes.
 
 ## Test selection
 
-CLI command validation rejects unsupported options and unexpected arguments before
-credential reads, file writes, network requests, or operator startup. The
-exposure-option regression checks no effects occur, and its mutation witness bypasses
-command validation to prove that the check is necessary. Command grammar changes must
-preserve the existing enrollment, route, and connection success scenarios.
+CLI command validation rejects unsupported or missing required options and unexpected
+arguments before credential reads, file writes, network requests, or operator startup.
+The exposure-option regression checks no effects occur, and mutation witnesses
+independently bypass command validation and required-option checks to prove that both
+controls are necessary. Command grammar changes must preserve the existing enrollment,
+route, and connection success scenarios.
 
 Keep one owner for each behavior and its case matrix. Remove repeated fixtures when
 another test asserts the same contract; preserve distinct failure cases and boundary

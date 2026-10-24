@@ -32,29 +32,47 @@ class UsageError extends Error {}
 // Unknown exposure options must never silently become a different supported command.
 const COMMAND_INPUTS: Record<
   string,
-  { positional: number; optionalId?: boolean; flags: string[] }
+  { positional: number; optionalId?: boolean; flags: string[]; required?: string[] }
 > = {
-  "host add": { positional: 0, flags: ["name", "url"] },
+  "host add": { positional: 0, flags: ["name", "url"], required: ["url"] },
   "host list": { positional: 0, flags: [] },
   "host use": { positional: 1, flags: [] },
   "host remove": { positional: 1, flags: ["yes"] },
   "enrollment status": { positional: 0, optionalId: true, flags: [] },
-  "enrollment approve": { positional: 1, flags: ["grant", "owner-key", "passkey"] },
-  "enrollment revoke": { positional: 1, flags: ["owner-key"] },
-  "enrollment purge": { positional: 1, flags: ["owner-key"] },
+  "enrollment approve": {
+    positional: 1,
+    flags: ["grant", "owner-key", "passkey"],
+    required: ["grant"],
+  },
+  "enrollment revoke": { positional: 1, flags: ["owner-key"], required: ["owner-key"] },
+  "enrollment purge": { positional: 1, flags: ["owner-key"], required: ["owner-key"] },
   "route add": {
     positional: 0,
     flags: ["name", "protocol", "target", "hostname", "allow-private-network"],
+    required: ["name", "protocol", "target", "hostname"],
   },
   "route list": { positional: 0, flags: [] },
   "route delete": { positional: 1, flags: [] },
-  "owner generate": { positional: 0, flags: ["output"] },
-  "owner passkey": { positional: 0, flags: ["owner-key", "name"] },
-  "owner passkey-list": { positional: 0, flags: ["owner-key"] },
-  "owner passkey-revoke": { positional: 1, flags: ["owner-key"] },
+  "owner generate": { positional: 0, flags: ["output"], required: ["output"] },
+  "owner passkey": {
+    positional: 0,
+    flags: ["owner-key", "name"],
+    required: ["owner-key"],
+  },
+  "owner passkey-list": {
+    positional: 0,
+    flags: ["owner-key"],
+    required: ["owner-key"],
+  },
+  "owner passkey-revoke": {
+    positional: 1,
+    flags: ["owner-key"],
+    required: ["owner-key"],
+  },
   "cluster prepare": {
     positional: 0,
     flags: ["url", "name", "namespace", "secret-name"],
+    required: ["url", "name", "namespace", "secret-name"],
   },
   connect: { positional: 0, flags: ["transport", "trusted-ca-file"] },
   check: { positional: 0, flags: [] },
@@ -79,6 +97,10 @@ function validateCommandInput(args: string[]): void {
     if (!["config", "host", "development", ...input.flags].includes(name)) {
       throw new UsageError("unsupported option for this command; use --help");
     }
+  }
+  for (const name of input.required ?? []) required(flags, name);
+  if (key === "enrollment approve" && flags.passkey !== true) {
+    required(flags, "owner-key");
   }
 }
 
@@ -162,9 +184,14 @@ export async function main(args: string[]): Promise<void> {
   if (group === "host" && command === "use") return await useHost(rest);
   if (group === "host" && command === "remove") return await removeHost(rest);
   if (group === "enrollment" && command === "status") {
-    const id = rest[0] && !rest[0].startsWith("--")
-      ? parseId(rest[0], "enr")
-      : undefined;
+    let id: string | undefined;
+    if (rest[0] && !rest[0].startsWith("--")) {
+      try {
+        id = parseId(rest[0], "enr");
+      } catch {
+        throw new UsageError("invalid enrollment ID");
+      }
+    }
     return await enrollmentStatus(flagsFrom(rest.slice(id ? 1 : 0)), id);
   }
   if (group === "enrollment" && command === "approve") {

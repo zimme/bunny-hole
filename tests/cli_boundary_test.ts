@@ -43,6 +43,30 @@ Deno.test("CLI rejects unsupported exposure options before any effects", async (
         ["connect", "--development", "false"],
       ]
     ) await assertRejects(() => main(args), /argument/);
+    const route = [
+      "--name",
+      "demo",
+      "--protocol",
+      "http",
+      "--target",
+      "127.0.0.1:3000",
+      "--hostname",
+      "app.example.com",
+    ];
+    for (let index = 0; index < route.length; index += 2) {
+      await assertRejects(
+        () =>
+          main([
+            "route",
+            "add",
+            ...route.slice(0, index),
+            ...route.slice(index + 2),
+            "--config",
+            config,
+          ]),
+        /is required/,
+      );
+    }
     assertEquals(requests, 0);
     assertEquals(output, []);
     assertEquals(Array.from(Deno.readDirSync(directory)), []);
@@ -293,8 +317,6 @@ Deno.test("CLI setup, cluster preparation and connect enforce output and transpo
       () => main(["host", "add", "--url", "https://hole.example.com"]),
       /already exists/,
     );
-    await assertRejects(() => main(["cluster", "prepare"]), /refusing to print/);
-    Deno.stdout.isTerminal = () => false;
     const cluster = [
       "--url",
       "https://hole.example.com",
@@ -305,6 +327,11 @@ Deno.test("CLI setup, cluster preparation and connect enforce output and transpo
       "--secret-name",
       "identity",
     ];
+    await assertRejects(
+      () => main(["cluster", "prepare", ...cluster]),
+      /refusing to print/,
+    );
+    Deno.stdout.isTerminal = () => false;
     await main(["cluster", "prepare", ...cluster]);
     const yaml = output.at(-1)!;
     const encoded = yaml.match(/config.json: ([A-Za-z0-9+/=]+)/)![1];
@@ -341,7 +368,19 @@ Deno.test("CLI setup, cluster preparation and connect enforce output and transpo
     await assertRejects(() => main(["operator"]), /Kubernetes service environment/);
     for (const target of ["bad", "localhost:0", "::1:3000"]) {
       await assertRejects(
-        () => main(["route", "add", "--target", target]),
+        () =>
+          main([
+            "route",
+            "add",
+            "--name",
+            "demo",
+            "--protocol",
+            "http",
+            "--hostname",
+            "app.example.com",
+            "--target",
+            target,
+          ]),
         /HOST:PORT/,
       );
     }
