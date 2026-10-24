@@ -21,6 +21,8 @@ Deno.test("CLI rejects unsupported exposure options before any effects", async (
         ["host", "add", "--url", "https://host.test", "--udp", "true"],
         ["route", "add", "--protocol", "http", "--public-port", "27015"],
         ["connect", "--hostname", "game.example.com"],
+        ["connect", "--public-port"],
+        ["connect", "--token=hidden"],
         ["route", "delete", "route-id", "--all", "true"],
         ["owner", "generate", "--output", `${directory}/owner.json`, "--extra", "x"],
       ]

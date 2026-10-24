@@ -30,6 +30,9 @@ Deno.test("entrypoints report usage, configuration, connection and healthcheck e
   }
   for (
     const [args, expected] of [[["unknown"], 64], [[
+      "connect",
+      "--token=hidden",
+    ], 64], [[
       "enrollment",
       "status",
       "bad/id",
@@ -55,6 +58,7 @@ Deno.test("entrypoints report usage, configuration, connection and healthcheck e
   ) {
     const result = await command("apps/connector/main.ts", [...args]).output();
     assertEquals(result.code, expected);
+    assert(!new TextDecoder().decode(result.stderr).includes("--token=hidden"));
   }
   for (const status of [200, 503]) {
     const server = Deno.serve(

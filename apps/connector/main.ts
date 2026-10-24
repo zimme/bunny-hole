@@ -92,12 +92,12 @@ function validateCommandInput(args: string[]): void {
   }
   const positional = input.positional +
     (input.optionalId && rest[0] && !rest[0].startsWith("--") ? 1 : 0);
-  const flags = flagsFrom(rest.slice(positional));
-  for (const name of Object.keys(flags)) {
-    if (!["config", "host", "development", ...input.flags].includes(name)) {
-      throw new UsageError("unsupported option for this command; use --help");
-    }
-  }
+  const flags = flagsFrom(rest.slice(positional), [
+    "config",
+    "host",
+    "development",
+    ...input.flags,
+  ]);
   for (const name of input.required ?? []) required(flags, name);
   if (key === "enrollment approve" && flags.passkey !== true) {
     required(flags, "owner-key");
@@ -750,7 +750,7 @@ spec:
 
 type Flags = Record<string, string | boolean>;
 
-function flagsFrom(args: string[]): Flags {
+function flagsFrom(args: string[], allowed?: string[]): Flags {
   const flags: Flags = {};
   for (let index = 0; index < args.length; index++) {
     const raw = args[index];
@@ -760,6 +760,9 @@ function flagsFrom(args: string[]): Flags {
     const name = raw.slice(2);
     if (["private-key", "secret", "token"].includes(name)) {
       throw new UsageError(`--${name} is forbidden`);
+    }
+    if (allowed && !allowed.includes(name)) {
+      throw new UsageError("unsupported option for this command; use --help");
     }
     if (name in flags) throw new UsageError(`duplicate flag --${name}`);
     if (
