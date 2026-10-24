@@ -30,6 +30,10 @@ Deno.test("entrypoints report usage, configuration, connection and healthcheck e
   }
   for (
     const [args, expected] of [[["unknown"], 64], [[
+      "connect",
+      "--public-port",
+      "27015",
+    ], 64], [[
       "host",
       "add",
       "--url",

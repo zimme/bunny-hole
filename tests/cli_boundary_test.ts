@@ -35,6 +35,7 @@ Deno.test("CLI rejects unsupported exposure options before any effects", async (
         ["connect", "unexpected"],
         ["host", "use", "home", "extra"],
         ["route", "delete", "route-id", "extra"],
+        ["enrollment", "status", "enr_AAAAAAAAAAAAAAAAAAAAAAAA", "extra"],
         ["route", "delete", "--config", config],
         ["--version", "--token", "hidden"],
         ["--help", "ignored"],

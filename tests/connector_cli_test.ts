@@ -167,6 +167,16 @@ Deno.test("CLI enrolls, approves, inspects, and removes an isolated preview", as
     await main(["host", "use", "preview", ...flags]);
     await main(["enrollment", "status", ...flags]);
     assertEquals(JSON.parse(output.at(-1)!).state, "pending");
+    await main(["enrollment", "status", credentials.enrollmentId, ...flags]);
+    assertEquals(JSON.parse(output.at(-1)!).enrollmentId, credentials.enrollmentId);
+    await assertRejects(
+      () => main(["enrollment", "status", "enr_BBBBBBBBBBBBBBBBBBBBBBBB", ...flags]),
+      /host request failed/,
+    );
+    await assertRejects(
+      () => main(["enrollment", "status", "bad/id", ...flags]),
+      /invalid/,
+    );
     const grantFile = `${directory}/grant.json`;
     await Deno.writeTextFile(
       grantFile,

@@ -81,7 +81,7 @@ bunny-hole host list
 bunny-hole host use production
 bunny-hole host remove production --yes
 bunny-hole owner passkey --host production --owner-key ./owner-key.json
-bunny-hole enrollment status --host production
+bunny-hole enrollment status ENROLLMENT_ID --host production
 bunny-hole enrollment revoke ENROLLMENT_ID --host production \
   --owner-key ./owner-key.json
 bunny-hole route add --name home --host production --protocol http \
@@ -97,6 +97,9 @@ stops cleanly on `SIGINT` and `SIGTERM`. A second authenticated connector for th
 enrollment deterministically replaces the first. Stable process exit codes are `0`
 success, `64` invalid CLI usage, `69` connection or runtime failure, and `78` invalid
 configuration or rejected authentication.
+
+`enrollment status` inspects the configured enrollment by default. Supply an enrollment
+ID to inspect that exact enrollment on the selected host; the ID is never ignored.
 
 Commands reject unknown options, duplicate flags, extra positional arguments, and values
 after boolean switches before reading credentials or starting work. Unsupported exposure

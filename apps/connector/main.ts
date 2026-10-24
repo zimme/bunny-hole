@@ -4,6 +4,7 @@ import { generateKeyPair, sign } from "../../packages/api/auth.ts";
 import {
   canonicalGrant,
   isRecord,
+  parseId,
   parsePort,
   parseProtocol,
   validateGrant,
@@ -29,12 +30,15 @@ class UsageError extends Error {}
 
 // Validate the complete command before any file, credential, network, or process effect.
 // Unknown exposure options must never silently become a different supported command.
-const COMMAND_INPUTS: Record<string, { positional: number; flags: string[] }> = {
+const COMMAND_INPUTS: Record<
+  string,
+  { positional: number; optionalId?: boolean; flags: string[] }
+> = {
   "host add": { positional: 0, flags: ["name", "url"] },
   "host list": { positional: 0, flags: [] },
   "host use": { positional: 1, flags: [] },
   "host remove": { positional: 1, flags: ["yes"] },
-  "enrollment status": { positional: 0, flags: [] },
+  "enrollment status": { positional: 0, optionalId: true, flags: [] },
   "enrollment approve": { positional: 1, flags: ["grant", "owner-key", "passkey"] },
   "enrollment revoke": { positional: 1, flags: ["owner-key"] },
   "enrollment purge": { positional: 1, flags: ["owner-key"] },
@@ -68,7 +72,9 @@ function validateCommandInput(args: string[]): void {
       throw new UsageError("missing command argument; use --help");
     }
   }
-  const flags = flagsFrom(rest.slice(input.positional));
+  const positional = input.positional +
+    (input.optionalId && rest[0] && !rest[0].startsWith("--") ? 1 : 0);
+  const flags = flagsFrom(rest.slice(positional));
   for (const name of Object.keys(flags)) {
     if (!["config", "host", "development", ...input.flags].includes(name)) {
       throw new UsageError("unsupported option for this command; use --help");
@@ -82,7 +88,7 @@ Usage:
   bunny-hole                         Run the first-use setup wizard
   bunny-hole host add [--name NAME] --url HTTPS_URL
   bunny-hole host list | host use NAME | host remove NAME --yes
-  bunny-hole enrollment status [--host NAME]
+  bunny-hole enrollment status [ENROLLMENT_ID] [--host NAME]
   bunny-hole enrollment approve ID --grant FILE --owner-key FILE [--host NAME]
   bunny-hole enrollment approve ID --grant FILE --passkey [--host NAME]
   bunny-hole enrollment revoke ID --owner-key FILE [--host NAME]
@@ -156,7 +162,10 @@ export async function main(args: string[]): Promise<void> {
   if (group === "host" && command === "use") return await useHost(rest);
   if (group === "host" && command === "remove") return await removeHost(rest);
   if (group === "enrollment" && command === "status") {
-    return await enrollmentStatus(flagsFrom(rest));
+    const id = rest[0] && !rest[0].startsWith("--")
+      ? parseId(rest[0], "enr")
+      : undefined;
+    return await enrollmentStatus(flagsFrom(rest.slice(id ? 1 : 0)), id);
   }
   if (group === "enrollment" && command === "approve") {
     return await approveEnrollment(rest[0], flagsFrom(rest.slice(1)));
@@ -280,15 +289,15 @@ async function removeHost(args: string[]): Promise<void> {
   await saveState(state, path);
 }
 
-async function enrollmentStatus(flags: Flags): Promise<void> {
+async function enrollmentStatus(flags: Flags, id?: string): Promise<void> {
   const state = await loadState(configPath(flags));
   const [name, credentials] = selectHost(state, optionalString(flags, "host"));
   const enrollment = await clientFor(credentials, flags).enrollment(
-    credentials.enrollmentId,
+    id ?? credentials.enrollmentId,
   );
   console.log(
     JSON.stringify(
-      { host: name, enrollmentId: credentials.enrollmentId, ...enrollment },
+      { host: name, enrollmentId: id ?? credentials.enrollmentId, ...enrollment },
       null,
       2,
     ),
