@@ -3,6 +3,82 @@ import { saveState } from "../apps/connector/state.ts";
 import { generateKeyPair } from "../packages/api/auth.ts";
 import { assert, assertEquals, assertRejects } from "./assert.ts";
 
+Deno.test("CLI rejects unsupported exposure options before any effects", async () => {
+  const directory = await Deno.makeTempDir();
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  let requests = 0;
+  const output: string[] = [];
+  try {
+    globalThis.fetch = () => {
+      requests++;
+      return Promise.reject(new Error("unexpected network effect"));
+    };
+    console.log = (value: unknown) => output.push(String(value));
+    const config = `${directory}/missing.json`;
+    for (
+      const args of [
+        ["host", "add", "--url", "https://host.test", "--udp", "true"],
+        ["route", "add", "--protocol", "http", "--public-port", "27015"],
+        ["connect", "--hostname", "game.example.com"],
+        ["connect", "--public-port"],
+        ["connect", "--token=hidden"],
+        ["route", "delete", "route-id", "--all", "true"],
+        ["owner", "generate", "--output", `${directory}/owner.json`, "--extra", "x"],
+      ]
+    ) {
+      await assertRejects(
+        () => main([...args, "--config", config]),
+        /unsupported option/,
+      );
+    }
+    for (
+      const args of [
+        ["connect", "unexpected"],
+        ["host", "use", "home", "extra"],
+        ["route", "delete", "route-id", "extra"],
+        ["enrollment", "status", "enr_AAAAAAAAAAAAAAAAAAAAAAAA", "extra"],
+        ["route", "delete", "--config", config],
+        ["--version", "--token", "hidden"],
+        ["--help", "ignored"],
+        ["operator", "--transport", "tcp"],
+        ["connect", "--development", "false"],
+      ]
+    ) await assertRejects(() => main(args), /argument/);
+    const route = [
+      "--name",
+      "demo",
+      "--protocol",
+      "http",
+      "--target",
+      "127.0.0.1:3000",
+      "--hostname",
+      "app.example.com",
+    ];
+    for (let index = 0; index < route.length; index += 2) {
+      await assertRejects(
+        () =>
+          main([
+            "route",
+            "add",
+            ...route.slice(0, index),
+            ...route.slice(index + 2),
+            "--config",
+            config,
+          ]),
+        /is required/,
+      );
+    }
+    assertEquals(requests, 0);
+    assertEquals(output, []);
+    assertEquals(Array.from(Deno.readDirSync(directory)), []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("CLI rejects ambiguous flags, missing IDs and unsafe secret flags", async () => {
   for (
     const args of [
@@ -243,8 +319,6 @@ Deno.test("CLI setup, cluster preparation and connect enforce output and transpo
       () => main(["host", "add", "--url", "https://hole.example.com"]),
       /already exists/,
     );
-    await assertRejects(() => main(["cluster", "prepare"]), /refusing to print/);
-    Deno.stdout.isTerminal = () => false;
     const cluster = [
       "--url",
       "https://hole.example.com",
@@ -255,6 +329,11 @@ Deno.test("CLI setup, cluster preparation and connect enforce output and transpo
       "--secret-name",
       "identity",
     ];
+    await assertRejects(
+      () => main(["cluster", "prepare", ...cluster]),
+      /refusing to print/,
+    );
+    Deno.stdout.isTerminal = () => false;
     await main(["cluster", "prepare", ...cluster]);
     const yaml = output.at(-1)!;
     const encoded = yaml.match(/config.json: ([A-Za-z0-9+/=]+)/)![1];
@@ -291,7 +370,19 @@ Deno.test("CLI setup, cluster preparation and connect enforce output and transpo
     await assertRejects(() => main(["operator"]), /Kubernetes service environment/);
     for (const target of ["bad", "localhost:0", "::1:3000"]) {
       await assertRejects(
-        () => main(["route", "add", "--target", target]),
+        () =>
+          main([
+            "route",
+            "add",
+            "--name",
+            "demo",
+            "--protocol",
+            "http",
+            "--hostname",
+            "app.example.com",
+            "--target",
+            target,
+          ]),
         /HOST:PORT/,
       );
     }

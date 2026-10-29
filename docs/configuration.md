@@ -98,6 +98,15 @@ enrollment deterministically replaces the first. Stable process exit codes are `
 success, `64` invalid CLI usage, `69` connection or runtime failure, and `78` invalid
 configuration or rejected authentication.
 
+`enrollment status` inspects the configured enrollment by default. Supply an enrollment
+ID to inspect that exact enrollment on the selected host; the ID is never ignored.
+
+Commands reject unknown options, missing required options, duplicate flags, extra
+positional arguments, and values after boolean switches before reading credentials or
+starting work. Unsupported exposure options such as `--public-port` cannot silently
+select an HTTP tunnel. Use the documented route commands; TCP/UDP publication remains
+unsupported.
+
 `check` prints secret-free JSON with `valid`, `host`, `url`, `enrollmentId`,
 `scope: "control-plane"`, and the admitted `routes`. Inspect those routes before
 starting a connector: `connect` publishes all of them for that enrollment. A successful

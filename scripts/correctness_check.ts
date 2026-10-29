@@ -1,6 +1,20 @@
 /** Mutation witnesses ensure the security tests actually detect weakened controls. */
 const mutations = [
   {
+    source: "apps/connector/main.ts",
+    before: "  for (const name of input.required ?? []) required(flags, name);",
+    after: "  // Mutation: skip required options.",
+    test: "tests/cli_boundary_test.ts",
+    witness: "CLI rejects unsupported exposure options before any effects",
+  },
+  {
+    source: "apps/connector/main.ts",
+    before: "  validateCommandInput(args);",
+    after: "  // Mutation: bypass complete command validation.",
+    test: "tests/cli_boundary_test.ts",
+    witness: "CLI rejects unsupported exposure options before any effects",
+  },
+  {
     source: "scripts/toolchain.ts",
     before: '"denoland/deno:',
     after: '"denoland/deno:0',
