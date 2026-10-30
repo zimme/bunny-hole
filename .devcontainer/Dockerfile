@@ -1,7 +1,7 @@
 ARG DENO_VERSION=2.9.5
 FROM denoland/deno:${DENO_VERSION}@sha256:b429777c3dcff34a6488f365a1537db1640b2d48379b60f5e6206be034472463 AS deno
 
-FROM mcr.microsoft.com/devcontainers/base@sha256:1f851004adcd3dff3776b4a1da86727cf52280b0fdc9d5b0568c9c7d74274286
+FROM mcr.microsoft.com/devcontainers/base@sha256:71b6fe7c4e07ec747a94a72b2a17f2f8c286eaa7b1c59862888df764efb8b6c6
 
 ARG TARGETARCH
 ARG DENO_VERSION
